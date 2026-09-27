@@ -9,7 +9,7 @@ from fastapi import APIRouter, HTTPException
 
 from spend_analyzer.api import schemas
 from spend_analyzer.api.deps import SessionDep
-from spend_analyzer.api.services import crud
+from spend_analyzer.api.services import crud, issuer_preview
 from spend_analyzer.db.models import Issuer as IssuerModel
 
 router = APIRouter(tags=["issuers"])
@@ -62,3 +62,22 @@ def delete_issuer(issuer_id: int, session: SessionDep) -> None:
         raise HTTPException(status_code=404, detail="issuer not found")
     crud.delete_issuer(session, issuer)
     session.commit()
+
+
+@router.post("/issuers/preview-match", response_model=list[schemas.IssuerMatchPreviewRow])
+def preview_issuer_match(
+    body: schemas.IssuerMatchPreviewRequest, session: SessionDep
+) -> list[schemas.IssuerMatchPreviewRow]:
+    """A dry run for A24: which existing statements `body.match_terms` would match, before
+    saving them to a real issuer (never writes anything; never returns page text)."""
+    rows = issuer_preview.preview_match(session, body.match_terms)
+    return [
+        schemas.IssuerMatchPreviewRow(
+            statement_id=row.statement_id,
+            original_name=row.original_name,
+            status=row.status,
+            period_start=row.period_start,
+            period_end=row.period_end,
+        )
+        for row in rows
+    ]

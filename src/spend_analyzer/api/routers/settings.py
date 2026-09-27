@@ -1,20 +1,21 @@
-"""`/api/settings` and `/api/settings/test-llm` (§3.12, A4, I7).
+"""`/api/settings`, `/api/settings/test-llm`, and `/api/settings/api-key` (§3.12, A4, I7).
 
 `GET /api/settings` never returns key material: it reports `has_key` (whether a key is present in
-the Keychain or an env var override) instead of the key itself. `PUT` rewrites `config.toml`
-atomically (A4) via `spend_analyzer.config.save_settings`; it never writes a secret there either —
-a key change goes through `POST /api/settings/test-llm`'s underlying `set_api_key`, which this
-router does not expose directly (there is no route to *set* a key in v1's HTTP surface; Settings
-UI work is Phase 3).
+the Keychain or an env var override) instead of the key itself. `PUT /api/settings` rewrites
+`config.toml` atomically (A4) via `spend_analyzer.config.save_settings`; it never writes a secret
+there either. Setting or clearing the key itself goes through the dedicated
+`PUT`/`DELETE /api/settings/api-key` routes below, which write straight to the OS keychain via
+`config.set_api_key`/`delete_api_key` (I7) and never echo the key back, log it, or persist it
+anywhere else.
 """
 
 from __future__ import annotations
 
-from fastapi import APIRouter
+from fastapi import APIRouter, Response
 
 from spend_analyzer.api import schemas
 from spend_analyzer.api.deps import SettingsDep
-from spend_analyzer.config import Settings, get_api_key, save_settings
+from spend_analyzer.config import Settings, delete_api_key, get_api_key, save_settings, set_api_key
 
 router = APIRouter(tags=["settings"])
 
@@ -78,6 +79,22 @@ def put_settings(body: schemas.Settings) -> schemas.Settings:
     )
     save_settings(new_settings)
     return _settings_schema(new_settings)
+
+
+@router.put("/settings/api-key", status_code=204, response_class=Response)
+def put_api_key(body: schemas.ApiKeyPut) -> Response:
+    """Store `body.api_key` for `body.provider` in the OS keychain (I7). Never returned, logged,
+    or written to `config.toml`/the database — `body` itself is never included in any response."""
+    set_api_key(body.provider, body.api_key)
+    return Response(status_code=204)
+
+
+@router.delete("/settings/api-key", status_code=204, response_class=Response)
+def delete_api_key_route(provider: str) -> Response:
+    """Remove `provider`'s key from the OS keychain, if present (I7). Idempotent: clearing an
+    already-absent key is not an error."""
+    delete_api_key(provider)
+    return Response(status_code=204)
 
 
 @router.post("/settings/test-llm", response_model=schemas.TestLlmResponse)

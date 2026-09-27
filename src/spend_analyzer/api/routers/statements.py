@@ -19,7 +19,7 @@ from sqlalchemy.orm import Session
 
 from spend_analyzer.api import schemas
 from spend_analyzer.api.deps import JobRunnerDep, SessionDep, SessionFactoryDep, SettingsDep
-from spend_analyzer.api.services import crud, gateway
+from spend_analyzer.api.services import crud, gateway, statement_preview
 from spend_analyzer.api.services.job_tasks import enqueue_import_then_classify
 from spend_analyzer.core.paths import statements_dir
 from spend_analyzer.db.models import Statement
@@ -61,6 +61,9 @@ def _statement_response(session: Session, statement: Statement) -> schemas.State
         id=statement.id,
         user_id=crud.statement_user_id(session, statement),
         account_id=statement.account_id,
+        issuer_id=statement.issuer_id,
+        parser_id=statement.parser_id,
+        layout_spec_id=statement.layout_spec_id,
         status=statement.status,
         period_start=statement.period_start,
         period_end=statement.period_end,
@@ -102,12 +105,9 @@ async def upload_statement(
     original_name = _sanitize_original_name(file.filename or "statement.pdf")
     pdf_path = _save_upload(data)
 
-    try:
-        proposal = gateway.propose_import(
-            session, pdf_path, user_id=user_id, original_name=original_name
-        )
-    except ModuleNotFoundError as exc:  # pragma: no cover - only until P2-A merges
-        raise HTTPException(status_code=503, detail=f"ingest pipeline unavailable: {exc}") from None
+    proposal = gateway.propose_import(
+        session, pdf_path, user_id=user_id, original_name=original_name
+    )
     session.commit()
 
     statement = crud.get_statement(session, proposal.statement_id)
@@ -150,14 +150,7 @@ def patch_statement(
         # `reassign` (§3.5) recomputes `dedupe_hash` for every one of this statement's rows and
         # updates `statement.account_id` itself; a plain CRUD field write here would race it and
         # could set an account_id its own dedupe recompute never ran against.
-        try:
-            gateway.reassign(
-                session, statement_id, user_id=body.user_id, account_id=body.account_id
-            )
-        except ModuleNotFoundError as exc:  # pragma: no cover - only until P2-A merges
-            raise HTTPException(
-                status_code=503, detail=f"ingest pipeline unavailable: {exc}"
-            ) from None
+        gateway.reassign(session, statement_id, user_id=body.user_id, account_id=body.account_id)
         session.commit()
         session.refresh(statement)
     elif body.account_id is not None:
@@ -173,6 +166,43 @@ def delete_statement(statement_id: int, session: SessionDep) -> None:
         raise HTTPException(status_code=404, detail="statement not found")
     crud.delete_statement(session, statement)
     session.commit()
+
+
+@router.get("/statements/{statement_id}/preview", response_model=schemas.StatementPreviewPage)
+def preview_statement_page(
+    statement_id: int, session: SessionDep, page: int = 1
+) -> schemas.StatementPreviewPage:
+    """One page's words (`x0`/`x1`/`top`/`bottom`) plus page size, for the Layout mapper's
+    click-to-map UI (§2c). Local-only: this stays on the token-protected localhost API and never
+    goes through egress (I1b/I3)."""
+    statement = crud.get_statement(session, statement_id)
+    if statement is None:
+        raise HTTPException(status_code=404, detail="statement not found")
+
+    pdf_path = crud.staged_pdf_path(statement)
+    if pdf_path is None:
+        raise HTTPException(
+            status_code=404,
+            detail=(
+                "no PDF copy is available for this statement "
+                "([privacy] store_pdf_copies was off and it is already confirmed)"
+            ),
+        )
+
+    try:
+        page_preview = statement_preview.preview_page(pdf_path, page)
+    except statement_preview.PagePreviewNotFound as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from None
+
+    return schemas.StatementPreviewPage(
+        page_number=page_preview.page_number,
+        width=page_preview.width,
+        height=page_preview.height,
+        words=[
+            schemas.StatementPreviewWord(text=w.text, x0=w.x0, x1=w.x1, top=w.top, bottom=w.bottom)
+            for w in page_preview.words
+        ],
+    )
 
 
 @router.post(

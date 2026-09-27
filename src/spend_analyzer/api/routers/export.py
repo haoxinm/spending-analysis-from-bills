@@ -26,6 +26,7 @@ _FIELDS = (
     "account_id",
     "posted_date",
     "transaction_date",
+    "description_raw",
     "description_clean",
     "amount_minor",
     "currency",
@@ -42,10 +43,15 @@ _FIELDS = (
 def export_transactions(
     session: SessionDep,
     format: Literal["csv", "json"] = "csv",
+    user_id: int | None = None,
 ) -> PlainTextResponse:
-    transactions = (
-        session.execute(select(Transaction).order_by(Transaction.posted_date)).scalars().all()
-    )
+    """Export every transaction, or (with `user_id`) just one user's, oldest first. The CLI's
+    `export --user-id`/`--all-users` call this directly with a resolved id or `None`; the HTTP
+    route itself leaves `user_id` unset by default (exports everything)."""
+    stmt = select(Transaction).order_by(Transaction.posted_date)
+    if user_id is not None:
+        stmt = stmt.where(Transaction.user_id == user_id)
+    transactions = session.execute(stmt).scalars().all()
     rows = [
         schemas.Transaction(
             id=t.id,
@@ -53,6 +59,7 @@ def export_transactions(
             account_id=t.account_id,
             posted_date=t.posted_date,
             transaction_date=t.transaction_date,
+            description_raw=t.description_raw,
             description_clean=t.description_clean,
             amount_minor=t.amount_minor,
             currency=t.currency,

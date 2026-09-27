@@ -116,6 +116,28 @@ export interface paths {
         patch: operations["patch_statement_api_statements__statement_id__patch"];
         trace?: never;
     };
+    "/statements/{statement_id}/preview": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Preview Statement Page
+         * @description One page's words (`x0`/`x1`/`top`/`bottom`) plus page size, for the Layout mapper's
+         *     click-to-map UI (§2c). Local-only: this stays on the token-protected localhost API and never
+         *     goes through egress (I1b/I3).
+         */
+        get: operations["preview_statement_page_api_statements__statement_id__preview_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/statements/{statement_id}/extract": {
         parameters: {
             query?: never;
@@ -431,6 +453,27 @@ export interface paths {
         patch: operations["update_issuer_api_issuers__issuer_id__patch"];
         trace?: never;
     };
+    "/issuers/preview-match": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Preview Issuer Match
+         * @description A dry run for A24: which existing statements `body.match_terms` would match, before
+         *     saving them to a real issuer (never writes anything; never returns page text).
+         */
+        post: operations["preview_issuer_match_api_issuers_preview_match_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/layout-specs": {
         parameters: {
             query?: never;
@@ -460,6 +503,27 @@ export interface paths {
         put?: never;
         /** Revise Layout Spec */
         post: operations["revise_layout_spec_api_layout_specs__spec_id__revise_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/layout-specs/dry-run": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Dry Run Layout Spec
+         * @description Parse `body.statement_id`'s staged PDF with `body.spec_yaml`, without writing anything to
+         *     the database (§2c's own "try before you save" workflow) — the Layout mapper's own preview.
+         */
+        post: operations["dry_run_layout_spec_api_layout_specs_dry_run_post"];
         delete?: never;
         options?: never;
         head?: never;
@@ -554,6 +618,32 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/settings/api-key": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        /**
+         * Put Api Key
+         * @description Store `body.api_key` for `body.provider` in the OS keychain (I7). Never returned, logged,
+         *     or written to `config.toml`/the database — `body` itself is never included in any response.
+         */
+        put: operations["put_api_key_api_settings_api_key_put"];
+        post?: never;
+        /**
+         * Delete Api Key Route
+         * @description Remove `provider`'s key from the OS keychain, if present (I7). Idempotent: clearing an
+         *     already-absent key is not an error.
+         */
+        delete: operations["delete_api_key_route_api_settings_api_key_delete"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/settings/test-llm": {
         parameters: {
             query?: never;
@@ -582,7 +672,12 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
-        /** Export Transactions */
+        /**
+         * Export Transactions
+         * @description Export every transaction, or (with `user_id`) just one user's, oldest first. The CLI's
+         *     `export --user-id`/`--all-users` call this directly with a resolved id or `None`; the HTTP
+         *     route itself leaves `user_id` unset by default (exports everything).
+         */
         get: operations["export_transactions_api_export_get"];
         put?: never;
         post?: never;
@@ -667,6 +762,17 @@ export interface components {
             txn_count: number;
             /** Avg Minor */
             avg_minor: number;
+        };
+        /**
+         * ApiKeyPut
+         * @description `PUT /api/settings/api-key` body (I7: the key is written straight to the OS keychain via
+         *     `config.set_api_key` — never to `config.toml`, the database, a response, or a log line).
+         */
+        ApiKeyPut: {
+            /** Provider */
+            provider: string;
+            /** Api Key */
+            api_key: string;
         };
         /** Body_upload_statement_api_statements_post */
         Body_upload_statement_api_statements_post: {
@@ -786,6 +892,27 @@ export interface components {
             /** Match Terms */
             match_terms?: string[];
         };
+        /** IssuerMatchPreviewRequest */
+        IssuerMatchPreviewRequest: {
+            /** Match Terms */
+            match_terms: string[];
+        };
+        /** IssuerMatchPreviewRow */
+        IssuerMatchPreviewRow: {
+            /** Statement Id */
+            statement_id: number;
+            /** Original Name */
+            original_name: string;
+            /**
+             * Status
+             * @enum {string}
+             */
+            status: "pending" | "awaiting_extractor" | "parsed" | "no_text_layer" | "unsupported_layout" | "error";
+            /** Period Start */
+            period_start?: string | null;
+            /** Period End */
+            period_end?: string | null;
+        };
         /** IssuerUpdate */
         IssuerUpdate: {
             /** Name */
@@ -817,6 +944,12 @@ export interface components {
             group_id?: string | null;
             /** Error Detail */
             error_detail?: string | null;
+            /** Classify Job Id */
+            classify_job_id?: string | null;
+            /** Classified */
+            classified?: number | null;
+            /** Needs Review */
+            needs_review?: number | null;
         };
         /** JobIdResponse */
         JobIdResponse: {
@@ -855,6 +988,40 @@ export interface components {
             spec_yaml: string;
             /** Issuer Id */
             issuer_id?: number | null;
+        };
+        /** LayoutSpecDryRunRequest */
+        LayoutSpecDryRunRequest: {
+            /** Statement Id */
+            statement_id: number;
+            /** Spec Yaml */
+            spec_yaml: string;
+        };
+        /** LayoutSpecDryRunResponse */
+        LayoutSpecDryRunResponse: {
+            /** Txn Count */
+            txn_count: number;
+            /** Total Minor */
+            total_minor: number;
+            /** Currency */
+            currency: string;
+            /** Sample Rows */
+            sample_rows: components["schemas"]["LayoutSpecDryRunRow"][];
+            /** Warnings */
+            warnings: string[];
+            /** Reconciliation Delta Minor */
+            reconciliation_delta_minor?: number | null;
+        };
+        /** LayoutSpecDryRunRow */
+        LayoutSpecDryRunRow: {
+            /** Description Clean */
+            description_clean: string;
+            /**
+             * Posted Date
+             * Format: date
+             */
+            posted_date: string;
+            /** Amount Minor */
+            amount_minor: number;
         };
         /** LlmRun */
         LlmRun: {
@@ -979,6 +1146,12 @@ export interface components {
             user_id?: number | null;
             /** Account Id */
             account_id: number | null;
+            /** Issuer Id */
+            issuer_id?: number | null;
+            /** Parser Id */
+            parser_id?: string | null;
+            /** Layout Spec Id */
+            layout_spec_id?: number | null;
             /**
              * Status
              * @enum {string}
@@ -1011,6 +1184,30 @@ export interface components {
             /** Account Id */
             account_id?: number | null;
         };
+        /** StatementPreviewPage */
+        StatementPreviewPage: {
+            /** Page Number */
+            page_number: number;
+            /** Width */
+            width: number;
+            /** Height */
+            height: number;
+            /** Words */
+            words: components["schemas"]["StatementPreviewWord"][];
+        };
+        /** StatementPreviewWord */
+        StatementPreviewWord: {
+            /** Text */
+            text: string;
+            /** X0 */
+            x0: number;
+            /** X1 */
+            x1: number;
+            /** Top */
+            top: number;
+            /** Bottom */
+            bottom: number;
+        };
         /** StatementUploadResponse */
         StatementUploadResponse: {
             statement: components["schemas"]["Statement"];
@@ -1018,6 +1215,8 @@ export interface components {
         };
         /** Subcategory */
         Subcategory: {
+            /** Id */
+            id: number;
             /** Key */
             key: string;
             /** Name */
@@ -1058,6 +1257,8 @@ export interface components {
             posted_date: string;
             /** Transaction Date */
             transaction_date: string | null;
+            /** Description Raw */
+            description_raw: string;
             /** Description Clean */
             description_clean: string;
             /** Amount Minor */
@@ -1510,6 +1711,39 @@ export interface operations {
             };
         };
     };
+    preview_statement_page_api_statements__statement_id__preview_get: {
+        parameters: {
+            query?: {
+                page?: number;
+            };
+            header?: never;
+            path: {
+                statement_id: number;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["StatementPreviewPage"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
     extract_statement_api_statements__statement_id__extract_post: {
         parameters: {
             query?: never;
@@ -1585,6 +1819,7 @@ export interface operations {
             query?: {
                 user_ids?: number[] | null;
                 account_ids?: number[] | null;
+                statement_id?: number | null;
                 date_from?: string | null;
                 date_to?: string | null;
                 category_keys?: string[] | null;
@@ -1593,6 +1828,7 @@ export interface operations {
                 amount_max_minor?: number | null;
                 kinds?: components["schemas"]["Kind"][] | null;
                 include_non_spend?: boolean;
+                needs_review?: boolean | null;
                 search?: string | null;
                 currency?: string;
                 page?: number;
@@ -2169,6 +2405,39 @@ export interface operations {
             };
         };
     };
+    preview_issuer_match_api_issuers_preview_match_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["IssuerMatchPreviewRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["IssuerMatchPreviewRow"][];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
     list_layout_specs_api_layout_specs_get: {
         parameters: {
             query?: never;
@@ -2244,6 +2513,39 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["LayoutSpec"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    dry_run_layout_spec_api_layout_specs_dry_run_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["LayoutSpecDryRunRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["LayoutSpecDryRunResponse"];
                 };
             };
             /** @description Validation Error */
@@ -2489,6 +2791,66 @@ export interface operations {
             };
         };
     };
+    put_api_key_api_settings_api_key_put: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ApiKeyPut"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    delete_api_key_route_api_settings_api_key_delete: {
+        parameters: {
+            query: {
+                provider: string;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
     test_llm_settings_api_settings_test_llm_post: {
         parameters: {
             query?: never;
@@ -2513,6 +2875,7 @@ export interface operations {
         parameters: {
             query?: {
                 format?: "csv" | "json";
+                user_id?: number | null;
             };
             header?: never;
             path?: never;

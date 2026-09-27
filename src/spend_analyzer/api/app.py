@@ -113,7 +113,7 @@ def _mount_frontend(app: FastAPI, web_dir: Path, token: str) -> None:
     def serve_index() -> HTMLResponse:
         return HTMLResponse(index_html)
 
-    @app.get("/{full_path:path}", include_in_schema=False)
+    @app.get("/{full_path:path}", include_in_schema=False, response_model=None)
     def serve_spa(full_path: str) -> HTMLResponse | FileResponse:
         if full_path.startswith("api/") or full_path == "api":
             raise HTTPException(status_code=404, detail="not found")
