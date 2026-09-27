@@ -119,7 +119,7 @@ def create_account(
 ) -> Account:
     account = Account(
         user_id=user_id,
-        issuer_id=issuer_id if issuer_id is not None else _unknown_issuer_id(session),
+        issuer_id=issuer_id if issuer_id is not None else unknown_issuer_id(session),
         account_type=account_type,
         display_name=f"{account_type} ...{mask}" if mask else account_type,
         mask=mask,
@@ -151,9 +151,12 @@ def update_account(
     return account
 
 
-def _unknown_issuer_id(session: Session) -> int:
-    """Accounts require a non-null `issuer_id` (§3.2); an `AccountCreate` that omits one gets a
-    placeholder "Unknown" issuer, created on first use."""
+def unknown_issuer_id(session: Session) -> int:
+    """A placeholder "Unknown" issuer, created on first use — for an `AccountCreate` that omits
+    an issuer (accounts require a non-null `issuer_id`, §3.2), and for `cli.py`'s `import`
+    command confirming a statement whose extractor was pinned explicitly
+    (`--parser-id`/`--layout-spec-id`) but whose issuer never matched any registered `Issuer`
+    (§3.12a)."""
     issuer = session.execute(select(Issuer).where(Issuer.slug == "unknown")).scalar_one_or_none()
     if issuer is None:
         issuer = Issuer(name="Unknown", slug="unknown", match_terms="[]")
