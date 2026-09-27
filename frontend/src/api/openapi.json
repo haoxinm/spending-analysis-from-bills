@@ -1,0 +1,916 @@
+{
+  "openapi": "3.0.3",
+  "info": {
+    "title": "Spend Analyzer API",
+    "version": "0.1.0-placeholder",
+    "description": "Hand-written stand-in for the FastAPI-generated schema (plan §3.12), committed so P1-F can generate a typed client before the routers exist (Phase 2). P2-C replaces this file with the real generated schema; regeneration then becomes a CI step. Do not hand-maintain this file after P2-C lands."
+  },
+  "servers": [{ "url": "/api" }],
+  "components": {
+    "securitySchemes": {
+      "SpendToken": {
+        "type": "apiKey",
+        "in": "header",
+        "name": "X-Spend-Token",
+        "description": "Per-launch token required on every /api request (A31)."
+      }
+    },
+    "schemas": {
+      "Error": {
+        "type": "object",
+        "required": ["detail"],
+        "properties": {
+          "detail": { "type": "string" }
+        }
+      },
+      "Currency": { "type": "string", "example": "USD" },
+      "Kind": {
+        "type": "string",
+        "enum": ["purchase", "refund", "payment", "transfer", "fee", "interest", "adjustment"]
+      },
+      "AccountType": { "type": "string", "enum": ["credit", "checking", "savings"] },
+      "User": {
+        "type": "object",
+        "required": ["id", "name", "is_default"],
+        "properties": {
+          "id": { "type": "integer" },
+          "name": { "type": "string" },
+          "is_default": { "type": "boolean" }
+        }
+      },
+      "UserCreate": {
+        "type": "object",
+        "required": ["name"],
+        "properties": {
+          "name": { "type": "string" },
+          "is_default": { "type": "boolean" }
+        }
+      },
+      "UserUpdate": {
+        "type": "object",
+        "properties": {
+          "name": { "type": "string" },
+          "is_default": { "type": "boolean" }
+        }
+      },
+      "Account": {
+        "type": "object",
+        "required": ["id", "user_id", "issuer_id", "account_type", "mask", "currency"],
+        "properties": {
+          "id": { "type": "integer" },
+          "user_id": { "type": "integer" },
+          "issuer_id": { "type": "integer", "nullable": true },
+          "account_type": { "$ref": "#/components/schemas/AccountType" },
+          "mask": { "type": "string", "description": "Last 4 digits only. LOCAL ONLY (I1b)." },
+          "currency": { "$ref": "#/components/schemas/Currency" }
+        }
+      },
+      "AccountCreate": {
+        "type": "object",
+        "required": ["user_id", "account_type", "currency"],
+        "properties": {
+          "user_id": { "type": "integer" },
+          "issuer_id": { "type": "integer", "nullable": true },
+          "account_type": { "$ref": "#/components/schemas/AccountType" },
+          "mask": { "type": "string" },
+          "currency": { "$ref": "#/components/schemas/Currency" }
+        }
+      },
+      "AccountUpdate": {
+        "type": "object",
+        "properties": {
+          "issuer_id": { "type": "integer", "nullable": true },
+          "account_type": { "$ref": "#/components/schemas/AccountType" },
+          "mask": { "type": "string" },
+          "currency": { "$ref": "#/components/schemas/Currency" }
+        }
+      },
+      "StatementStatus": {
+        "type": "string",
+        "enum": [
+          "awaiting_extractor",
+          "queued",
+          "processing",
+          "done",
+          "error",
+          "no_text_layer",
+          "unsupported_layout"
+        ]
+      },
+      "Statement": {
+        "type": "object",
+        "required": ["id", "status", "created_at"],
+        "properties": {
+          "id": { "type": "integer" },
+          "user_id": { "type": "integer", "nullable": true },
+          "account_id": { "type": "integer", "nullable": true },
+          "status": { "$ref": "#/components/schemas/StatementStatus" },
+          "period_start": { "type": "string", "format": "date", "nullable": true },
+          "period_end": { "type": "string", "format": "date", "nullable": true },
+          "txn_count": { "type": "integer" },
+          "reconciliation_delta_minor": {
+            "type": "integer",
+            "nullable": true,
+            "description": "Signed minor units; 0 when the balance equation reconciles exactly (§3.1 A25)."
+          },
+          "detect_score": { "type": "number", "nullable": true },
+          "shape_warnings": { "type": "string", "nullable": true },
+          "error_detail": { "type": "string", "nullable": true },
+          "created_at": { "type": "string", "format": "date-time" }
+        }
+      },
+      "ExtractorProposal": {
+        "type": "object",
+        "properties": {
+          "issuer_id": { "type": "integer", "nullable": true },
+          "parser_id": { "type": "string", "nullable": true },
+          "layout_spec_id": { "type": "integer", "nullable": true },
+          "confidence": { "type": "number" },
+          "auto_confirmed": { "type": "boolean" }
+        }
+      },
+      "StatementUploadResponse": {
+        "type": "object",
+        "required": ["statement", "proposal"],
+        "properties": {
+          "statement": { "$ref": "#/components/schemas/Statement" },
+          "proposal": { "$ref": "#/components/schemas/ExtractorProposal" }
+        }
+      },
+      "ExtractRequest": {
+        "type": "object",
+        "required": ["issuer_id", "remember"],
+        "properties": {
+          "issuer_id": { "type": "integer" },
+          "layout_spec_id": { "type": "integer", "nullable": true },
+          "parser_id": { "type": "string", "nullable": true },
+          "remember": { "type": "boolean" }
+        }
+      },
+      "StatementPatch": {
+        "type": "object",
+        "properties": {
+          "user_id": { "type": "integer" },
+          "account_id": { "type": "integer" }
+        }
+      },
+      "Job": {
+        "type": "object",
+        "required": ["id", "kind", "status", "progress"],
+        "properties": {
+          "id": { "type": "string" },
+          "kind": { "type": "string", "enum": ["import", "classify"] },
+          "status": { "type": "string", "enum": ["queued", "running", "done", "error"] },
+          "progress": { "type": "number", "minimum": 0, "maximum": 1 },
+          "message": { "type": "string", "nullable": true },
+          "group_id": { "type": "string", "nullable": true },
+          "error_detail": { "type": "string", "nullable": true }
+        }
+      },
+      "Transaction": {
+        "type": "object",
+        "required": [
+          "id",
+          "statement_id",
+          "account_id",
+          "posted_date",
+          "description_clean",
+          "amount_minor",
+          "currency",
+          "kind",
+          "category_key",
+          "subcategory_key",
+          "needs_review"
+        ],
+        "properties": {
+          "id": { "type": "integer" },
+          "statement_id": { "type": "integer" },
+          "account_id": { "type": "integer" },
+          "posted_date": { "type": "string", "format": "date" },
+          "transaction_date": { "type": "string", "format": "date", "nullable": true },
+          "description_clean": { "type": "string" },
+          "amount_minor": {
+            "type": "integer",
+            "description": "Signed minor units; positive = outflow (I5)."
+          },
+          "currency": { "$ref": "#/components/schemas/Currency" },
+          "kind": { "$ref": "#/components/schemas/Kind" },
+          "category_key": { "type": "string", "nullable": true },
+          "subcategory_key": { "type": "string", "nullable": true },
+          "merchant_key": { "type": "string", "nullable": true },
+          "notes": { "type": "string", "nullable": true },
+          "needs_review": { "type": "boolean" }
+        }
+      },
+      "TransactionPatch": {
+        "type": "object",
+        "properties": {
+          "category_key": { "type": "string" },
+          "subcategory_key": { "type": "string" },
+          "kind": { "$ref": "#/components/schemas/Kind" },
+          "notes": { "type": "string" },
+          "create_rule": { "type": "boolean" }
+        }
+      },
+      "BulkUpdateRequest": {
+        "type": "object",
+        "required": ["transaction_ids"],
+        "properties": {
+          "transaction_ids": { "type": "array", "items": { "type": "integer" } },
+          "category_key": { "type": "string" },
+          "subcategory_key": { "type": "string" },
+          "kind": { "$ref": "#/components/schemas/Kind" }
+        }
+      },
+      "ClassifyRunRequest": {
+        "type": "object",
+        "properties": {
+          "user_id": { "type": "integer", "nullable": true },
+          "statement_id": { "type": "integer", "nullable": true },
+          "only_unclassified": { "type": "boolean", "default": true }
+        }
+      },
+      "ClassifyRunResponse": {
+        "type": "object",
+        "required": ["job_id", "group_id"],
+        "properties": {
+          "job_id": { "type": "string" },
+          "group_id": { "type": "string" }
+        }
+      },
+      "ClassifyPreviewRow": {
+        "type": "object",
+        "properties": {
+          "merchant_key": { "type": "string" },
+          "description_clean": { "type": "string" }
+        }
+      },
+      "LlmRun": {
+        "type": "object",
+        "properties": {
+          "id": { "type": "integer" },
+          "group_id": { "type": "string" },
+          "provider": { "type": "string" },
+          "model": { "type": "string" },
+          "schema_mode": { "type": "string" },
+          "cost_usd": { "type": "number", "nullable": true },
+          "prompt_tokens": { "type": "integer", "nullable": true },
+          "completion_tokens": { "type": "integer", "nullable": true },
+          "created_at": { "type": "string", "format": "date-time" }
+        }
+      },
+      "AnalyticsRow": {
+        "type": "object",
+        "required": ["currency", "total_minor", "txn_count", "avg_minor"],
+        "properties": {
+          "period": { "type": "string", "nullable": true },
+          "category": { "type": "string", "nullable": true },
+          "subcategory": { "type": "string", "nullable": true },
+          "user": { "type": "string", "nullable": true },
+          "account": { "type": "string", "nullable": true },
+          "merchant": { "type": "string", "nullable": true },
+          "currency": { "$ref": "#/components/schemas/Currency" },
+          "total_minor": { "type": "integer" },
+          "txn_count": { "type": "integer" },
+          "avg_minor": { "type": "integer" }
+        }
+      },
+      "TopMerchantRow": {
+        "type": "object",
+        "properties": {
+          "merchant": { "type": "string" },
+          "total_minor": { "type": "integer" },
+          "txn_count": { "type": "integer" }
+        }
+      },
+      "Subcategory": {
+        "type": "object",
+        "required": ["key", "name", "pending"],
+        "properties": {
+          "key": { "type": "string" },
+          "name": { "type": "string" },
+          "pending": { "type": "boolean" },
+          "merged_into": { "type": "string", "nullable": true }
+        }
+      },
+      "Category": {
+        "type": "object",
+        "required": ["key", "name", "subcategories"],
+        "properties": {
+          "key": { "type": "string" },
+          "name": { "type": "string" },
+          "subcategories": {
+            "type": "array",
+            "items": { "$ref": "#/components/schemas/Subcategory" }
+          }
+        }
+      },
+      "MergeRequest": {
+        "type": "object",
+        "required": ["into_id"],
+        "properties": { "into_id": { "type": "string" } }
+      },
+      "Issuer": {
+        "type": "object",
+        "required": ["id", "name", "slug", "match_terms"],
+        "properties": {
+          "id": { "type": "integer" },
+          "name": { "type": "string" },
+          "slug": { "type": "string" },
+          "match_terms": { "type": "array", "items": { "type": "string" } },
+          "default_spec_id": { "type": "integer", "nullable": true }
+        }
+      },
+      "IssuerCreate": {
+        "type": "object",
+        "required": ["name"],
+        "properties": {
+          "name": { "type": "string" },
+          "match_terms": { "type": "array", "items": { "type": "string" } }
+        }
+      },
+      "IssuerUpdate": {
+        "type": "object",
+        "properties": {
+          "name": { "type": "string" },
+          "match_terms": { "type": "array", "items": { "type": "string" } },
+          "default_spec_id": { "type": "integer", "nullable": true }
+        }
+      },
+      "LayoutSpec": {
+        "type": "object",
+        "required": ["id", "name", "version", "approved", "source"],
+        "properties": {
+          "id": { "type": "integer" },
+          "name": { "type": "string" },
+          "version": { "type": "integer" },
+          "issuer_id": { "type": "integer", "nullable": true },
+          "approved": { "type": "boolean" },
+          "source": { "type": "string", "enum": ["hand_mapped", "pasted"] }
+        }
+      },
+      "LayoutSpecCreate": {
+        "type": "object",
+        "required": ["name", "spec_yaml"],
+        "properties": {
+          "name": { "type": "string" },
+          "spec_yaml": { "type": "string" },
+          "issuer_id": { "type": "integer", "nullable": true }
+        }
+      },
+      "Rule": {
+        "type": "object",
+        "required": ["id", "pattern", "category_key", "subcategory_key"],
+        "properties": {
+          "id": { "type": "integer" },
+          "pattern": { "type": "string" },
+          "category_key": { "type": "string" },
+          "subcategory_key": { "type": "string" },
+          "kind": { "$ref": "#/components/schemas/Kind" },
+          "source": { "type": "string", "enum": ["builtin", "user"] }
+        }
+      },
+      "RuleCreate": {
+        "type": "object",
+        "required": ["pattern", "category_key", "subcategory_key"],
+        "properties": {
+          "pattern": { "type": "string" },
+          "category_key": { "type": "string" },
+          "subcategory_key": { "type": "string" },
+          "kind": { "$ref": "#/components/schemas/Kind" }
+        }
+      },
+      "RuleUpdate": {
+        "type": "object",
+        "properties": {
+          "pattern": { "type": "string" },
+          "category_key": { "type": "string" },
+          "subcategory_key": { "type": "string" },
+          "kind": { "$ref": "#/components/schemas/Kind" }
+        }
+      },
+      "LlmMode": { "type": "string", "enum": ["none", "local", "remote"] },
+      "Settings": {
+        "type": "object",
+        "properties": {
+          "llm": {
+            "type": "object",
+            "properties": {
+              "mode": { "$ref": "#/components/schemas/LlmMode" },
+              "provider": { "type": "string" },
+              "model": { "type": "string" },
+              "api_base": { "type": "string" },
+              "batch_size": { "type": "integer" },
+              "timeout_s": { "type": "integer" },
+              "confidence_threshold": { "type": "number" }
+            }
+          },
+          "privacy": {
+            "type": "object",
+            "properties": {
+              "store_pdf_copies": { "type": "boolean" },
+              "store_extract_cache": { "type": "boolean" },
+              "pii_terms": { "type": "array", "items": { "type": "string" } }
+            }
+          },
+          "ingest": {
+            "type": "object",
+            "properties": {
+              "always_confirm_extractor": { "type": "boolean" },
+              "date_format_hints": { "type": "array", "items": { "type": "string" } },
+              "default_currency": { "$ref": "#/components/schemas/Currency" }
+            }
+          },
+          "server": {
+            "type": "object",
+            "properties": {
+              "port": { "type": "integer" }
+            }
+          }
+        }
+      },
+      "TestLlmResponse": {
+        "type": "object",
+        "required": ["ok"],
+        "properties": {
+          "ok": { "type": "boolean" },
+          "detail": { "type": "string", "nullable": true }
+        }
+      }
+    },
+    "parameters": {
+      "UserIds": {
+        "name": "user_ids",
+        "in": "query",
+        "style": "form",
+        "explode": true,
+        "schema": { "type": "array", "items": { "type": "integer" } }
+      },
+      "AccountIds": {
+        "name": "account_ids",
+        "in": "query",
+        "style": "form",
+        "explode": true,
+        "schema": { "type": "array", "items": { "type": "integer" } }
+      },
+      "DateFrom": { "name": "date_from", "in": "query", "schema": { "type": "string", "format": "date" } },
+      "DateTo": { "name": "date_to", "in": "query", "schema": { "type": "string", "format": "date" } },
+      "Granularity": {
+        "name": "granularity",
+        "in": "query",
+        "schema": {
+          "type": "string",
+          "enum": ["day", "week", "month", "quarter", "year", "all"],
+          "default": "month"
+        }
+      },
+      "GroupBy": {
+        "name": "group_by",
+        "in": "query",
+        "style": "form",
+        "explode": true,
+        "schema": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "enum": ["category", "subcategory", "user", "account", "merchant", "period"]
+          }
+        }
+      },
+      "CategoryKeys": {
+        "name": "category_keys",
+        "in": "query",
+        "style": "form",
+        "explode": true,
+        "schema": { "type": "array", "items": { "type": "string" } }
+      },
+      "SubcategoryKeys": {
+        "name": "subcategory_keys",
+        "in": "query",
+        "style": "form",
+        "explode": true,
+        "schema": { "type": "array", "items": { "type": "string" } }
+      },
+      "AmountMinMinor": { "name": "amount_min_minor", "in": "query", "schema": { "type": "integer" } },
+      "AmountMaxMinor": { "name": "amount_max_minor", "in": "query", "schema": { "type": "integer" } },
+      "Kinds": {
+        "name": "kinds",
+        "in": "query",
+        "style": "form",
+        "explode": true,
+        "schema": { "type": "array", "items": { "$ref": "#/components/schemas/Kind" } }
+      },
+      "IncludeNonSpend": { "name": "include_non_spend", "in": "query", "schema": { "type": "boolean", "default": false } },
+      "NetRefunds": { "name": "net_refunds", "in": "query", "schema": { "type": "boolean", "default": true } },
+      "Search": { "name": "search", "in": "query", "schema": { "type": "string" } },
+      "Currency": { "name": "currency", "in": "query", "schema": { "type": "string", "default": "USD" } },
+      "Page": { "name": "page", "in": "query", "schema": { "type": "integer", "default": 1 } },
+      "PageSize": { "name": "page_size", "in": "query", "schema": { "type": "integer", "default": 50 } },
+      "Sort": { "name": "sort", "in": "query", "schema": { "type": "string" } }
+    }
+  },
+  "security": [{ "SpendToken": [] }],
+  "paths": {
+    "/users": {
+      "get": {
+        "operationId": "listUsers",
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": { "application/json": { "schema": { "type": "array", "items": { "$ref": "#/components/schemas/User" } } } }
+          }
+        }
+      },
+      "post": {
+        "operationId": "createUser",
+        "requestBody": { "content": { "application/json": { "schema": { "$ref": "#/components/schemas/UserCreate" } } } },
+        "responses": {
+          "201": { "description": "Created", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/User" } } } }
+        }
+      }
+    },
+    "/users/{id}": {
+      "parameters": [{ "name": "id", "in": "path", "required": true, "schema": { "type": "integer" } }],
+      "patch": {
+        "operationId": "updateUser",
+        "requestBody": { "content": { "application/json": { "schema": { "$ref": "#/components/schemas/UserUpdate" } } } },
+        "responses": { "200": { "description": "OK", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/User" } } } } }
+      },
+      "delete": {
+        "operationId": "deleteUser",
+        "responses": { "204": { "description": "No Content" } }
+      }
+    },
+    "/accounts": {
+      "get": {
+        "operationId": "listAccounts",
+        "responses": { "200": { "description": "OK", "content": { "application/json": { "schema": { "type": "array", "items": { "$ref": "#/components/schemas/Account" } } } } } }
+      },
+      "post": {
+        "operationId": "createAccount",
+        "requestBody": { "content": { "application/json": { "schema": { "$ref": "#/components/schemas/AccountCreate" } } } },
+        "responses": { "201": { "description": "Created", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/Account" } } } } }
+      }
+    },
+    "/accounts/{id}": {
+      "parameters": [{ "name": "id", "in": "path", "required": true, "schema": { "type": "integer" } }],
+      "patch": {
+        "operationId": "updateAccount",
+        "requestBody": { "content": { "application/json": { "schema": { "$ref": "#/components/schemas/AccountUpdate" } } } },
+        "responses": { "200": { "description": "OK", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/Account" } } } } }
+      }
+    },
+    "/statements": {
+      "post": {
+        "operationId": "uploadStatement",
+        "description": "Multipart upload. A22 phase 1: text extracted, issuer matched, extractor proposed; status='awaiting_extractor'; nothing parsed yet.",
+        "requestBody": {
+          "content": {
+            "multipart/form-data": {
+              "schema": { "type": "object", "required": ["file"], "properties": { "file": { "type": "string", "format": "binary" } } }
+            }
+          }
+        },
+        "responses": { "201": { "description": "Created", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/StatementUploadResponse" } } } } }
+      },
+      "get": {
+        "operationId": "listStatements",
+        "parameters": [{ "name": "user_id", "in": "query", "schema": { "type": "integer" } }],
+        "responses": { "200": { "description": "OK", "content": { "application/json": { "schema": { "type": "array", "items": { "$ref": "#/components/schemas/Statement" } } } } } }
+      }
+    },
+    "/statements/{id}": {
+      "parameters": [{ "name": "id", "in": "path", "required": true, "schema": { "type": "integer" } }],
+      "get": {
+        "operationId": "getStatement",
+        "responses": { "200": { "description": "OK", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/Statement" } } } } }
+      },
+      "patch": {
+        "operationId": "patchStatement",
+        "description": "Reassign user/account (§3.5).",
+        "requestBody": { "content": { "application/json": { "schema": { "$ref": "#/components/schemas/StatementPatch" } } } },
+        "responses": { "200": { "description": "OK", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/Statement" } } } } }
+      },
+      "delete": {
+        "operationId": "deleteStatement",
+        "description": "Cascades to transactions.",
+        "responses": { "204": { "description": "No Content" } }
+      }
+    },
+    "/statements/{id}/extract": {
+      "parameters": [{ "name": "id", "in": "path", "required": true, "schema": { "type": "integer" } }],
+      "post": {
+        "operationId": "extractStatement",
+        "description": "A22 phase 2: parse + persist.",
+        "requestBody": { "content": { "application/json": { "schema": { "$ref": "#/components/schemas/ExtractRequest" } } } },
+        "responses": { "202": { "description": "Accepted", "content": { "application/json": { "schema": { "type": "object", "required": ["job_id"], "properties": { "job_id": { "type": "string" } } } } } } }
+      }
+    },
+    "/statements/{id}/reparse": {
+      "parameters": [{ "name": "id", "in": "path", "required": true, "schema": { "type": "integer" } }],
+      "post": {
+        "operationId": "reparseStatement",
+        "description": "Re-run with a different extractor (rebuilds that statement's rows).",
+        "requestBody": { "content": { "application/json": { "schema": { "$ref": "#/components/schemas/ExtractRequest" } } } },
+        "responses": { "202": { "description": "Accepted", "content": { "application/json": { "schema": { "type": "object", "required": ["job_id"], "properties": { "job_id": { "type": "string" } } } } } } }
+      }
+    },
+    "/transactions": {
+      "get": {
+        "operationId": "listTransactions",
+        "description": "Filters mirror SpendQuery; paginated, sortable.",
+        "parameters": [
+          { "$ref": "#/components/parameters/UserIds" },
+          { "$ref": "#/components/parameters/AccountIds" },
+          { "$ref": "#/components/parameters/DateFrom" },
+          { "$ref": "#/components/parameters/DateTo" },
+          { "$ref": "#/components/parameters/CategoryKeys" },
+          { "$ref": "#/components/parameters/SubcategoryKeys" },
+          { "$ref": "#/components/parameters/AmountMinMinor" },
+          { "$ref": "#/components/parameters/AmountMaxMinor" },
+          { "$ref": "#/components/parameters/Kinds" },
+          { "$ref": "#/components/parameters/IncludeNonSpend" },
+          { "$ref": "#/components/parameters/Search" },
+          { "$ref": "#/components/parameters/Currency" },
+          { "$ref": "#/components/parameters/Page" },
+          { "$ref": "#/components/parameters/PageSize" },
+          { "$ref": "#/components/parameters/Sort" }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": ["items", "total"],
+                  "properties": {
+                    "items": { "type": "array", "items": { "$ref": "#/components/schemas/Transaction" } },
+                    "total": { "type": "integer" }
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/transactions/{id}": {
+      "parameters": [{ "name": "id", "in": "path", "required": true, "schema": { "type": "integer" } }],
+      "patch": {
+        "operationId": "patchTransaction",
+        "description": "Set category/subcategory/kind/notes → writes merchant_map(source='user'), optionally creates a rule.",
+        "requestBody": { "content": { "application/json": { "schema": { "$ref": "#/components/schemas/TransactionPatch" } } } },
+        "responses": { "200": { "description": "OK", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/Transaction" } } } } }
+      }
+    },
+    "/transactions/bulk-update": {
+      "post": {
+        "operationId": "bulkUpdateTransactions",
+        "description": "Apply one label to a filtered selection.",
+        "requestBody": { "content": { "application/json": { "schema": { "$ref": "#/components/schemas/BulkUpdateRequest" } } } },
+        "responses": { "200": { "description": "OK", "content": { "application/json": { "schema": { "type": "object", "required": ["updated"], "properties": { "updated": { "type": "integer" } } } } } } }
+      }
+    },
+    "/classify/run": {
+      "post": {
+        "operationId": "runClassify",
+        "requestBody": { "content": { "application/json": { "schema": { "$ref": "#/components/schemas/ClassifyRunRequest" } } } },
+        "responses": { "202": { "description": "Accepted", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/ClassifyRunResponse" } } } } }
+      }
+    },
+    "/classify/preview": {
+      "get": {
+        "operationId": "previewClassify",
+        "description": "The exact CSV that would be sent (NO network call).",
+        "parameters": [
+          { "name": "user_id", "in": "query", "schema": { "type": "integer" } },
+          { "name": "statement_id", "in": "query", "schema": { "type": "integer" } }
+        ],
+        "responses": { "200": { "description": "OK", "content": { "application/json": { "schema": { "type": "array", "items": { "$ref": "#/components/schemas/ClassifyPreviewRow" } } } } } }
+      }
+    },
+    "/classify/runs": {
+      "get": {
+        "operationId": "listClassifyRuns",
+        "description": "llm_runs audit list w/ cost, tokens, model, schema_mode.",
+        "responses": { "200": { "description": "OK", "content": { "application/json": { "schema": { "type": "array", "items": { "$ref": "#/components/schemas/LlmRun" } } } } } }
+      }
+    },
+    "/jobs/{id}": {
+      "parameters": [{ "name": "id", "in": "path", "required": true, "schema": { "type": "string" } }],
+      "get": {
+        "operationId": "getJob",
+        "responses": { "200": { "description": "OK", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/Job" } } } } }
+      }
+    },
+    "/jobs/{id}/events": {
+      "parameters": [{ "name": "id", "in": "path", "required": true, "schema": { "type": "string" } }],
+      "get": {
+        "operationId": "getJobEvents",
+        "description": "SSE progress stream. The per-launch token is passed as a query parameter (A31), since EventSource cannot set headers.",
+        "parameters": [{ "name": "token", "in": "query", "schema": { "type": "string" } }],
+        "responses": { "200": { "description": "text/event-stream", "content": { "text/event-stream": { "schema": { "type": "string" } } } } }
+      }
+    },
+    "/analytics/summary": {
+      "get": {
+        "operationId": "getAnalyticsSummary",
+        "parameters": [
+          { "$ref": "#/components/parameters/UserIds" },
+          { "$ref": "#/components/parameters/AccountIds" },
+          { "$ref": "#/components/parameters/DateFrom" },
+          { "$ref": "#/components/parameters/DateTo" },
+          { "$ref": "#/components/parameters/Granularity" },
+          { "$ref": "#/components/parameters/GroupBy" },
+          { "$ref": "#/components/parameters/CategoryKeys" },
+          { "$ref": "#/components/parameters/SubcategoryKeys" },
+          { "$ref": "#/components/parameters/AmountMinMinor" },
+          { "$ref": "#/components/parameters/AmountMaxMinor" },
+          { "$ref": "#/components/parameters/Kinds" },
+          { "$ref": "#/components/parameters/IncludeNonSpend" },
+          { "$ref": "#/components/parameters/NetRefunds" },
+          { "$ref": "#/components/parameters/Search" },
+          { "$ref": "#/components/parameters/Currency" }
+        ],
+        "responses": { "200": { "description": "OK", "content": { "application/json": { "schema": { "type": "array", "items": { "$ref": "#/components/schemas/AnalyticsRow" } } } } } }
+      }
+    },
+    "/analytics/timeseries": {
+      "get": {
+        "operationId": "getAnalyticsTimeseries",
+        "parameters": [
+          { "$ref": "#/components/parameters/UserIds" },
+          { "$ref": "#/components/parameters/AccountIds" },
+          { "$ref": "#/components/parameters/DateFrom" },
+          { "$ref": "#/components/parameters/DateTo" },
+          { "$ref": "#/components/parameters/Granularity" },
+          { "$ref": "#/components/parameters/GroupBy" },
+          { "$ref": "#/components/parameters/CategoryKeys" },
+          { "$ref": "#/components/parameters/SubcategoryKeys" },
+          { "$ref": "#/components/parameters/Kinds" },
+          { "$ref": "#/components/parameters/IncludeNonSpend" },
+          { "$ref": "#/components/parameters/NetRefunds" },
+          { "$ref": "#/components/parameters/Currency" }
+        ],
+        "responses": { "200": { "description": "OK", "content": { "application/json": { "schema": { "type": "array", "items": { "$ref": "#/components/schemas/AnalyticsRow" } } } } } }
+      }
+    },
+    "/analytics/top-merchants": {
+      "get": {
+        "operationId": "getTopMerchants",
+        "parameters": [
+          { "$ref": "#/components/parameters/UserIds" },
+          { "$ref": "#/components/parameters/AccountIds" },
+          { "$ref": "#/components/parameters/DateFrom" },
+          { "$ref": "#/components/parameters/DateTo" },
+          { "$ref": "#/components/parameters/CategoryKeys" },
+          { "$ref": "#/components/parameters/Currency" }
+        ],
+        "responses": { "200": { "description": "OK", "content": { "application/json": { "schema": { "type": "array", "items": { "$ref": "#/components/schemas/TopMerchantRow" } } } } } }
+      }
+    },
+    "/taxonomy": {
+      "get": {
+        "operationId": "getTaxonomy",
+        "description": "Categories + subcategories incl. pending.",
+        "responses": { "200": { "description": "OK", "content": { "application/json": { "schema": { "type": "array", "items": { "$ref": "#/components/schemas/Category" } } } } } }
+      }
+    },
+    "/taxonomy/subcategories/{id}/approve": {
+      "parameters": [{ "name": "id", "in": "path", "required": true, "schema": { "type": "string" } }],
+      "post": {
+        "operationId": "approveSubcategory",
+        "responses": { "200": { "description": "OK", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/Subcategory" } } } } }
+      }
+    },
+    "/taxonomy/subcategories/{id}/merge": {
+      "parameters": [{ "name": "id", "in": "path", "required": true, "schema": { "type": "string" } }],
+      "post": {
+        "operationId": "mergeSubcategory",
+        "requestBody": { "content": { "application/json": { "schema": { "$ref": "#/components/schemas/MergeRequest" } } } },
+        "responses": { "200": { "description": "OK", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/Subcategory" } } } } }
+      }
+    },
+    "/issuers": {
+      "get": {
+        "operationId": "listIssuers",
+        "responses": { "200": { "description": "OK", "content": { "application/json": { "schema": { "type": "array", "items": { "$ref": "#/components/schemas/Issuer" } } } } } }
+      },
+      "post": {
+        "operationId": "createIssuer",
+        "requestBody": { "content": { "application/json": { "schema": { "$ref": "#/components/schemas/IssuerCreate" } } } },
+        "responses": { "201": { "description": "Created", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/Issuer" } } } } }
+      }
+    },
+    "/issuers/{id}": {
+      "parameters": [{ "name": "id", "in": "path", "required": true, "schema": { "type": "integer" } }],
+      "patch": {
+        "operationId": "updateIssuer",
+        "requestBody": { "content": { "application/json": { "schema": { "$ref": "#/components/schemas/IssuerUpdate" } } } },
+        "responses": { "200": { "description": "OK", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/Issuer" } } } } }
+      },
+      "delete": {
+        "operationId": "deleteIssuer",
+        "responses": { "204": { "description": "No Content" } }
+      }
+    },
+    "/layout-specs": {
+      "get": {
+        "operationId": "listLayoutSpecs",
+        "description": "list (name, version, issuer, approved, source).",
+        "responses": { "200": { "description": "OK", "content": { "application/json": { "schema": { "type": "array", "items": { "$ref": "#/components/schemas/LayoutSpec" } } } } } }
+      },
+      "post": {
+        "operationId": "createLayoutSpec",
+        "description": "Create v1, or paste.",
+        "requestBody": { "content": { "application/json": { "schema": { "$ref": "#/components/schemas/LayoutSpecCreate" } } } },
+        "responses": { "201": { "description": "Created", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/LayoutSpec" } } } } }
+      }
+    },
+    "/layout-specs/{id}/revise": {
+      "parameters": [{ "name": "id", "in": "path", "required": true, "schema": { "type": "integer" } }],
+      "post": {
+        "operationId": "reviseLayoutSpec",
+        "description": "Inserts version+1 (never mutates).",
+        "requestBody": { "content": { "application/json": { "schema": { "$ref": "#/components/schemas/LayoutSpecCreate" } } } },
+        "responses": { "201": { "description": "Created", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/LayoutSpec" } } } } }
+      }
+    },
+    "/layout-specs/{id}/approve": {
+      "parameters": [{ "name": "id", "in": "path", "required": true, "schema": { "type": "integer" } }],
+      "post": {
+        "operationId": "approveLayoutSpec",
+        "description": "Approve a user-authored or pasted spec.",
+        "responses": { "200": { "description": "OK", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/LayoutSpec" } } } } }
+      }
+    },
+    "/layout-specs/{id}/export": {
+      "parameters": [{ "name": "id", "in": "path", "required": true, "schema": { "type": "integer" } }],
+      "get": {
+        "operationId": "exportLayoutSpec",
+        "description": "YAML download.",
+        "responses": { "200": { "description": "OK", "content": { "application/x-yaml": { "schema": { "type": "string" } } } } }
+      }
+    },
+    "/rules": {
+      "get": {
+        "operationId": "listRules",
+        "responses": { "200": { "description": "OK", "content": { "application/json": { "schema": { "type": "array", "items": { "$ref": "#/components/schemas/Rule" } } } } } }
+      },
+      "post": {
+        "operationId": "createRule",
+        "requestBody": { "content": { "application/json": { "schema": { "$ref": "#/components/schemas/RuleCreate" } } } },
+        "responses": { "201": { "description": "Created", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/Rule" } } } } }
+      }
+    },
+    "/rules/{id}": {
+      "parameters": [{ "name": "id", "in": "path", "required": true, "schema": { "type": "integer" } }],
+      "patch": {
+        "operationId": "updateRule",
+        "requestBody": { "content": { "application/json": { "schema": { "$ref": "#/components/schemas/RuleUpdate" } } } },
+        "responses": { "200": { "description": "OK", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/Rule" } } } } }
+      },
+      "delete": {
+        "operationId": "deleteRule",
+        "responses": { "204": { "description": "No Content" } }
+      }
+    },
+    "/settings": {
+      "get": {
+        "operationId": "getSettings",
+        "description": "Never returns key material.",
+        "responses": { "200": { "description": "OK", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/Settings" } } } } }
+      },
+      "put": {
+        "operationId": "putSettings",
+        "description": "Rewrites config.toml atomically (A4).",
+        "requestBody": { "content": { "application/json": { "schema": { "$ref": "#/components/schemas/Settings" } } } },
+        "responses": { "200": { "description": "OK", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/Settings" } } } } }
+      }
+    },
+    "/settings/test-llm": {
+      "post": {
+        "operationId": "testLlmSettings",
+        "description": "One-row round trip verifying credentials.",
+        "responses": { "200": { "description": "OK", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/TestLlmResponse" } } } } }
+      }
+    },
+    "/export": {
+      "get": {
+        "operationId": "exportTransactions",
+        "description": "Full transaction export — MUST exclude accounts.mask.",
+        "parameters": [{ "name": "format", "in": "query", "schema": { "type": "string", "enum": ["csv", "json"] } }],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "text/csv": { "schema": { "type": "string" } },
+              "application/json": { "schema": { "type": "array", "items": { "$ref": "#/components/schemas/Transaction" } } }
+            }
+          }
+        }
+      }
+    }
+  }
+}

@@ -1,0 +1,92 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+/*
+ * Spend Analyzer design tokens.
+ *
+ * Deliberately not shadcn's default slate/zinc palette (§ P1-F): one accent hue (a deep
+ * teal), a restrained type scale, and an explicit outflow/inflow pair for money that is
+ * distinguishable without colour alone — Money always pairs its colour with a sign and,
+ * where space allows, a directional glyph (see components/primitives/money.tsx).
+ */
+@layer base {
+  :root {
+    --background: 40 20% 98%;
+    --foreground: 222 20% 12%;
+
+    --card: 0 0% 100%;
+    --card-foreground: 222 20% 12%;
+
+    --muted: 220 14% 94%;
+    --muted-foreground: 220 10% 40%;
+
+    --border: 220 14% 88%;
+    --input: 220 14% 88%;
+    --ring: 174 68% 32%;
+
+    --primary: 174 68% 32%;
+    --primary-foreground: 0 0% 100%;
+
+    --accent: 174 45% 92%;
+    --accent-foreground: 174 68% 24%;
+
+    --destructive: 4 72% 46%;
+    --destructive-foreground: 0 0% 100%;
+
+    /* Outflow (money leaving, positive minor units): warm red-orange, never pure red so it
+       does not read as "error". Inflow (money returning, negative minor units): the accent
+       teal, so a statement's own colour language matches "safe/positive" intuition. */
+    --outflow: 14 72% 42%;
+    --outflow-foreground: 0 0% 100%;
+    --inflow: 174 55% 30%;
+    --inflow-foreground: 0 0% 100%;
+
+    --radius: 0.5rem;
+  }
+
+  :root[data-theme="dark"],
+  :root:not([data-theme="light"]) {
+    @media (prefers-color-scheme: dark) {
+      --background: 222 24% 8%;
+      --foreground: 210 20% 94%;
+
+      --card: 222 20% 11%;
+      --card-foreground: 210 20% 94%;
+
+      --muted: 222 16% 16%;
+      --muted-foreground: 220 10% 65%;
+
+      --border: 222 14% 22%;
+      --input: 222 14% 22%;
+      --ring: 174 55% 55%;
+
+      --primary: 174 55% 48%;
+      --primary-foreground: 222 30% 8%;
+
+      --accent: 174 30% 18%;
+      --accent-foreground: 174 55% 78%;
+
+      --destructive: 4 62% 55%;
+      --destructive-foreground: 0 0% 100%;
+
+      --outflow: 14 75% 62%;
+      --outflow-foreground: 12 40% 10%;
+      --inflow: 174 50% 55%;
+      --inflow-foreground: 174 40% 8%;
+    }
+  }
+
+  * {
+    @apply border-border;
+  }
+
+  html {
+    color-scheme: light dark;
+  }
+
+  body {
+    @apply bg-background text-foreground antialiased;
+    font-feature-settings: "cv05" 1;
+  }
+}
