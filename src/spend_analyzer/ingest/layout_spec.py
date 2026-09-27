@@ -274,6 +274,20 @@ class TotalsSpec:
 
 
 @dataclass(frozen=True, slots=True)
+class FxSpec:
+    """A dateless continuation line printing the original foreign-currency amount and exchange
+    rate (§2c), e.g. ``FOREIGN CURRENCY AMOUNT 35.00 GBP EXCH RATE 1.20000``. A match sets the
+    *previous* transaction's `fx_amount_minor`/`fx_currency`/`fx_rate` and never touches its
+    description. Groups are referenced by name or 1-based index, exactly as `re.Match.group`
+    takes them."""
+
+    pattern: re.Pattern[str]
+    amount_group: str | int
+    currency_group: str | int
+    rate_group: str | int
+
+
+@dataclass(frozen=True, slots=True)
 class LayoutSpecDoc:
     """A fully validated, parsed layout spec — the interpreter's input."""
 
@@ -290,6 +304,9 @@ class LayoutSpecDoc:
     #: LOCAL ONLY (I1b): last-4 account mask, extracted from the document's full text. `None`
     #: when the spec declares no `account_mask` block.
     account_mask_pattern: re.Pattern[str] | None
+    #: `None` when the spec declares no `fx` block (most layouts never print a foreign-currency
+    #: continuation line).
+    fx: FxSpec | None
 
 
 def _build_doc(data: Mapping[str, Any]) -> LayoutSpecDoc:
@@ -361,6 +378,19 @@ def _build_doc(data: Mapping[str, Any]) -> LayoutSpecDoc:
                     )
                 )
 
+    fx_data = data.get("fx")
+    if fx_data is not None:
+        for group_field in ("amount_group", "currency_group", "rate_group"):
+            value = fx_data.get(group_field)
+            is_valid_index = isinstance(value, int) and not isinstance(value, bool) and value >= 1
+            if not (isinstance(value, str) and value) and not is_valid_index:
+                errors.append(
+                    SpecFieldError(
+                        f"fx.{group_field}",
+                        "must be a non-empty group name or a 1-based group index",
+                    )
+                )
+
     if errors:
         raise LayoutSpecError("layout spec has field-level errors", tuple(errors))
 
@@ -419,6 +449,15 @@ def _build_doc(data: Mapping[str, Any]) -> LayoutSpecDoc:
         else None
     )
 
+    fx: FxSpec | None = None
+    if fx_data is not None:
+        fx = FxSpec(
+            pattern=_compile_pattern_safe(fx_data["pattern"], "fx.pattern"),
+            amount_group=fx_data["amount_group"],
+            currency_group=fx_data["currency_group"],
+            rate_group=fx_data["rate_group"],
+        )
+
     return LayoutSpecDoc(
         id=data["id"],
         version=int(data["version"]),
@@ -431,6 +470,7 @@ def _build_doc(data: Mapping[str, Any]) -> LayoutSpecDoc:
         year_inference=data.get("year_inference", "from_period"),
         totals=totals,
         account_mask_pattern=account_mask_pattern,
+        fx=fx,
     )
 
 
@@ -598,6 +638,11 @@ class SpecParser:
                 partial = parse_date(date_text, date_col.formats) if date_text.strip() else None
 
                 if partial is None:
+                    # A dateless row matching `fx` (§2c) sets the previous transaction's foreign
+                    # currency fields and never touches its description; only when it doesn't
+                    # match do we fall through to the plain multiline-continuation merge.
+                    if rows_out and spec.fx is not None and self._apply_fx_line(rows_out[-1], text):
+                        continue
                     # A continuation line for the previous transaction's multiline description
                     # (no date, not a heading/excluded/terminator row): take the whole row, words
                     # ordered left to right, not just whatever fell in the description band —
@@ -640,6 +685,9 @@ class SpecParser:
                         "kind_hint": kind_hint,
                         "section": current_section,
                         "issuer_category": issuer_category,
+                        "fx_amount_minor": None,
+                        "fx_currency": None,
+                        "fx_rate": None,
                     }
                 )
 
@@ -650,6 +698,9 @@ class SpecParser:
                 description=r["description"],
                 amount_minor=r["amount_minor"],
                 currency=spec.currency,
+                fx_amount_minor=r["fx_amount_minor"],
+                fx_currency=r["fx_currency"],
+                fx_rate=r["fx_rate"],
                 kind_hint=r["kind_hint"],
                 section=r["section"],
                 issuer_category=r["issuer_category"],
@@ -697,6 +748,33 @@ class SpecParser:
             f"spec {self._doc.id!r}: cannot resolve a year for date on row {row_text!r} "
             "(no statement period was found and the date carries no explicit year)"
         )
+
+    def _apply_fx_line(self, pending: dict[str, Any], text: str) -> bool:
+        """If ``text`` (a dateless row) matches `fx`, set ``pending``'s foreign-currency fields
+        in place and return `True` — the caller must not also treat ``text`` as continuation
+        description text. Returns `False` when `fx` is unset or ``text`` doesn't match, or when a
+        declared group is absent from the match (malformed spec data, not a crash)."""
+        fx = self._doc.fx
+        if fx is None:
+            return False
+        match = fx.pattern.search(text)
+        if match is None:
+            return False
+        try:
+            amount_text = match.group(fx.amount_group)
+            currency_text = match.group(fx.currency_group)
+            rate_text = match.group(fx.rate_group)
+        except IndexError:
+            return False
+
+        fx_money = parse_money(amount_text) if amount_text else None
+        pending["fx_amount_minor"] = fx_money.magnitude_minor if fx_money is not None else None
+        pending["fx_currency"] = currency_text.strip().upper() if currency_text else None
+        try:
+            pending["fx_rate"] = float(rate_text) if rate_text else None
+        except ValueError:
+            pending["fx_rate"] = None
+        return True
 
 
 # ------------------------------------------------------------------------------------------------
