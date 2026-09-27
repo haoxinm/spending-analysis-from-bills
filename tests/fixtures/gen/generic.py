@@ -282,7 +282,7 @@ def _build_no_text_layer(out_dir: Path, seed: int) -> tuple[Path, dict[str, Any]
     """An image-only page: a filled rectangle, no drawn text, so the text layer is empty."""
     pdf_path = out_dir / f"{_LAYOUT_ID}_no_text_layer.pdf"
     pdf_path.parent.mkdir(parents=True, exist_ok=True)
-    c = canvas.Canvas(str(pdf_path))
+    c = canvas.Canvas(str(pdf_path), invariant=1)
     c.setFillGray(0.6)
     c.rect(50, 500, 400, 200, fill=1, stroke=0)
     c.showPage()
@@ -295,7 +295,7 @@ def _build_encrypted(out_dir: Path, seed: int) -> tuple[Path, dict[str, Any]]:
     pdf_path = out_dir / f"{_LAYOUT_ID}_encrypted.pdf"
     pdf_path.parent.mkdir(parents=True, exist_ok=True)
     encryption = StandardEncryption("statement", ownerPassword="owner-secret", canPrint=1)
-    c = canvas.Canvas(str(pdf_path), encrypt=encryption)
+    c = canvas.Canvas(str(pdf_path), encrypt=encryption, invariant=1)
     c.drawString(50, 700, "This statement is password-protected.")
     c.showPage()
     c.save()
@@ -306,7 +306,7 @@ def _build_empty(out_dir: Path, seed: int) -> tuple[Path, dict[str, Any]]:
     """A single, entirely blank page: no text, no drawing at all."""
     pdf_path = out_dir / f"{_LAYOUT_ID}_empty.pdf"
     pdf_path.parent.mkdir(parents=True, exist_ok=True)
-    c = canvas.Canvas(str(pdf_path))
+    c = canvas.Canvas(str(pdf_path), invariant=1)
     c.showPage()
     c.save()
     return pdf_path, {"kind": "empty"}

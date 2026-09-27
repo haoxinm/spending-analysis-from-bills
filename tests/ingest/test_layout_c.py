@@ -16,7 +16,10 @@ from spend_analyzer.ingest.parsers.layout_c_credit import _match_header, layout_
 from tests.fixtures.gen.layout_c import layout_c_credit as layout_c_builder
 from tests.generate_fixtures import generate_all
 
-_GENERATED_DIR = (
+#: The committed PDFs/goldens under version control — read-only. Tests never write here; a test
+#: session regenerates fixtures into a pytest tmp dir instead (see `_generated_dir` below) so
+#: running the suite never modifies the repo tree.
+_COMMITTED_DIR = (
     Path(__file__).resolve().parent.parent / "fixtures" / "generated" / "layout_c_credit"
 )
 #: The committed, authoritative golden copies (Owns: tests/ingest/golden/layout_c_credit/**).
@@ -24,6 +27,17 @@ _GENERATED_DIR = (
 #: P0-7) — these are hand-verified copies of that same JSON, kept here so a golden change is
 #: visible in review independently of the (also committed) generated directory.
 _GOLDEN_DIR = Path(__file__).resolve().parent / "golden" / "layout_c_credit"
+
+#: Set by the `_ensure_generated` autouse fixture to a pytest tmp directory holding a fresh
+#: regeneration of every builder's fixtures. Tests parse from here, never from `_COMMITTED_DIR`,
+#: so the suite is read-only with respect to the repo tree.
+_generated_root: Path | None = None
+
+
+def _generated_dir() -> Path:
+    assert _generated_root is not None, "_ensure_generated fixture has not run yet"
+    return _generated_root / "layout_c_credit"
+
 
 _ERROR_TYPES: dict[str, type[Exception]] = {
     "ParserError": ParserError,
@@ -52,7 +66,7 @@ def _extract_doc(pdf_path: Path) -> ExtractedDoc:
 
 
 def _load_variant(variant: str) -> tuple[ExtractedDoc, dict[str, Any]]:
-    pdf_path = _GENERATED_DIR / f"layout_c_credit_{variant}.pdf"
+    pdf_path = _generated_dir() / f"layout_c_credit_{variant}.pdf"
     golden_path = _GOLDEN_DIR / f"layout_c_credit_{variant}.json"
     doc = _extract_doc(pdf_path)
     golden = json.loads(golden_path.read_text())
@@ -60,12 +74,28 @@ def _load_variant(variant: str) -> tuple[ExtractedDoc, dict[str, Any]]:
 
 
 def test_golden_dir_matches_generated_dir() -> None:
-    """The committed `tests/ingest/golden/` copy and the generator's own output must agree —
-    a stale copy would make every other test in this module pass against the wrong golden."""
+    """The committed `tests/ingest/golden/` copy and a fresh regeneration's own output must
+    agree — a stale copy would make every other test in this module pass against the wrong
+    golden."""
     for variant in layout_c_builder.variants:
-        generated = json.loads((_GENERATED_DIR / f"layout_c_credit_{variant}.json").read_text())
+        generated = json.loads((_generated_dir() / f"layout_c_credit_{variant}.json").read_text())
         golden = json.loads((_GOLDEN_DIR / f"layout_c_credit_{variant}.json").read_text())
         assert generated == golden
+
+
+def test_committed_pdfs_match_fresh_regeneration() -> None:
+    """The committed PDFs under `tests/fixtures/generated/layout_c_credit/` must be exactly what
+    the (deterministic) generator produces today — this is what catches drift between the
+    builder and what was last committed, since the suite itself never rewrites the committed
+    files (see `_ensure_generated`)."""
+    for variant in layout_c_builder.variants:
+        name = f"layout_c_credit_{variant}"
+        committed = (_COMMITTED_DIR / f"{name}.pdf").read_bytes()
+        fresh = (_generated_dir() / f"{name}.pdf").read_bytes()
+        assert committed == fresh, f"{name}.pdf is stale — regenerate committed fixtures"
+        committed_json = json.loads((_COMMITTED_DIR / f"{name}.json").read_text())
+        fresh_json = json.loads((_generated_dir() / f"{name}.json").read_text())
+        assert committed_json == fresh_json, f"{name}.json is stale — regenerate committed fixtures"
 
 
 def _empty_doc() -> ExtractedDoc:
@@ -78,10 +108,14 @@ def _empty_doc() -> ExtractedDoc:
 
 
 @pytest.fixture(scope="module", autouse=True)
-def _ensure_generated() -> None:
-    """The committed fixtures are the source of truth for these tests; regenerate them from the
-    builder so a stale commit fails loudly instead of silently testing against old goldens."""
-    generate_all(_GENERATED_DIR.parent)
+def _ensure_generated(tmp_path_factory: pytest.TempPathFactory) -> None:
+    """Regenerate every builder's fixtures into a pytest tmp directory (never the repo tree) so
+    a stale commit fails loudly (`test_committed_pdfs_match_fresh_regeneration`) instead of
+    silently testing against old goldens, and so running the suite never modifies tracked
+    files."""
+    global _generated_root
+    _generated_root = tmp_path_factory.mktemp("layout_c_generated")
+    generate_all(_generated_root)
 
 
 # --------------------------------------------------------------------------------------------

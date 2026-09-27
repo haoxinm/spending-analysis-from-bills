@@ -107,6 +107,19 @@ def test_golden_stable_across_two_generator_runs(tmp_path: Path, variant: str) -
     assert first == _load_golden(variant)
 
 
+def test_committed_pdfs_match_fresh_regeneration(tmp_path: Path) -> None:
+    """The committed PDFs under `tests/fixtures/generated/layout_d_bank/` must be exactly what
+    the (deterministic) generator produces today — this is what catches drift between the
+    builder and what was last committed, since the suite itself never rewrites the committed
+    files."""
+    for variant in BUILDER.variants:
+        name = f"layout_d_bank_{variant}"
+        BUILDER.build(tmp_path, variant=variant, seed=0)
+        committed = (_GENERATED_DIR / f"{name}.pdf").read_bytes()
+        fresh = (tmp_path / f"{name}.pdf").read_bytes()
+        assert committed == fresh, f"{name}.pdf is stale — regenerate committed fixtures"
+
+
 @pytest.mark.parametrize("variant", _ERROR_VARIANTS)
 def test_error_variants_raise_parser_error(variant: str) -> None:
     doc = _extract_doc(_GENERATED_DIR / f"layout_d_bank_{variant}.pdf")

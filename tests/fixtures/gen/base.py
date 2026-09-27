@@ -74,7 +74,11 @@ def render_lines_pdf(
     predictable column positions.
     """
     path.parent.mkdir(parents=True, exist_ok=True)
-    pdf = canvas.Canvas(str(path), pagesize=page_size)
+    # `invariant=1` pins the document ID and creation/modification timestamps to fixed,
+    # content-derived values instead of the wall clock and a random UUID, so two renders of the
+    # same `pages` are byte-for-byte identical. Without it, every regenerate rewrites the PDF
+    # even when its visible content is unchanged, which defeats reproducible, committed fixtures.
+    pdf = canvas.Canvas(str(path), pagesize=page_size, invariant=1)
     _, page_height = page_size
     for page_lines in pages:
         pdf.setFont(font_name, font_size)
