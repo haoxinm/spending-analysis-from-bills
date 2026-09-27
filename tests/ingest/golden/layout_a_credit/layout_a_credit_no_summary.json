@@ -1,0 +1,99 @@
+{
+  "closing_balance_minor": null,
+  "mask": "5678",
+  "opening_balance_minor": null,
+  "period_end": null,
+  "period_start": null,
+  "section_totals": [
+    [
+      "Payments and Other Credits",
+      -50000
+    ],
+    [
+      "Purchases and Adjustments",
+      4912
+    ],
+    [
+      "Fees",
+      3500
+    ],
+    [
+      "Interest Charged",
+      542
+    ]
+  ],
+  "transactions": [
+    {
+      "amount_minor": -50000,
+      "currency": "USD",
+      "description": "ONLINE PAYMENT - THANK YOU",
+      "fx_amount_minor": null,
+      "fx_currency": null,
+      "fx_rate": null,
+      "kind_hint": "payment_or_refund",
+      "posted_date": "2026-01-04",
+      "section": "Payments and Other Credits",
+      "transaction_date": "2026-01-03"
+    },
+    {
+      "amount_minor": 1234,
+      "currency": "USD",
+      "description": "COFFEE SHOP SEATTLE WA",
+      "fx_amount_minor": null,
+      "fx_currency": null,
+      "fx_rate": null,
+      "kind_hint": "purchase",
+      "posted_date": "2026-01-05",
+      "section": "Purchases and Adjustments",
+      "transaction_date": "2026-01-05"
+    },
+    {
+      "amount_minor": 5678,
+      "currency": "USD",
+      "description": "GROCERY MART ANYTOWN US",
+      "fx_amount_minor": null,
+      "fx_currency": null,
+      "fx_rate": null,
+      "kind_hint": "purchase",
+      "posted_date": "2026-01-06",
+      "section": "Purchases and Adjustments",
+      "transaction_date": "2026-01-06"
+    },
+    {
+      "amount_minor": -2000,
+      "currency": "USD",
+      "description": "MERCHANDISE RETURN CREDIT",
+      "fx_amount_minor": null,
+      "fx_currency": null,
+      "fx_rate": null,
+      "kind_hint": "adjustment",
+      "posted_date": "2026-01-07",
+      "section": "Purchases and Adjustments",
+      "transaction_date": "2026-01-07"
+    },
+    {
+      "amount_minor": 3500,
+      "currency": "USD",
+      "description": "LATE FEE",
+      "fx_amount_minor": null,
+      "fx_currency": null,
+      "fx_rate": null,
+      "kind_hint": "fee",
+      "posted_date": "2026-01-10",
+      "section": "Fees",
+      "transaction_date": "2026-01-10"
+    },
+    {
+      "amount_minor": 542,
+      "currency": "USD",
+      "description": "INTEREST CHARGE ON PURCHASES",
+      "fx_amount_minor": null,
+      "fx_currency": null,
+      "fx_rate": null,
+      "kind_hint": "interest",
+      "posted_date": "2026-01-15",
+      "section": "Interest Charged",
+      "transaction_date": "2026-01-15"
+    }
+  ]
+}
