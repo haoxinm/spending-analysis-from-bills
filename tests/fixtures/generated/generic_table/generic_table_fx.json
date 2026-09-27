@@ -1,0 +1,26 @@
+{
+  "closing_balance_minor": 5740,
+  "opening_balance_minor": 0,
+  "transactions": [
+    {
+      "amount_minor": 2740,
+      "description": "FOREIGN MERCHANT PARIS orig amt 10.50 eur",
+      "posted_date": "2026-01-02"
+    },
+    {
+      "amount_minor": 1500,
+      "description": "DOMESTIC MERCHANT",
+      "posted_date": "2026-01-06"
+    },
+    {
+      "amount_minor": -500,
+      "description": "REFUND FOREIGN MERCHANT orig amt 4.50 eur",
+      "posted_date": "2026-01-12"
+    },
+    {
+      "amount_minor": 2000,
+      "description": "DOMESTIC MERCHANT TWO",
+      "posted_date": "2026-01-18"
+    }
+  ]
+}
