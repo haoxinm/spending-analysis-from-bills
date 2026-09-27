@@ -218,6 +218,59 @@ def test_locate_table_bands_finds_table(tmp_path: Path) -> None:
     assert all(kind == "data" for kind in band.row_kinds)
 
 
+def test_locate_table_bands_includes_trailing_continuation_at_page_end(tmp_path: Path) -> None:
+    # A wrapped description line with no date and no amount, as the literal last line of the
+    # table on the page, must still be pulled into the band (not silently dropped).
+    header = format_row(["Date", "Description", "Amount"], _COLUMN_WIDTHS)
+    data_rows = [
+        format_row(["01/05/2026", "COFFEE SHOP SEATTLE WA", "12.34"], _COLUMN_WIDTHS),
+        format_row(["01/06/2026", "GROCERY STORE ANYTOWN", "56.78"], _COLUMN_WIDTHS),
+        format_row(["01/07/2026", "GAS STATION HIGHWAY 1", "40.00"], _COLUMN_WIDTHS),
+        format_row(["01/08/2026", "Foreign purchase EUR", "9.99"], _COLUMN_WIDTHS),
+    ]
+    # Indented into the description column, like a wrapped continuation of the row above.
+    continuation = " " * 14 + "Fx rate 1.0842, orig amt 9.21 EUR"
+    pdf_path = tmp_path / "trailing_continuation.pdf"
+    render_lines_pdf(pdf_path, [[header, *data_rows, continuation]])
+
+    doc = _extract_doc(pdf_path)
+    bands = locate_table_bands(doc)
+
+    assert len(bands) == 1
+    band = bands[0]
+    assert len(band.rows) == 5
+    assert band.rows[-1].text.strip().startswith("Fx rate")
+    # Not a fresh transaction row: it carries no date, so downstream parsers fold it into the
+    # previous transaction's description regardless of the exact row kind assigned.
+    assert band.row_kinds[-1] != "total"
+    assert band.row_kinds[-1] != "header"
+
+
+def test_locate_table_bands_includes_continuation_but_not_trailing_footer(tmp_path: Path) -> None:
+    # Same as above, but the continuation line is itself followed by a non-table footer line.
+    # The continuation belongs to the table; the footer does not.
+    header = format_row(["Date", "Description", "Amount"], _COLUMN_WIDTHS)
+    data_rows = [
+        format_row(["01/05/2026", "COFFEE SHOP SEATTLE WA", "12.34"], _COLUMN_WIDTHS),
+        format_row(["01/06/2026", "GROCERY STORE ANYTOWN", "56.78"], _COLUMN_WIDTHS),
+        format_row(["01/07/2026", "GAS STATION HIGHWAY 1", "40.00"], _COLUMN_WIDTHS),
+        format_row(["01/08/2026", "Foreign purchase EUR", "9.99"], _COLUMN_WIDTHS),
+    ]
+    continuation = " " * 14 + "Fx rate 1.0842, orig amt 9.21 EUR"
+    footer = "Page 1 of 1"  # flush with the date column: page furniture, not a continuation
+    pdf_path = tmp_path / "trailing_continuation_and_footer.pdf"
+    render_lines_pdf(pdf_path, [[header, *data_rows, continuation, footer]])
+
+    doc = _extract_doc(pdf_path)
+    bands = locate_table_bands(doc)
+
+    assert len(bands) == 1
+    band = bands[0]
+    assert len(band.rows) == 5
+    assert band.rows[-1].text.strip().startswith("Fx rate")
+    assert all("Page 1 of 1" not in row.text for row in band.rows)
+
+
 def test_locate_table_bands_returns_empty_for_prose_page(tmp_path: Path) -> None:
     lines = [
         "Thank you for being a valued customer.",

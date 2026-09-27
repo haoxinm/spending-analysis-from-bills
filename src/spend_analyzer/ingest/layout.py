@@ -339,12 +339,59 @@ def _classify_rows(rows: Sequence[Row], start: int, end: int) -> tuple[RowKind, 
     return tuple(kinds)
 
 
+def _extend_trailing_continuation(
+    rows: Sequence[Row], flags: Sequence[bool], start: int, end: int, *, limit: int
+) -> int:
+    """Extend a located run's ``end`` into trailing rows that are themselves non-date-bearing but
+    still belong to the table.
+
+    `_find_runs` tolerates gaps of non-bearing rows *between* two bearing rows, but a trailing run
+    of non-bearing rows that never resumes before the page (or the next table band) ends is left
+    out of the run entirely — this is what drops a multi-line description continuation or an FX
+    info line when it happens to be the last line of a table on a page.
+
+    A trailing row is included when it plausibly continues the table: non-blank, not a totals/
+    summary line, not an all-caps section heading, and — the key guard against swallowing a page
+    footer — indented past the table's leftmost (date) column, the way a wrapped description or
+    FX line is, rather than starting flush with the date column the way page furniture typically
+    does. Extension stops at the first row that fails any of these.
+    """
+    data_rows = [rows[i] for i in range(start, end + 1) if flags[i]]
+    if not data_rows:
+        return end
+    bands = infer_column_bands(data_rows)
+    if not bands:
+        return end
+    date_band_end = bands[0].x1
+
+    new_end = end
+    idx = end + 1
+    while idx < limit and idx < len(rows):
+        row = rows[idx]
+        text = row.text.strip()
+        if not text or not row.words:
+            break  # blank row: a clear gap
+        if _TOTAL_ROW_RE.search(text):
+            break  # a totals/summary line, not part of the table
+        if text == text.upper() and any(c.isalpha() for c in text):
+            break  # an all-caps section heading (or footer), not a continuation
+        row_x0 = min(w.x0 for w in row.words)
+        if row_x0 < date_band_end:
+            break  # starts flush with the date column: page furniture, not an indented wrap
+        new_end = idx
+        idx += 1
+    return new_end
+
+
 def locate_table_bands(doc: ExtractedDoc) -> tuple[TableBand, ...]:
     """Locate transaction table region(s) in ``doc`` (§2e.2 Stage 1, deterministic and local).
 
     A table band is a maximal run of >=3 consecutive rows where >=60% carry a date-like token in
     their left third and a money-like token in their right third, tolerating gaps of <=2 rows
-    (multi-line description continuations). The nearest non-numeric row above is treated as the
+    (multi-line description continuations). The run is then extended into any trailing
+    non-date-bearing rows that still belong to the table — a wrapped description or FX line that
+    is the last line of the table on its page (see `_extend_trailing_continuation`) — without
+    swallowing a page footer or summary block. The nearest non-numeric row above is treated as the
     column-header row. Returns one `TableBand` per located region, across all pages; an empty
     tuple when no table is found anywhere in the document.
     """
@@ -354,7 +401,10 @@ def locate_table_bands(doc: ExtractedDoc) -> tuple[TableBand, ...]:
         if not rows:
             continue
         flags = [_is_row_bearing(row) for row in rows]
-        for start, end in _find_runs(flags):
+        runs = _find_runs(flags)
+        for run_index, (start, end) in enumerate(runs):
+            limit = runs[run_index + 1][0] if run_index + 1 < len(runs) else len(rows)
+            end = _extend_trailing_continuation(rows, flags, start, end, limit=limit)
             header_idx = _find_header_above(rows, start)
             bands.append(
                 TableBand(
