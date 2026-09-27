@@ -48,10 +48,6 @@ _KNOWN_SECTIONS = (_PAYMENTS_SECTION, _PURCHASES_SECTION)
 
 _MASK_RE = re.compile(r"\bending in\s+(\d{4})\b", re.IGNORECASE)
 
-#: A credit in PAYMENTS AND OTHER CREDITS matching this pattern is a `payment`; anything else in
-#: that section is a `refund` (§2c: "payment on pattern match, else refund").
-_PAYMENT_PATTERN_RE = re.compile(r"payment|autopay|thank you", re.IGNORECASE)
-
 #: A continuation line printing the original foreign-currency amount and exchange rate, e.g.
 #: ``FOREIGN CURRENCY AMOUNT 35.00 GBP EXCH RATE 1.20000``.
 _FX_LINE_RE = re.compile(
@@ -90,9 +86,11 @@ def _is_data_row(text: str) -> tuple[str, ...] | None:
     return tuple(tokens)
 
 
-def _resolve_kind_hint(section: str, description: str, amount_minor: int) -> KindHint:
+def _resolve_kind_hint(section: str, amount_minor: int) -> KindHint:
     if section == _PAYMENTS_SECTION:
-        return "payment" if _PAYMENT_PATTERN_RE.search(description) else "refund"
+        # A29: a section heading alone cannot tell payment from refund; classify/kinds.py
+        # resolves this hint by pattern later.
+        return "payment_or_refund"
     # _PURCHASES_SECTION: outflow (positive) is a purchase; an inflow here is a mid-cycle
     # adjustment (e.g. a merchant-issued statement credit), not a refund.
     return "purchase" if amount_minor > 0 else "adjustment"
@@ -152,9 +150,7 @@ class LayoutBCreditParser:
                     fx_amount_minor=pending.fx_amount_minor,
                     fx_currency=pending.fx_currency,
                     fx_rate=pending.fx_rate,
-                    kind_hint=_resolve_kind_hint(
-                        pending.section, description, pending.amount_minor
-                    ),
+                    kind_hint=_resolve_kind_hint(pending.section, pending.amount_minor),
                     section=pending.section,
                     issuer_category=None,
                 )
@@ -246,3 +242,9 @@ class LayoutBCreditParser:
                 current.description_parts.append(text)
 
         return pendings
+
+
+#: Module-level instance, discovered by the registry (P1-B) via module scan.
+parser = LayoutBCreditParser()
+
+__all__ = ["LayoutBCreditParser", "parser"]

@@ -19,7 +19,7 @@
       "fx_currency": null,
       "fx_rate": null,
       "issuer_category": null,
-      "kind_hint": "payment",
+      "kind_hint": "payment_or_refund",
       "posted_date": "2026-01-20",
       "section": "PAYMENTS AND OTHER CREDITS",
       "transaction_date": null
@@ -32,7 +32,7 @@
       "fx_currency": null,
       "fx_rate": null,
       "issuer_category": null,
-      "kind_hint": "refund",
+      "kind_hint": "payment_or_refund",
       "posted_date": "2026-01-21",
       "section": "PAYMENTS AND OTHER CREDITS",
       "transaction_date": null

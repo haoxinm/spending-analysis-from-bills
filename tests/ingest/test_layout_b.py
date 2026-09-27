@@ -18,6 +18,7 @@ import pytest
 
 from spend_analyzer.core.errors import ParserError
 from spend_analyzer.core.types import ExtractedDoc, PageText, Word
+from spend_analyzer.ingest import registry
 from spend_analyzer.ingest.parsers.layout_b_credit import LayoutBCreditParser
 from tests.fixtures.gen.base import format_row, render_lines_pdf
 from tests.fixtures.gen.layout_b import layout_b
@@ -153,6 +154,15 @@ def test_detect_returns_zero_without_raising_on_empty_doc(parser: LayoutBCreditP
     assert parser.detect(empty_doc) == 0.0
 
 
+def test_registry_selects_layout_b_credit_for_its_own_fixture() -> None:
+    """Regression test: `layout_b_credit.py` must export a module-level parser instance so
+    `registry.discover_builtin_parsers()` finds it — otherwise `registry.select()` silently
+    routes real Layout B statements to `generic_table`."""
+    doc = _extract_doc(_pdf_path("normal"))
+    selected = registry.select(doc)
+    assert selected.id == "layout_b_credit"
+
+
 # --------------------------------------------------------------------------------------------
 # Sign convention (I5) — asserted per section, not only in aggregate.
 # --------------------------------------------------------------------------------------------
@@ -163,12 +173,14 @@ def test_sign_convention_purchase_refund_payment(parser: LayoutBCreditParser) ->
     statement = parser.parse(doc)
     by_desc = {txn.description: txn for txn in statement.transactions}
 
+    # A29: a PAYMENTS AND OTHER CREDITS heading cannot tell payment from refund on its own —
+    # both are the ambiguous `payment_or_refund` hint; classify/kinds.py resolves it by pattern.
     payment = by_desc["ONLINE PAYMENT THANK YOU"]
-    assert payment.kind_hint == "payment"
+    assert payment.kind_hint == "payment_or_refund"
     assert payment.amount_minor == -30000  # negative: money returning (I5)
 
     refund = by_desc["MERCHANT REFUND CREDIT CO"]
-    assert refund.kind_hint == "refund"
+    assert refund.kind_hint == "payment_or_refund"
     assert refund.amount_minor == -2500  # negative: money returning (I5)
 
     purchase = by_desc["COFFEE ROASTERS DOWNTOWN"]
