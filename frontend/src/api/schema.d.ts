@@ -11,31 +11,33 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
-        get: operations["listUsers"];
+        /** List Users */
+        get: operations["list_users_api_users_get"];
         put?: never;
-        post: operations["createUser"];
+        /** Create User */
+        post: operations["create_user_api_users_post"];
         delete?: never;
         options?: never;
         head?: never;
         patch?: never;
         trace?: never;
     };
-    "/users/{id}": {
+    "/users/{user_id}": {
         parameters: {
             query?: never;
             header?: never;
-            path: {
-                id: number;
-            };
+            path?: never;
             cookie?: never;
         };
         get?: never;
         put?: never;
         post?: never;
-        delete: operations["deleteUser"];
+        /** Delete User */
+        delete: operations["delete_user_api_users__user_id__delete"];
         options?: never;
         head?: never;
-        patch: operations["updateUser"];
+        /** Update User */
+        patch: operations["update_user_api_users__user_id__patch"];
         trace?: never;
     };
     "/accounts": {
@@ -45,22 +47,22 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
-        get: operations["listAccounts"];
+        /** List Accounts */
+        get: operations["list_accounts_api_accounts_get"];
         put?: never;
-        post: operations["createAccount"];
+        /** Create Account */
+        post: operations["create_account_api_accounts_post"];
         delete?: never;
         options?: never;
         head?: never;
         patch?: never;
         trace?: never;
     };
-    "/accounts/{id}": {
+    "/accounts/{account_id}": {
         parameters: {
             query?: never;
             header?: never;
-            path: {
-                id: number;
-            };
+            path?: never;
             cookie?: never;
         };
         get?: never;
@@ -69,7 +71,8 @@ export interface paths {
         delete?: never;
         options?: never;
         head?: never;
-        patch: operations["updateAccount"];
+        /** Update Account */
+        patch: operations["update_account_api_accounts__account_id__patch"];
         trace?: never;
     };
     "/statements": {
@@ -79,68 +82,72 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
-        get: operations["listStatements"];
+        /** List Statements */
+        get: operations["list_statements_api_statements_get"];
         put?: never;
-        /** @description Multipart upload. A22 phase 1: text extracted, issuer matched, extractor proposed; status='awaiting_extractor'; nothing parsed yet. */
-        post: operations["uploadStatement"];
+        /**
+         * Upload Statement
+         * @description Multipart upload. `user_id` (D4: chosen in the Import screen, sticky) is a form field
+         *     alongside `file`.
+         */
+        post: operations["upload_statement_api_statements_post"];
         delete?: never;
         options?: never;
         head?: never;
         patch?: never;
         trace?: never;
     };
-    "/statements/{id}": {
+    "/statements/{statement_id}": {
         parameters: {
             query?: never;
             header?: never;
-            path: {
-                id: number;
-            };
+            path?: never;
             cookie?: never;
         };
-        get: operations["getStatement"];
+        /** Get Statement */
+        get: operations["get_statement_api_statements__statement_id__get"];
         put?: never;
         post?: never;
-        /** @description Cascades to transactions. */
-        delete: operations["deleteStatement"];
+        /** Delete Statement */
+        delete: operations["delete_statement_api_statements__statement_id__delete"];
         options?: never;
         head?: never;
-        /** @description Reassign user/account (§3.5). */
-        patch: operations["patchStatement"];
+        /** Patch Statement */
+        patch: operations["patch_statement_api_statements__statement_id__patch"];
         trace?: never;
     };
-    "/statements/{id}/extract": {
+    "/statements/{statement_id}/extract": {
         parameters: {
             query?: never;
             header?: never;
-            path: {
-                id: number;
-            };
+            path?: never;
             cookie?: never;
         };
         get?: never;
         put?: never;
-        /** @description A22 phase 2: parse + persist. */
-        post: operations["extractStatement"];
+        /**
+         * Extract Statement
+         * @description A22 phase 2: enqueues an `import` job that calls `confirm_import`, then (job flow, P2-C
+         *     plan section) enqueues a `classify` job for the transactions it inserted.
+         */
+        post: operations["extract_statement_api_statements__statement_id__extract_post"];
         delete?: never;
         options?: never;
         head?: never;
         patch?: never;
         trace?: never;
     };
-    "/statements/{id}/reparse": {
+    "/statements/{statement_id}/reparse": {
         parameters: {
             query?: never;
             header?: never;
-            path: {
-                id: number;
-            };
+            path?: never;
             cookie?: never;
         };
         get?: never;
         put?: never;
-        /** @description Re-run with a different extractor (rebuilds that statement's rows). */
-        post: operations["reparseStatement"];
+        /** Reparse Statement */
+        post: operations["reparse_statement_api_statements__statement_id__reparse_post"];
         delete?: never;
         options?: never;
         head?: never;
@@ -154,8 +161,8 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
-        /** @description Filters mirror SpendQuery; paginated, sortable. */
-        get: operations["listTransactions"];
+        /** List Transactions */
+        get: operations["list_transactions_api_transactions_get"];
         put?: never;
         post?: never;
         delete?: never;
@@ -168,9 +175,7 @@ export interface paths {
         parameters: {
             query?: never;
             header?: never;
-            path: {
-                id: number;
-            };
+            path?: never;
             cookie?: never;
         };
         get?: never;
@@ -179,8 +184,8 @@ export interface paths {
         delete?: never;
         options?: never;
         head?: never;
-        /** @description Set category/subcategory/kind/notes → writes merchant_map(source='user'), optionally creates a rule. */
-        patch: operations["patchTransaction"];
+        /** Patch Transaction */
+        patch: operations["patch_transaction_api_transactions__id__patch"];
         trace?: never;
     };
     "/transactions/bulk-update": {
@@ -192,8 +197,8 @@ export interface paths {
         };
         get?: never;
         put?: never;
-        /** @description Apply one label to a filtered selection. */
-        post: operations["bulkUpdateTransactions"];
+        /** Bulk Update Transactions */
+        post: operations["bulk_update_transactions_api_transactions_bulk_update_post"];
         delete?: never;
         options?: never;
         head?: never;
@@ -209,7 +214,8 @@ export interface paths {
         };
         get?: never;
         put?: never;
-        post: operations["runClassify"];
+        /** Run Classify */
+        post: operations["run_classify_api_classify_run_post"];
         delete?: never;
         options?: never;
         head?: never;
@@ -223,8 +229,11 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
-        /** @description The exact CSV that would be sent (NO network call). */
-        get: operations["previewClassify"];
+        /**
+         * Preview Classify
+         * @description The exact CSV the next run would send (A5), decoded back into rows. No network call.
+         */
+        get: operations["preview_classify_api_classify_preview_get"];
         put?: never;
         post?: never;
         delete?: never;
@@ -240,8 +249,8 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
-        /** @description llm_runs audit list w/ cost, tokens, model, schema_mode. */
-        get: operations["listClassifyRuns"];
+        /** List Classify Runs */
+        get: operations["list_classify_runs_api_classify_runs_get"];
         put?: never;
         post?: never;
         delete?: never;
@@ -250,16 +259,15 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
-    "/jobs/{id}": {
+    "/jobs/{job_id}": {
         parameters: {
             query?: never;
             header?: never;
-            path: {
-                id: string;
-            };
+            path?: never;
             cookie?: never;
         };
-        get: operations["getJob"];
+        /** Get Job */
+        get: operations["get_job_api_jobs__job_id__get"];
         put?: never;
         post?: never;
         delete?: never;
@@ -268,17 +276,15 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
-    "/jobs/{id}/events": {
+    "/jobs/{job_id}/events": {
         parameters: {
             query?: never;
             header?: never;
-            path: {
-                id: string;
-            };
+            path?: never;
             cookie?: never;
         };
-        /** @description SSE progress stream. The per-launch token is passed as a query parameter (A31), since EventSource cannot set headers. */
-        get: operations["getJobEvents"];
+        /** Job Events */
+        get: operations["job_events_api_jobs__job_id__events_get"];
         put?: never;
         post?: never;
         delete?: never;
@@ -294,7 +300,8 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
-        get: operations["getAnalyticsSummary"];
+        /** Analytics Summary */
+        get: operations["analytics_summary_api_analytics_summary_get"];
         put?: never;
         post?: never;
         delete?: never;
@@ -310,7 +317,8 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
-        get: operations["getAnalyticsTimeseries"];
+        /** Analytics Timeseries */
+        get: operations["analytics_timeseries_api_analytics_timeseries_get"];
         put?: never;
         post?: never;
         delete?: never;
@@ -326,7 +334,8 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
-        get: operations["getTopMerchants"];
+        /** Analytics Top Merchants */
+        get: operations["analytics_top_merchants_api_analytics_top_merchants_get"];
         put?: never;
         post?: never;
         delete?: never;
@@ -342,8 +351,8 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
-        /** @description Categories + subcategories incl. pending. */
-        get: operations["getTaxonomy"];
+        /** Get Taxonomy */
+        get: operations["get_taxonomy_api_taxonomy_get"];
         put?: never;
         post?: never;
         delete?: never;
@@ -352,36 +361,34 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
-    "/taxonomy/subcategories/{id}/approve": {
+    "/taxonomy/subcategories/{subcategory_id}/approve": {
         parameters: {
             query?: never;
             header?: never;
-            path: {
-                id: string;
-            };
+            path?: never;
             cookie?: never;
         };
         get?: never;
         put?: never;
-        post: operations["approveSubcategory"];
+        /** Approve Subcategory */
+        post: operations["approve_subcategory_api_taxonomy_subcategories__subcategory_id__approve_post"];
         delete?: never;
         options?: never;
         head?: never;
         patch?: never;
         trace?: never;
     };
-    "/taxonomy/subcategories/{id}/merge": {
+    "/taxonomy/subcategories/{subcategory_id}/merge": {
         parameters: {
             query?: never;
             header?: never;
-            path: {
-                id: string;
-            };
+            path?: never;
             cookie?: never;
         };
         get?: never;
         put?: never;
-        post: operations["mergeSubcategory"];
+        /** Merge Subcategory */
+        post: operations["merge_subcategory_api_taxonomy_subcategories__subcategory_id__merge_post"];
         delete?: never;
         options?: never;
         head?: never;
@@ -395,31 +402,33 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
-        get: operations["listIssuers"];
+        /** List Issuers */
+        get: operations["list_issuers_api_issuers_get"];
         put?: never;
-        post: operations["createIssuer"];
+        /** Create Issuer */
+        post: operations["create_issuer_api_issuers_post"];
         delete?: never;
         options?: never;
         head?: never;
         patch?: never;
         trace?: never;
     };
-    "/issuers/{id}": {
+    "/issuers/{issuer_id}": {
         parameters: {
             query?: never;
             header?: never;
-            path: {
-                id: number;
-            };
+            path?: never;
             cookie?: never;
         };
         get?: never;
         put?: never;
         post?: never;
-        delete: operations["deleteIssuer"];
+        /** Delete Issuer */
+        delete: operations["delete_issuer_api_issuers__issuer_id__delete"];
         options?: never;
         head?: never;
-        patch: operations["updateIssuer"];
+        /** Update Issuer */
+        patch: operations["update_issuer_api_issuers__issuer_id__patch"];
         trace?: never;
     };
     "/layout-specs": {
@@ -429,66 +438,60 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
-        /** @description list (name, version, issuer, approved, source). */
-        get: operations["listLayoutSpecs"];
+        /** List Layout Specs */
+        get: operations["list_layout_specs_api_layout_specs_get"];
         put?: never;
-        /** @description Create v1, or paste. */
-        post: operations["createLayoutSpec"];
+        /** Create Layout Spec */
+        post: operations["create_layout_spec_api_layout_specs_post"];
         delete?: never;
         options?: never;
         head?: never;
         patch?: never;
         trace?: never;
     };
-    "/layout-specs/{id}/revise": {
+    "/layout-specs/{spec_id}/revise": {
         parameters: {
             query?: never;
             header?: never;
-            path: {
-                id: number;
-            };
+            path?: never;
             cookie?: never;
         };
         get?: never;
         put?: never;
-        /** @description Inserts version+1 (never mutates). */
-        post: operations["reviseLayoutSpec"];
+        /** Revise Layout Spec */
+        post: operations["revise_layout_spec_api_layout_specs__spec_id__revise_post"];
         delete?: never;
         options?: never;
         head?: never;
         patch?: never;
         trace?: never;
     };
-    "/layout-specs/{id}/approve": {
+    "/layout-specs/{spec_id}/approve": {
         parameters: {
             query?: never;
             header?: never;
-            path: {
-                id: number;
-            };
+            path?: never;
             cookie?: never;
         };
         get?: never;
         put?: never;
-        /** @description Approve a user-authored or pasted spec. */
-        post: operations["approveLayoutSpec"];
+        /** Approve Layout Spec */
+        post: operations["approve_layout_spec_api_layout_specs__spec_id__approve_post"];
         delete?: never;
         options?: never;
         head?: never;
         patch?: never;
         trace?: never;
     };
-    "/layout-specs/{id}/export": {
+    "/layout-specs/{spec_id}/export": {
         parameters: {
             query?: never;
             header?: never;
-            path: {
-                id: number;
-            };
+            path?: never;
             cookie?: never;
         };
-        /** @description YAML download. */
-        get: operations["exportLayoutSpec"];
+        /** Export Layout Spec */
+        get: operations["export_layout_spec_api_layout_specs__spec_id__export_get"];
         put?: never;
         post?: never;
         delete?: never;
@@ -504,31 +507,33 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
-        get: operations["listRules"];
+        /** List Rules */
+        get: operations["list_rules_api_rules_get"];
         put?: never;
-        post: operations["createRule"];
+        /** Create Rule */
+        post: operations["create_rule_api_rules_post"];
         delete?: never;
         options?: never;
         head?: never;
         patch?: never;
         trace?: never;
     };
-    "/rules/{id}": {
+    "/rules/{rule_id}": {
         parameters: {
             query?: never;
             header?: never;
-            path: {
-                id: number;
-            };
+            path?: never;
             cookie?: never;
         };
         get?: never;
         put?: never;
         post?: never;
-        delete: operations["deleteRule"];
+        /** Delete Rule */
+        delete: operations["delete_rule_api_rules__rule_id__delete"];
         options?: never;
         head?: never;
-        patch: operations["updateRule"];
+        /** Update Rule */
+        patch: operations["update_rule_api_rules__rule_id__patch"];
         trace?: never;
     };
     "/settings": {
@@ -538,10 +543,10 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
-        /** @description Never returns key material. */
-        get: operations["getSettings"];
-        /** @description Rewrites config.toml atomically (A4). */
-        put: operations["putSettings"];
+        /** Get Settings Route */
+        get: operations["get_settings_route_api_settings_get"];
+        /** Put Settings */
+        put: operations["put_settings_api_settings_put"];
         post?: never;
         delete?: never;
         options?: never;
@@ -558,8 +563,12 @@ export interface paths {
         };
         get?: never;
         put?: never;
-        /** @description One-row round trip verifying credentials. */
-        post: operations["testLlmSettings"];
+        /**
+         * Test Llm Settings
+         * @description One-row round trip verifying credentials, via the same `classify_batch` egress path every
+         *     real classification uses (never a bespoke LLM call).
+         */
+        post: operations["test_llm_settings_api_settings_test_llm_post"];
         delete?: never;
         options?: never;
         head?: never;
@@ -573,8 +582,8 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
-        /** @description Full transaction export — MUST exclude accounts.mask. */
-        get: operations["exportTransactions"];
+        /** Export Transactions */
+        get: operations["export_transactions_api_export_get"];
         put?: never;
         post?: never;
         delete?: never;
@@ -587,301 +596,557 @@ export interface paths {
 export type webhooks = Record<string, never>;
 export interface components {
     schemas: {
-        Error: {
-            detail: string;
-        };
-        /** @example USD */
-        Currency: string;
-        /** @enum {string} */
-        Kind: "purchase" | "refund" | "payment" | "transfer" | "fee" | "interest" | "adjustment";
-        /** @enum {string} */
-        AccountType: "credit" | "checking" | "savings";
-        User: {
-            id: number;
-            name: string;
-            is_default: boolean;
-        };
-        UserCreate: {
-            name: string;
-            is_default?: boolean;
-        };
-        UserUpdate: {
-            name?: string;
-            is_default?: boolean;
-        };
+        /** Account */
         Account: {
+            /** Id */
             id: number;
+            /** User Id */
             user_id: number;
+            /** Issuer Id */
             issuer_id: number | null;
-            account_type: components["schemas"]["AccountType"];
-            /** @description Last 4 digits only. LOCAL ONLY (I1b). */
-            mask: string;
-            currency: components["schemas"]["Currency"];
+            /**
+             * Account Type
+             * @enum {string}
+             */
+            account_type: "credit" | "checking" | "savings";
+            /** Currency */
+            currency: string;
         };
+        /** AccountCreate */
         AccountCreate: {
+            /** User Id */
             user_id: number;
+            /** Issuer Id */
             issuer_id?: number | null;
-            account_type: components["schemas"]["AccountType"];
-            mask?: string;
-            currency: components["schemas"]["Currency"];
+            /**
+             * Account Type
+             * @enum {string}
+             */
+            account_type: "credit" | "checking" | "savings";
+            /**
+             * Mask
+             * @default
+             */
+            mask: string;
+            /**
+             * Currency
+             * @default USD
+             */
+            currency: string;
         };
+        /** AccountUpdate */
         AccountUpdate: {
+            /** Issuer Id */
             issuer_id?: number | null;
-            account_type?: components["schemas"]["AccountType"];
-            mask?: string;
-            currency?: components["schemas"]["Currency"];
+            /** Account Type */
+            account_type?: ("credit" | "checking" | "savings") | null;
+            /** Mask */
+            mask?: string | null;
+            /** Currency */
+            currency?: string | null;
         };
-        /** @enum {string} */
-        StatementStatus: "awaiting_extractor" | "queued" | "processing" | "done" | "error" | "no_text_layer" | "unsupported_layout";
-        Statement: {
-            id: number;
+        /** AnalyticsRow */
+        AnalyticsRow: {
+            /** Period */
+            period?: string | null;
+            /** Category */
+            category?: string | null;
+            /** Subcategory */
+            subcategory?: string | null;
+            /** User */
+            user?: number | null;
+            /** Account */
+            account?: number | null;
+            /** Merchant */
+            merchant?: string | null;
+            /** Currency */
+            currency: string;
+            /** Total Minor */
+            total_minor: number;
+            /** Txn Count */
+            txn_count: number;
+            /** Avg Minor */
+            avg_minor: number;
+        };
+        /** Body_upload_statement_api_statements_post */
+        Body_upload_statement_api_statements_post: {
+            /** File */
+            file: string;
+            /** User Id */
+            user_id: number;
+        };
+        /** BulkUpdateRequest */
+        BulkUpdateRequest: {
+            /** Transaction Ids */
+            transaction_ids: number[];
+            /** Category Key */
+            category_key?: string | null;
+            /** Subcategory Key */
+            subcategory_key?: string | null;
+            kind?: components["schemas"]["Kind"] | null;
+        };
+        /** BulkUpdateResponse */
+        BulkUpdateResponse: {
+            /** Updated */
+            updated: number;
+        };
+        /** Category */
+        Category: {
+            /** Key */
+            key: string;
+            /** Name */
+            name: string;
+            /** Subcategories */
+            subcategories: components["schemas"]["Subcategory"][];
+        };
+        /** ClassifyPreviewRow */
+        ClassifyPreviewRow: {
+            /** Merchant Key */
+            merchant_key: string;
+            /** Description Clean */
+            description_clean: string;
+        };
+        /** ClassifyRunRequest */
+        ClassifyRunRequest: {
+            /** User Id */
             user_id?: number | null;
-            account_id?: number | null;
-            status: components["schemas"]["StatementStatus"];
-            /** Format: date */
-            period_start?: string | null;
-            /** Format: date */
-            period_end?: string | null;
-            txn_count?: number;
-            /** @description Signed minor units; 0 when the balance equation reconciles exactly (§3.1 A25). */
-            reconciliation_delta_minor?: number | null;
-            detect_score?: number | null;
-            shape_warnings?: string | null;
+            /** Statement Id */
+            statement_id?: number | null;
+            /**
+             * Only Unclassified
+             * @default true
+             */
+            only_unclassified: boolean;
+        };
+        /** ClassifyRunResponse */
+        ClassifyRunResponse: {
+            /** Job Id */
+            job_id: string;
+            /** Group Id */
+            group_id: string;
+        };
+        /** ExtractRequest */
+        ExtractRequest: {
+            /** Issuer Id */
+            issuer_id: number;
+            /** Layout Spec Id */
+            layout_spec_id?: number | null;
+            /** Parser Id */
+            parser_id?: string | null;
+            /**
+             * Remember
+             * @default false
+             */
+            remember: boolean;
+        };
+        /** ExtractorProposal */
+        ExtractorProposal: {
+            /** Issuer Id */
+            issuer_id: number | null;
+            /** Parser Id */
+            parser_id: string | null;
+            /** Layout Spec Id */
+            layout_spec_id: number | null;
+            /** Confidence */
+            confidence: number;
+            /** Auto Confirmed */
+            auto_confirmed: boolean;
+        };
+        /** HTTPValidationError */
+        HTTPValidationError: {
+            /** Detail */
+            detail?: components["schemas"]["ValidationError"][];
+        };
+        /** IngestSettings */
+        IngestSettings: {
+            /** Always Confirm Extractor */
+            always_confirm_extractor: boolean;
+            /** Date Format Hints */
+            date_format_hints: string[];
+            /** Default Currency */
+            default_currency: string;
+        };
+        /** Issuer */
+        Issuer: {
+            /** Id */
+            id: number;
+            /** Name */
+            name: string;
+            /** Slug */
+            slug: string;
+            /** Match Terms */
+            match_terms: string[];
+            /** Default Spec Id */
+            default_spec_id?: number | null;
+        };
+        /** IssuerCreate */
+        IssuerCreate: {
+            /** Name */
+            name: string;
+            /** Match Terms */
+            match_terms?: string[];
+        };
+        /** IssuerUpdate */
+        IssuerUpdate: {
+            /** Name */
+            name?: string | null;
+            /** Match Terms */
+            match_terms?: string[] | null;
+            /** Default Spec Id */
+            default_spec_id?: number | null;
+        };
+        /** Job */
+        Job: {
+            /** Id */
+            id: string;
+            /**
+             * Kind
+             * @enum {string}
+             */
+            kind: "import" | "classify";
+            /**
+             * Status
+             * @enum {string}
+             */
+            status: "queued" | "running" | "done" | "error" | "cancelled";
+            /** Progress */
+            progress: number;
+            /** Message */
+            message?: string | null;
+            /** Group Id */
+            group_id?: string | null;
+            /** Error Detail */
             error_detail?: string | null;
-            /** Format: date-time */
+        };
+        /** JobIdResponse */
+        JobIdResponse: {
+            /** Job Id */
+            job_id: string;
+        };
+        /**
+         * Kind
+         * @description The seven `Kind` values (§3.1), as a real enum rather than a `Literal` alias: FastAPI
+         *     only emits a named, reusable `components.schemas.Kind` in the OpenAPI document (which the
+         *     frontend's generated client references as `components["schemas"]["Kind"]`) for an enum type
+         *     — a `Literal` field is inlined per-field instead.
+         * @enum {string}
+         */
+        Kind: "purchase" | "refund" | "payment" | "transfer" | "fee" | "interest" | "adjustment";
+        /** LayoutSpec */
+        LayoutSpec: {
+            /** Id */
+            id: number;
+            /** Name */
+            name: string;
+            /** Version */
+            version: number;
+            /** Issuer Id */
+            issuer_id: number | null;
+            /** Approved */
+            approved: boolean;
+            /** Source */
+            source: string;
+        };
+        /** LayoutSpecCreate */
+        LayoutSpecCreate: {
+            /** Name */
+            name: string;
+            /** Spec Yaml */
+            spec_yaml: string;
+            /** Issuer Id */
+            issuer_id?: number | null;
+        };
+        /** LlmRun */
+        LlmRun: {
+            /** Id */
+            id: number;
+            /** Group Id */
+            group_id: string;
+            /** Provider */
+            provider: string;
+            /** Model */
+            model: string;
+            /** Schema Mode */
+            schema_mode: string;
+            /** Cost Usd */
+            cost_usd: number | null;
+            /** Prompt Tokens */
+            prompt_tokens?: number | null;
+            /** Completion Tokens */
+            completion_tokens?: number | null;
+            /**
+             * Created At
+             * Format: date-time
+             */
             created_at: string;
         };
-        ExtractorProposal: {
-            issuer_id?: number | null;
-            parser_id?: string | null;
-            layout_spec_id?: number | null;
-            confidence?: number;
-            auto_confirmed?: boolean;
+        /** LlmSettings */
+        LlmSettings: {
+            /**
+             * Mode
+             * @enum {string}
+             */
+            mode: "none" | "local" | "remote";
+            /** Provider */
+            provider: string;
+            /** Model */
+            model: string;
+            /** Api Base */
+            api_base: string;
+            /** Batch Size */
+            batch_size: number;
+            /** Timeout S */
+            timeout_s: number;
+            /** Confidence Threshold */
+            confidence_threshold: number;
+            /**
+             * Has Key
+             * @default false
+             */
+            has_key: boolean;
         };
+        /** MergeRequest */
+        MergeRequest: {
+            /** Into Id */
+            into_id: number;
+        };
+        /** PrivacySettings */
+        PrivacySettings: {
+            /** Store Pdf Copies */
+            store_pdf_copies: boolean;
+            /** Store Extract Cache */
+            store_extract_cache: boolean;
+            /** Pii Terms */
+            pii_terms: string[];
+        };
+        /** Rule */
+        Rule: {
+            /** Id */
+            id: number;
+            /** Pattern */
+            pattern: string;
+            /** Category Key */
+            category_key: string;
+            /** Subcategory Key */
+            subcategory_key: string;
+            kind?: components["schemas"]["Kind"] | null;
+            /** Source */
+            source: string;
+        };
+        /** RuleCreate */
+        RuleCreate: {
+            /** Pattern */
+            pattern: string;
+            /**
+             * Match Type
+             * @default contains
+             * @enum {string}
+             */
+            match_type: "exact" | "contains" | "regex";
+            /** Category Key */
+            category_key: string;
+            /** Subcategory Key */
+            subcategory_key: string;
+            kind?: components["schemas"]["Kind"] | null;
+        };
+        /** RuleUpdate */
+        RuleUpdate: {
+            /** Pattern */
+            pattern?: string | null;
+            /** Category Key */
+            category_key?: string | null;
+            /** Subcategory Key */
+            subcategory_key?: string | null;
+            kind?: components["schemas"]["Kind"] | null;
+        };
+        /** ServerSettings */
+        ServerSettings: {
+            /** Port */
+            port: number;
+        };
+        /** Settings */
+        Settings: {
+            llm: components["schemas"]["LlmSettings"];
+            privacy: components["schemas"]["PrivacySettings"];
+            ingest: components["schemas"]["IngestSettings"];
+            server: components["schemas"]["ServerSettings"];
+        };
+        /** Statement */
+        Statement: {
+            /** Id */
+            id: number;
+            /** User Id */
+            user_id?: number | null;
+            /** Account Id */
+            account_id: number | null;
+            /**
+             * Status
+             * @enum {string}
+             */
+            status: "pending" | "awaiting_extractor" | "parsed" | "no_text_layer" | "unsupported_layout" | "error";
+            /** Period Start */
+            period_start: string | null;
+            /** Period End */
+            period_end: string | null;
+            /** Txn Count */
+            txn_count: number | null;
+            /** Reconciliation Delta Minor */
+            reconciliation_delta_minor?: number | null;
+            /** Detect Score */
+            detect_score: number | null;
+            /** Shape Warnings */
+            shape_warnings: string | null;
+            /** Error Detail */
+            error_detail: string | null;
+            /**
+             * Created At
+             * Format: date-time
+             */
+            created_at: string;
+        };
+        /** StatementPatch */
+        StatementPatch: {
+            /** User Id */
+            user_id?: number | null;
+            /** Account Id */
+            account_id?: number | null;
+        };
+        /** StatementUploadResponse */
         StatementUploadResponse: {
             statement: components["schemas"]["Statement"];
             proposal: components["schemas"]["ExtractorProposal"];
         };
-        ExtractRequest: {
-            issuer_id: number;
-            layout_spec_id?: number | null;
-            parser_id?: string | null;
-            remember: boolean;
-        };
-        StatementPatch: {
-            user_id?: number;
-            account_id?: number;
-        };
-        Job: {
-            id: string;
-            /** @enum {string} */
-            kind: "import" | "classify";
-            /** @enum {string} */
-            status: "queued" | "running" | "done" | "error";
-            progress: number;
-            message?: string | null;
-            group_id?: string | null;
-            error_detail?: string | null;
-        };
-        Transaction: {
-            id: number;
-            statement_id: number;
-            account_id: number;
-            /** Format: date */
-            posted_date: string;
-            /** Format: date */
-            transaction_date?: string | null;
-            description_clean: string;
-            /** @description Signed minor units; positive = outflow (I5). */
-            amount_minor: number;
-            currency: components["schemas"]["Currency"];
-            kind: components["schemas"]["Kind"];
-            category_key: string | null;
-            subcategory_key: string | null;
-            merchant_key?: string | null;
-            notes?: string | null;
-            needs_review: boolean;
-        };
-        TransactionPatch: {
-            category_key?: string;
-            subcategory_key?: string;
-            kind?: components["schemas"]["Kind"];
-            notes?: string;
-            create_rule?: boolean;
-        };
-        BulkUpdateRequest: {
-            transaction_ids: number[];
-            category_key?: string;
-            subcategory_key?: string;
-            kind?: components["schemas"]["Kind"];
-        };
-        ClassifyRunRequest: {
-            user_id?: number | null;
-            statement_id?: number | null;
-            /** @default true */
-            only_unclassified: boolean;
-        };
-        ClassifyRunResponse: {
-            job_id: string;
-            group_id: string;
-        };
-        ClassifyPreviewRow: {
-            merchant_key?: string;
-            description_clean?: string;
-        };
-        LlmRun: {
-            id?: number;
-            group_id?: string;
-            provider?: string;
-            model?: string;
-            schema_mode?: string;
-            cost_usd?: number | null;
-            prompt_tokens?: number | null;
-            completion_tokens?: number | null;
-            /** Format: date-time */
-            created_at?: string;
-        };
-        AnalyticsRow: {
-            period?: string | null;
-            category?: string | null;
-            subcategory?: string | null;
-            user?: string | null;
-            account?: string | null;
-            merchant?: string | null;
-            currency: components["schemas"]["Currency"];
-            total_minor: number;
-            txn_count: number;
-            avg_minor: number;
-        };
-        TopMerchantRow: {
-            merchant?: string;
-            total_minor?: number;
-            txn_count?: number;
-        };
+        /** Subcategory */
         Subcategory: {
+            /** Key */
             key: string;
+            /** Name */
             name: string;
+            /** Pending */
             pending: boolean;
+            /** Merged Into */
             merged_into?: string | null;
         };
-        Category: {
-            key: string;
-            name: string;
-            subcategories: components["schemas"]["Subcategory"][];
-        };
-        MergeRequest: {
-            into_id: string;
-        };
-        Issuer: {
-            id: number;
-            name: string;
-            slug: string;
-            match_terms: string[];
-            default_spec_id?: number | null;
-        };
-        IssuerCreate: {
-            name: string;
-            match_terms?: string[];
-        };
-        IssuerUpdate: {
-            name?: string;
-            match_terms?: string[];
-            default_spec_id?: number | null;
-        };
-        LayoutSpec: {
-            id: number;
-            name: string;
-            version: number;
-            issuer_id?: number | null;
-            approved: boolean;
-            /** @enum {string} */
-            source: "hand_mapped" | "pasted";
-        };
-        LayoutSpecCreate: {
-            name: string;
-            spec_yaml: string;
-            issuer_id?: number | null;
-        };
-        Rule: {
-            id: number;
-            pattern: string;
-            category_key: string;
-            subcategory_key: string;
-            kind?: components["schemas"]["Kind"];
-            /** @enum {string} */
-            source?: "builtin" | "user";
-        };
-        RuleCreate: {
-            pattern: string;
-            category_key: string;
-            subcategory_key: string;
-            kind?: components["schemas"]["Kind"];
-        };
-        RuleUpdate: {
-            pattern?: string;
-            category_key?: string;
-            subcategory_key?: string;
-            kind?: components["schemas"]["Kind"];
-        };
-        /** @enum {string} */
-        LlmMode: "none" | "local" | "remote";
-        Settings: {
-            llm?: {
-                mode?: components["schemas"]["LlmMode"];
-                provider?: string;
-                model?: string;
-                api_base?: string;
-                batch_size?: number;
-                timeout_s?: number;
-                confidence_threshold?: number;
-            };
-            privacy?: {
-                store_pdf_copies?: boolean;
-                store_extract_cache?: boolean;
-                pii_terms?: string[];
-            };
-            ingest?: {
-                always_confirm_extractor?: boolean;
-                date_format_hints?: string[];
-                default_currency?: components["schemas"]["Currency"];
-            };
-            server?: {
-                port?: number;
-            };
-        };
+        /** TestLlmResponse */
         TestLlmResponse: {
+            /** Ok */
             ok: boolean;
+            /** Detail */
             detail?: string | null;
+        };
+        /** TopMerchantRow */
+        TopMerchantRow: {
+            /** Merchant */
+            merchant: string;
+            /** Total Minor */
+            total_minor: number;
+            /** Txn Count */
+            txn_count: number;
+        };
+        /** Transaction */
+        Transaction: {
+            /** Id */
+            id: number;
+            /** Statement Id */
+            statement_id: number;
+            /** Account Id */
+            account_id: number;
+            /**
+             * Posted Date
+             * Format: date
+             */
+            posted_date: string;
+            /** Transaction Date */
+            transaction_date: string | null;
+            /** Description Clean */
+            description_clean: string;
+            /** Amount Minor */
+            amount_minor: number;
+            /** Currency */
+            currency: string;
+            kind: components["schemas"]["Kind"];
+            /** Category Key */
+            category_key: string | null;
+            /** Subcategory Key */
+            subcategory_key: string | null;
+            /** Merchant Key */
+            merchant_key: string | null;
+            /** Notes */
+            notes: string | null;
+            /** Needs Review */
+            needs_review: boolean;
+        };
+        /** TransactionList */
+        TransactionList: {
+            /** Items */
+            items: components["schemas"]["Transaction"][];
+            /** Total */
+            total: number;
+        };
+        /** TransactionPatch */
+        TransactionPatch: {
+            /** Category Key */
+            category_key?: string | null;
+            /** Subcategory Key */
+            subcategory_key?: string | null;
+            kind?: components["schemas"]["Kind"] | null;
+            /** Notes */
+            notes?: string | null;
+            /**
+             * Create Rule
+             * @default false
+             */
+            create_rule: boolean;
+        };
+        /** User */
+        User: {
+            /** Id */
+            id: number;
+            /** Name */
+            name: string;
+            /** Is Default */
+            is_default: boolean;
+        };
+        /** UserCreate */
+        UserCreate: {
+            /** Name */
+            name: string;
+            /**
+             * Is Default
+             * @default false
+             */
+            is_default: boolean;
+        };
+        /** UserUpdate */
+        UserUpdate: {
+            /** Name */
+            name?: string | null;
+            /** Is Default */
+            is_default?: boolean | null;
+        };
+        /** ValidationError */
+        ValidationError: {
+            /** Location */
+            loc: (string | number)[];
+            /** Message */
+            msg: string;
+            /** Error Type */
+            type: string;
+            /** Input */
+            input?: unknown;
+            /** Context */
+            ctx?: Record<string, never>;
         };
     };
     responses: never;
-    parameters: {
-        UserIds: number[];
-        AccountIds: number[];
-        DateFrom: string;
-        DateTo: string;
-        Granularity: "day" | "week" | "month" | "quarter" | "year" | "all";
-        GroupBy: ("category" | "subcategory" | "user" | "account" | "merchant" | "period")[];
-        CategoryKeys: string[];
-        SubcategoryKeys: string[];
-        AmountMinMinor: number;
-        AmountMaxMinor: number;
-        Kinds: components["schemas"]["Kind"][];
-        IncludeNonSpend: boolean;
-        NetRefunds: boolean;
-        Search: string;
-        Currency: string;
-        Page: number;
-        PageSize: number;
-        Sort: string;
-    };
+    parameters: never;
     requestBodies: never;
     headers: never;
     pathItems: never;
 }
 export type $defs = Record<string, never>;
 export interface operations {
-    listUsers: {
+    list_users_api_users_get: {
         parameters: {
             query?: never;
             header?: never;
@@ -890,7 +1155,7 @@ export interface operations {
         };
         requestBody?: never;
         responses: {
-            /** @description OK */
+            /** @description Successful Response */
             200: {
                 headers: {
                     [name: string]: unknown;
@@ -901,20 +1166,20 @@ export interface operations {
             };
         };
     };
-    createUser: {
+    create_user_api_users_post: {
         parameters: {
             query?: never;
             header?: never;
             path?: never;
             cookie?: never;
         };
-        requestBody?: {
+        requestBody: {
             content: {
                 "application/json": components["schemas"]["UserCreate"];
             };
         };
         responses: {
-            /** @description Created */
+            /** @description Successful Response */
             201: {
                 headers: {
                     [name: string]: unknown;
@@ -923,44 +1188,62 @@ export interface operations {
                     "application/json": components["schemas"]["User"];
                 };
             };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
         };
     };
-    deleteUser: {
+    delete_user_api_users__user_id__delete: {
         parameters: {
             query?: never;
             header?: never;
             path: {
-                id: number;
+                user_id: number;
             };
             cookie?: never;
         };
         requestBody?: never;
         responses: {
-            /** @description No Content */
+            /** @description Successful Response */
             204: {
                 headers: {
                     [name: string]: unknown;
                 };
                 content?: never;
             };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
         };
     };
-    updateUser: {
+    update_user_api_users__user_id__patch: {
         parameters: {
             query?: never;
             header?: never;
             path: {
-                id: number;
+                user_id: number;
             };
             cookie?: never;
         };
-        requestBody?: {
+        requestBody: {
             content: {
                 "application/json": components["schemas"]["UserUpdate"];
             };
         };
         responses: {
-            /** @description OK */
+            /** @description Successful Response */
             200: {
                 headers: {
                     [name: string]: unknown;
@@ -969,9 +1252,18 @@ export interface operations {
                     "application/json": components["schemas"]["User"];
                 };
             };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
         };
     };
-    listAccounts: {
+    list_accounts_api_accounts_get: {
         parameters: {
             query?: never;
             header?: never;
@@ -980,7 +1272,7 @@ export interface operations {
         };
         requestBody?: never;
         responses: {
-            /** @description OK */
+            /** @description Successful Response */
             200: {
                 headers: {
                     [name: string]: unknown;
@@ -991,20 +1283,20 @@ export interface operations {
             };
         };
     };
-    createAccount: {
+    create_account_api_accounts_post: {
         parameters: {
             query?: never;
             header?: never;
             path?: never;
             cookie?: never;
         };
-        requestBody?: {
+        requestBody: {
             content: {
                 "application/json": components["schemas"]["AccountCreate"];
             };
         };
         responses: {
-            /** @description Created */
+            /** @description Successful Response */
             201: {
                 headers: {
                     [name: string]: unknown;
@@ -1013,24 +1305,33 @@ export interface operations {
                     "application/json": components["schemas"]["Account"];
                 };
             };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
         };
     };
-    updateAccount: {
+    update_account_api_accounts__account_id__patch: {
         parameters: {
             query?: never;
             header?: never;
             path: {
-                id: number;
+                account_id: number;
             };
             cookie?: never;
         };
-        requestBody?: {
+        requestBody: {
             content: {
                 "application/json": components["schemas"]["AccountUpdate"];
             };
         };
         responses: {
-            /** @description OK */
+            /** @description Successful Response */
             200: {
                 headers: {
                     [name: string]: unknown;
@@ -1039,12 +1340,21 @@ export interface operations {
                     "application/json": components["schemas"]["Account"];
                 };
             };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
         };
     };
-    listStatements: {
+    list_statements_api_statements_get: {
         parameters: {
             query?: {
-                user_id?: number;
+                user_id?: number | null;
             };
             header?: never;
             path?: never;
@@ -1052,7 +1362,7 @@ export interface operations {
         };
         requestBody?: never;
         responses: {
-            /** @description OK */
+            /** @description Successful Response */
             200: {
                 headers: {
                     [name: string]: unknown;
@@ -1061,25 +1371,31 @@ export interface operations {
                     "application/json": components["schemas"]["Statement"][];
                 };
             };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
         };
     };
-    uploadStatement: {
+    upload_statement_api_statements_post: {
         parameters: {
             query?: never;
             header?: never;
             path?: never;
             cookie?: never;
         };
-        requestBody?: {
+        requestBody: {
             content: {
-                "multipart/form-data": {
-                    /** Format: binary */
-                    file: string;
-                };
+                "multipart/form-data": components["schemas"]["Body_upload_statement_api_statements_post"];
             };
         };
         responses: {
-            /** @description Created */
+            /** @description Successful Response */
             201: {
                 headers: {
                     [name: string]: unknown;
@@ -1088,20 +1404,29 @@ export interface operations {
                     "application/json": components["schemas"]["StatementUploadResponse"];
                 };
             };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
         };
     };
-    getStatement: {
+    get_statement_api_statements__statement_id__get: {
         parameters: {
             query?: never;
             header?: never;
             path: {
-                id: number;
+                statement_id: number;
             };
             cookie?: never;
         };
         requestBody?: never;
         responses: {
-            /** @description OK */
+            /** @description Successful Response */
             200: {
                 headers: {
                     [name: string]: unknown;
@@ -1110,44 +1435,62 @@ export interface operations {
                     "application/json": components["schemas"]["Statement"];
                 };
             };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
         };
     };
-    deleteStatement: {
+    delete_statement_api_statements__statement_id__delete: {
         parameters: {
             query?: never;
             header?: never;
             path: {
-                id: number;
+                statement_id: number;
             };
             cookie?: never;
         };
         requestBody?: never;
         responses: {
-            /** @description No Content */
+            /** @description Successful Response */
             204: {
                 headers: {
                     [name: string]: unknown;
                 };
                 content?: never;
             };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
         };
     };
-    patchStatement: {
+    patch_statement_api_statements__statement_id__patch: {
         parameters: {
             query?: never;
             header?: never;
             path: {
-                id: number;
+                statement_id: number;
             };
             cookie?: never;
         };
-        requestBody?: {
+        requestBody: {
             content: {
                 "application/json": components["schemas"]["StatementPatch"];
             };
         };
         responses: {
-            /** @description OK */
+            /** @description Successful Response */
             200: {
                 headers: {
                     [name: string]: unknown;
@@ -1156,82 +1499,105 @@ export interface operations {
                     "application/json": components["schemas"]["Statement"];
                 };
             };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
         };
     };
-    extractStatement: {
+    extract_statement_api_statements__statement_id__extract_post: {
         parameters: {
             query?: never;
             header?: never;
             path: {
-                id: number;
+                statement_id: number;
             };
             cookie?: never;
         };
-        requestBody?: {
+        requestBody: {
             content: {
                 "application/json": components["schemas"]["ExtractRequest"];
             };
         };
         responses: {
-            /** @description Accepted */
+            /** @description Successful Response */
             202: {
                 headers: {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": {
-                        job_id: string;
-                    };
+                    "application/json": components["schemas"]["JobIdResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
                 };
             };
         };
     };
-    reparseStatement: {
+    reparse_statement_api_statements__statement_id__reparse_post: {
         parameters: {
             query?: never;
             header?: never;
             path: {
-                id: number;
+                statement_id: number;
             };
             cookie?: never;
         };
-        requestBody?: {
+        requestBody: {
             content: {
                 "application/json": components["schemas"]["ExtractRequest"];
             };
         };
         responses: {
-            /** @description Accepted */
+            /** @description Successful Response */
             202: {
                 headers: {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": {
-                        job_id: string;
-                    };
+                    "application/json": components["schemas"]["JobIdResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
                 };
             };
         };
     };
-    listTransactions: {
+    list_transactions_api_transactions_get: {
         parameters: {
             query?: {
-                user_ids?: components["parameters"]["UserIds"];
-                account_ids?: components["parameters"]["AccountIds"];
-                date_from?: components["parameters"]["DateFrom"];
-                date_to?: components["parameters"]["DateTo"];
-                category_keys?: components["parameters"]["CategoryKeys"];
-                subcategory_keys?: components["parameters"]["SubcategoryKeys"];
-                amount_min_minor?: components["parameters"]["AmountMinMinor"];
-                amount_max_minor?: components["parameters"]["AmountMaxMinor"];
-                kinds?: components["parameters"]["Kinds"];
-                include_non_spend?: components["parameters"]["IncludeNonSpend"];
-                search?: components["parameters"]["Search"];
-                currency?: components["parameters"]["Currency"];
-                page?: components["parameters"]["Page"];
-                page_size?: components["parameters"]["PageSize"];
-                sort?: components["parameters"]["Sort"];
+                user_ids?: number[] | null;
+                account_ids?: number[] | null;
+                date_from?: string | null;
+                date_to?: string | null;
+                category_keys?: string[] | null;
+                subcategory_keys?: string[] | null;
+                amount_min_minor?: number | null;
+                amount_max_minor?: number | null;
+                kinds?: components["schemas"]["Kind"][] | null;
+                include_non_spend?: boolean;
+                search?: string | null;
+                currency?: string;
+                page?: number;
+                page_size?: number;
+                sort?: string | null;
             };
             header?: never;
             path?: never;
@@ -1239,21 +1605,27 @@ export interface operations {
         };
         requestBody?: never;
         responses: {
-            /** @description OK */
+            /** @description Successful Response */
             200: {
                 headers: {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": {
-                        items: components["schemas"]["Transaction"][];
-                        total: number;
-                    };
+                    "application/json": components["schemas"]["TransactionList"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
                 };
             };
         };
     };
-    patchTransaction: {
+    patch_transaction_api_transactions__id__patch: {
         parameters: {
             query?: never;
             header?: never;
@@ -1262,13 +1634,13 @@ export interface operations {
             };
             cookie?: never;
         };
-        requestBody?: {
+        requestBody: {
             content: {
                 "application/json": components["schemas"]["TransactionPatch"];
             };
         };
         responses: {
-            /** @description OK */
+            /** @description Successful Response */
             200: {
                 headers: {
                     [name: string]: unknown;
@@ -1277,48 +1649,64 @@ export interface operations {
                     "application/json": components["schemas"]["Transaction"];
                 };
             };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
         };
     };
-    bulkUpdateTransactions: {
+    bulk_update_transactions_api_transactions_bulk_update_post: {
         parameters: {
             query?: never;
             header?: never;
             path?: never;
             cookie?: never;
         };
-        requestBody?: {
+        requestBody: {
             content: {
                 "application/json": components["schemas"]["BulkUpdateRequest"];
             };
         };
         responses: {
-            /** @description OK */
+            /** @description Successful Response */
             200: {
                 headers: {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": {
-                        updated: number;
-                    };
+                    "application/json": components["schemas"]["BulkUpdateResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
                 };
             };
         };
     };
-    runClassify: {
+    run_classify_api_classify_run_post: {
         parameters: {
             query?: never;
             header?: never;
             path?: never;
             cookie?: never;
         };
-        requestBody?: {
+        requestBody: {
             content: {
                 "application/json": components["schemas"]["ClassifyRunRequest"];
             };
         };
         responses: {
-            /** @description Accepted */
+            /** @description Successful Response */
             202: {
                 headers: {
                     [name: string]: unknown;
@@ -1327,13 +1715,22 @@ export interface operations {
                     "application/json": components["schemas"]["ClassifyRunResponse"];
                 };
             };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
         };
     };
-    previewClassify: {
+    preview_classify_api_classify_preview_get: {
         parameters: {
             query?: {
-                user_id?: number;
-                statement_id?: number;
+                user_id?: number | null;
+                statement_id?: number | null;
             };
             header?: never;
             path?: never;
@@ -1341,7 +1738,7 @@ export interface operations {
         };
         requestBody?: never;
         responses: {
-            /** @description OK */
+            /** @description Successful Response */
             200: {
                 headers: {
                     [name: string]: unknown;
@@ -1350,9 +1747,18 @@ export interface operations {
                     "application/json": components["schemas"]["ClassifyPreviewRow"][];
                 };
             };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
         };
     };
-    listClassifyRuns: {
+    list_classify_runs_api_classify_runs_get: {
         parameters: {
             query?: never;
             header?: never;
@@ -1361,7 +1767,7 @@ export interface operations {
         };
         requestBody?: never;
         responses: {
-            /** @description OK */
+            /** @description Successful Response */
             200: {
                 headers: {
                     [name: string]: unknown;
@@ -1372,18 +1778,18 @@ export interface operations {
             };
         };
     };
-    getJob: {
+    get_job_api_jobs__job_id__get: {
         parameters: {
             query?: never;
             header?: never;
             path: {
-                id: string;
+                job_id: string;
             };
             cookie?: never;
         };
         requestBody?: never;
         responses: {
-            /** @description OK */
+            /** @description Successful Response */
             200: {
                 headers: {
                     [name: string]: unknown;
@@ -1392,50 +1798,68 @@ export interface operations {
                     "application/json": components["schemas"]["Job"];
                 };
             };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
         };
     };
-    getJobEvents: {
+    job_events_api_jobs__job_id__events_get: {
         parameters: {
             query?: {
-                token?: string;
+                token?: string | null;
             };
             header?: never;
             path: {
-                id: string;
+                job_id: string;
             };
             cookie?: never;
         };
         requestBody?: never;
         responses: {
-            /** @description text/event-stream */
+            /** @description Successful Response */
             200: {
                 headers: {
                     [name: string]: unknown;
                 };
                 content: {
-                    "text/event-stream": string;
+                    "application/json": unknown;
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
                 };
             };
         };
     };
-    getAnalyticsSummary: {
+    analytics_summary_api_analytics_summary_get: {
         parameters: {
             query?: {
-                user_ids?: components["parameters"]["UserIds"];
-                account_ids?: components["parameters"]["AccountIds"];
-                date_from?: components["parameters"]["DateFrom"];
-                date_to?: components["parameters"]["DateTo"];
-                granularity?: components["parameters"]["Granularity"];
-                group_by?: components["parameters"]["GroupBy"];
-                category_keys?: components["parameters"]["CategoryKeys"];
-                subcategory_keys?: components["parameters"]["SubcategoryKeys"];
-                amount_min_minor?: components["parameters"]["AmountMinMinor"];
-                amount_max_minor?: components["parameters"]["AmountMaxMinor"];
-                kinds?: components["parameters"]["Kinds"];
-                include_non_spend?: components["parameters"]["IncludeNonSpend"];
-                net_refunds?: components["parameters"]["NetRefunds"];
-                search?: components["parameters"]["Search"];
-                currency?: components["parameters"]["Currency"];
+                user_ids?: number[] | null;
+                account_ids?: number[] | null;
+                date_from?: string | null;
+                date_to?: string | null;
+                granularity?: "day" | "week" | "month" | "quarter" | "year" | "all";
+                group_by?: ("category" | "subcategory" | "user" | "account" | "merchant" | "period")[] | null;
+                category_keys?: string[] | null;
+                subcategory_keys?: string[] | null;
+                amount_min_minor?: number | null;
+                amount_max_minor?: number | null;
+                kinds?: components["schemas"]["Kind"][] | null;
+                include_non_spend?: boolean;
+                net_refunds?: boolean;
+                search?: string | null;
+                currency?: string;
             };
             header?: never;
             path?: never;
@@ -1443,40 +1867,7 @@ export interface operations {
         };
         requestBody?: never;
         responses: {
-            /** @description OK */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["AnalyticsRow"][];
-                };
-            };
-        };
-    };
-    getAnalyticsTimeseries: {
-        parameters: {
-            query?: {
-                user_ids?: components["parameters"]["UserIds"];
-                account_ids?: components["parameters"]["AccountIds"];
-                date_from?: components["parameters"]["DateFrom"];
-                date_to?: components["parameters"]["DateTo"];
-                granularity?: components["parameters"]["Granularity"];
-                group_by?: components["parameters"]["GroupBy"];
-                category_keys?: components["parameters"]["CategoryKeys"];
-                subcategory_keys?: components["parameters"]["SubcategoryKeys"];
-                kinds?: components["parameters"]["Kinds"];
-                include_non_spend?: components["parameters"]["IncludeNonSpend"];
-                net_refunds?: components["parameters"]["NetRefunds"];
-                currency?: components["parameters"]["Currency"];
-            };
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            /** @description OK */
+            /** @description Successful Response */
             200: {
                 headers: {
                     [name: string]: unknown;
@@ -1485,17 +1876,32 @@ export interface operations {
                     "application/json": components["schemas"]["AnalyticsRow"][];
                 };
             };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
         };
     };
-    getTopMerchants: {
+    analytics_timeseries_api_analytics_timeseries_get: {
         parameters: {
             query?: {
-                user_ids?: components["parameters"]["UserIds"];
-                account_ids?: components["parameters"]["AccountIds"];
-                date_from?: components["parameters"]["DateFrom"];
-                date_to?: components["parameters"]["DateTo"];
-                category_keys?: components["parameters"]["CategoryKeys"];
-                currency?: components["parameters"]["Currency"];
+                user_ids?: number[] | null;
+                account_ids?: number[] | null;
+                date_from?: string | null;
+                date_to?: string | null;
+                granularity?: "day" | "week" | "month" | "quarter" | "year" | "all";
+                group_by?: ("category" | "subcategory" | "user" | "account" | "merchant" | "period")[] | null;
+                category_keys?: string[] | null;
+                subcategory_keys?: string[] | null;
+                kinds?: components["schemas"]["Kind"][] | null;
+                include_non_spend?: boolean;
+                net_refunds?: boolean;
+                currency?: string;
             };
             header?: never;
             path?: never;
@@ -1503,7 +1909,44 @@ export interface operations {
         };
         requestBody?: never;
         responses: {
-            /** @description OK */
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AnalyticsRow"][];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    analytics_top_merchants_api_analytics_top_merchants_get: {
+        parameters: {
+            query?: {
+                user_ids?: number[] | null;
+                account_ids?: number[] | null;
+                date_from?: string | null;
+                date_to?: string | null;
+                category_keys?: string[] | null;
+                currency?: string;
+                limit?: number;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
             200: {
                 headers: {
                     [name: string]: unknown;
@@ -1512,9 +1955,18 @@ export interface operations {
                     "application/json": components["schemas"]["TopMerchantRow"][];
                 };
             };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
         };
     };
-    getTaxonomy: {
+    get_taxonomy_api_taxonomy_get: {
         parameters: {
             query?: never;
             header?: never;
@@ -1523,7 +1975,7 @@ export interface operations {
         };
         requestBody?: never;
         responses: {
-            /** @description OK */
+            /** @description Successful Response */
             200: {
                 headers: {
                     [name: string]: unknown;
@@ -1534,18 +1986,18 @@ export interface operations {
             };
         };
     };
-    approveSubcategory: {
+    approve_subcategory_api_taxonomy_subcategories__subcategory_id__approve_post: {
         parameters: {
             query?: never;
             header?: never;
             path: {
-                id: string;
+                subcategory_id: number;
             };
             cookie?: never;
         };
         requestBody?: never;
         responses: {
-            /** @description OK */
+            /** @description Successful Response */
             200: {
                 headers: {
                     [name: string]: unknown;
@@ -1554,24 +2006,33 @@ export interface operations {
                     "application/json": components["schemas"]["Subcategory"];
                 };
             };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
         };
     };
-    mergeSubcategory: {
+    merge_subcategory_api_taxonomy_subcategories__subcategory_id__merge_post: {
         parameters: {
             query?: never;
             header?: never;
             path: {
-                id: string;
+                subcategory_id: number;
             };
             cookie?: never;
         };
-        requestBody?: {
+        requestBody: {
             content: {
                 "application/json": components["schemas"]["MergeRequest"];
             };
         };
         responses: {
-            /** @description OK */
+            /** @description Successful Response */
             200: {
                 headers: {
                     [name: string]: unknown;
@@ -1580,9 +2041,18 @@ export interface operations {
                     "application/json": components["schemas"]["Subcategory"];
                 };
             };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
         };
     };
-    listIssuers: {
+    list_issuers_api_issuers_get: {
         parameters: {
             query?: never;
             header?: never;
@@ -1591,7 +2061,7 @@ export interface operations {
         };
         requestBody?: never;
         responses: {
-            /** @description OK */
+            /** @description Successful Response */
             200: {
                 headers: {
                     [name: string]: unknown;
@@ -1602,20 +2072,20 @@ export interface operations {
             };
         };
     };
-    createIssuer: {
+    create_issuer_api_issuers_post: {
         parameters: {
             query?: never;
             header?: never;
             path?: never;
             cookie?: never;
         };
-        requestBody?: {
+        requestBody: {
             content: {
                 "application/json": components["schemas"]["IssuerCreate"];
             };
         };
         responses: {
-            /** @description Created */
+            /** @description Successful Response */
             201: {
                 headers: {
                     [name: string]: unknown;
@@ -1624,44 +2094,62 @@ export interface operations {
                     "application/json": components["schemas"]["Issuer"];
                 };
             };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
         };
     };
-    deleteIssuer: {
+    delete_issuer_api_issuers__issuer_id__delete: {
         parameters: {
             query?: never;
             header?: never;
             path: {
-                id: number;
+                issuer_id: number;
             };
             cookie?: never;
         };
         requestBody?: never;
         responses: {
-            /** @description No Content */
+            /** @description Successful Response */
             204: {
                 headers: {
                     [name: string]: unknown;
                 };
                 content?: never;
             };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
         };
     };
-    updateIssuer: {
+    update_issuer_api_issuers__issuer_id__patch: {
         parameters: {
             query?: never;
             header?: never;
             path: {
-                id: number;
+                issuer_id: number;
             };
             cookie?: never;
         };
-        requestBody?: {
+        requestBody: {
             content: {
                 "application/json": components["schemas"]["IssuerUpdate"];
             };
         };
         responses: {
-            /** @description OK */
+            /** @description Successful Response */
             200: {
                 headers: {
                     [name: string]: unknown;
@@ -1670,9 +2158,18 @@ export interface operations {
                     "application/json": components["schemas"]["Issuer"];
                 };
             };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
         };
     };
-    listLayoutSpecs: {
+    list_layout_specs_api_layout_specs_get: {
         parameters: {
             query?: never;
             header?: never;
@@ -1681,7 +2178,7 @@ export interface operations {
         };
         requestBody?: never;
         responses: {
-            /** @description OK */
+            /** @description Successful Response */
             200: {
                 headers: {
                     [name: string]: unknown;
@@ -1692,20 +2189,20 @@ export interface operations {
             };
         };
     };
-    createLayoutSpec: {
+    create_layout_spec_api_layout_specs_post: {
         parameters: {
             query?: never;
             header?: never;
             path?: never;
             cookie?: never;
         };
-        requestBody?: {
+        requestBody: {
             content: {
                 "application/json": components["schemas"]["LayoutSpecCreate"];
             };
         };
         responses: {
-            /** @description Created */
+            /** @description Successful Response */
             201: {
                 headers: {
                     [name: string]: unknown;
@@ -1714,24 +2211,33 @@ export interface operations {
                     "application/json": components["schemas"]["LayoutSpec"];
                 };
             };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
         };
     };
-    reviseLayoutSpec: {
+    revise_layout_spec_api_layout_specs__spec_id__revise_post: {
         parameters: {
             query?: never;
             header?: never;
             path: {
-                id: number;
+                spec_id: number;
             };
             cookie?: never;
         };
-        requestBody?: {
+        requestBody: {
             content: {
                 "application/json": components["schemas"]["LayoutSpecCreate"];
             };
         };
         responses: {
-            /** @description Created */
+            /** @description Successful Response */
             201: {
                 headers: {
                     [name: string]: unknown;
@@ -1740,20 +2246,29 @@ export interface operations {
                     "application/json": components["schemas"]["LayoutSpec"];
                 };
             };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
         };
     };
-    approveLayoutSpec: {
+    approve_layout_spec_api_layout_specs__spec_id__approve_post: {
         parameters: {
             query?: never;
             header?: never;
             path: {
-                id: number;
+                spec_id: number;
             };
             cookie?: never;
         };
         requestBody?: never;
         responses: {
-            /** @description OK */
+            /** @description Successful Response */
             200: {
                 headers: {
                     [name: string]: unknown;
@@ -1762,31 +2277,49 @@ export interface operations {
                     "application/json": components["schemas"]["LayoutSpec"];
                 };
             };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
         };
     };
-    exportLayoutSpec: {
+    export_layout_spec_api_layout_specs__spec_id__export_get: {
         parameters: {
             query?: never;
             header?: never;
             path: {
-                id: number;
+                spec_id: number;
             };
             cookie?: never;
         };
         requestBody?: never;
         responses: {
-            /** @description OK */
+            /** @description Successful Response */
             200: {
                 headers: {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/x-yaml": string;
+                    "application/json": unknown;
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
                 };
             };
         };
     };
-    listRules: {
+    list_rules_api_rules_get: {
         parameters: {
             query?: never;
             header?: never;
@@ -1795,7 +2328,7 @@ export interface operations {
         };
         requestBody?: never;
         responses: {
-            /** @description OK */
+            /** @description Successful Response */
             200: {
                 headers: {
                     [name: string]: unknown;
@@ -1806,20 +2339,20 @@ export interface operations {
             };
         };
     };
-    createRule: {
+    create_rule_api_rules_post: {
         parameters: {
             query?: never;
             header?: never;
             path?: never;
             cookie?: never;
         };
-        requestBody?: {
+        requestBody: {
             content: {
                 "application/json": components["schemas"]["RuleCreate"];
             };
         };
         responses: {
-            /** @description Created */
+            /** @description Successful Response */
             201: {
                 headers: {
                     [name: string]: unknown;
@@ -1828,44 +2361,62 @@ export interface operations {
                     "application/json": components["schemas"]["Rule"];
                 };
             };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
         };
     };
-    deleteRule: {
+    delete_rule_api_rules__rule_id__delete: {
         parameters: {
             query?: never;
             header?: never;
             path: {
-                id: number;
+                rule_id: number;
             };
             cookie?: never;
         };
         requestBody?: never;
         responses: {
-            /** @description No Content */
+            /** @description Successful Response */
             204: {
                 headers: {
                     [name: string]: unknown;
                 };
                 content?: never;
             };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
         };
     };
-    updateRule: {
+    update_rule_api_rules__rule_id__patch: {
         parameters: {
             query?: never;
             header?: never;
             path: {
-                id: number;
+                rule_id: number;
             };
             cookie?: never;
         };
-        requestBody?: {
+        requestBody: {
             content: {
                 "application/json": components["schemas"]["RuleUpdate"];
             };
         };
         responses: {
-            /** @description OK */
+            /** @description Successful Response */
             200: {
                 headers: {
                     [name: string]: unknown;
@@ -1874,9 +2425,18 @@ export interface operations {
                     "application/json": components["schemas"]["Rule"];
                 };
             };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
         };
     };
-    getSettings: {
+    get_settings_route_api_settings_get: {
         parameters: {
             query?: never;
             header?: never;
@@ -1885,7 +2445,7 @@ export interface operations {
         };
         requestBody?: never;
         responses: {
-            /** @description OK */
+            /** @description Successful Response */
             200: {
                 headers: {
                     [name: string]: unknown;
@@ -1896,20 +2456,20 @@ export interface operations {
             };
         };
     };
-    putSettings: {
+    put_settings_api_settings_put: {
         parameters: {
             query?: never;
             header?: never;
             path?: never;
             cookie?: never;
         };
-        requestBody?: {
+        requestBody: {
             content: {
                 "application/json": components["schemas"]["Settings"];
             };
         };
         responses: {
-            /** @description OK */
+            /** @description Successful Response */
             200: {
                 headers: {
                     [name: string]: unknown;
@@ -1918,9 +2478,18 @@ export interface operations {
                     "application/json": components["schemas"]["Settings"];
                 };
             };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
         };
     };
-    testLlmSettings: {
+    test_llm_settings_api_settings_test_llm_post: {
         parameters: {
             query?: never;
             header?: never;
@@ -1929,7 +2498,7 @@ export interface operations {
         };
         requestBody?: never;
         responses: {
-            /** @description OK */
+            /** @description Successful Response */
             200: {
                 headers: {
                     [name: string]: unknown;
@@ -1940,7 +2509,7 @@ export interface operations {
             };
         };
     };
-    exportTransactions: {
+    export_transactions_api_export_get: {
         parameters: {
             query?: {
                 format?: "csv" | "json";
@@ -1951,14 +2520,22 @@ export interface operations {
         };
         requestBody?: never;
         responses: {
-            /** @description OK */
+            /** @description Successful Response */
             200: {
                 headers: {
                     [name: string]: unknown;
                 };
                 content: {
-                    "text/csv": string;
-                    "application/json": components["schemas"]["Transaction"][];
+                    "application/json": unknown;
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
                 };
             };
         };
