@@ -38,6 +38,9 @@ app = typer.Typer(
 users_app = typer.Typer(help="Manage local users (D4).")
 app.add_typer(users_app, name="users")
 
+issuers_app = typer.Typer(help="Manage issuers (§3.12a, A23/A24), so later imports auto-confirm.")
+app.add_typer(issuers_app, name="issuers")
+
 _NOT_YET_IMPLEMENTED = "not yet implemented in this build"
 
 #: A12: same PDF magic-byte check the upload endpoint applies (`api/routers/statements.py`).
@@ -231,10 +234,18 @@ def import_cmd(
                     any_error = True
                 continue
 
+            # An explicit --issuer-id/--parser-id/--layout-spec-id is the user (or the printed
+            # confirm command above, on a re-run) pinning the extractor by hand: confirm with it
+            # even when `propose_import` was not confident (or, on a re-run of the same file's
+            # sha, never re-scored it at all — I9's idempotent "reported as-is" path). Falling
+            # back to `proposal.issuer_id` covers the case where an issuer did match but the
+            # score was still below the confidence threshold.
+            explicit_extractor_given = (
+                issuer_id is not None or parser_id is not None or layout_spec_id is not None
+            )
             resolved_issuer_id = issuer_id if issuer_id is not None else proposal.issuer_id
-            should_confirm = resolved_issuer_id is not None and (
-                issuer_id is not None
-                or (proposal.confident and not settings.ingest.always_confirm_extractor)
+            should_confirm = explicit_extractor_given or (
+                proposal.confident and not settings.ingest.always_confirm_extractor
             )
 
             if not should_confirm:
@@ -249,16 +260,23 @@ def import_cmd(
                 )
                 continue
 
+            if resolved_issuer_id is None:
+                # No issuer matched (none is registered yet, or none matches this statement's
+                # text) and the user did not pass --issuer-id either: confirm against the
+                # placeholder "Unknown" issuer rather than blocking the import. `issuers add`
+                # (below) lets a later import of the same bank's statements match confidently.
+                resolved_issuer_id = crud.unknown_issuer_id(session)
+
             try:
                 result = gateway.confirm_import(
                     session,
                     proposal.statement_id,
-                    issuer_id=resolved_issuer_id,  # type: ignore[arg-type]
+                    issuer_id=resolved_issuer_id,
                     parser_id=parser_id if parser_id is not None else proposal.parser_id,
                     layout_spec_id=(
                         layout_spec_id if layout_spec_id is not None else proposal.layout_spec_id
                     ),
-                    remember=remember,
+                    remember=remember or issuer_id is not None,
                 )
                 session.commit()
             except SpendAnalyzerError as exc:
@@ -499,6 +517,48 @@ def users_set_default(user_id: int = typer.Argument(..., help="The user to make 
         crud.update_user(session, user, name=None, is_default=True)
         session.commit()
         typer.echo(f"User #{user.id} ({user.name}) is now the default.")
+
+
+@issuers_app.command(name="list")
+def issuers_list() -> None:
+    """List every issuer, with its match terms (§3.12a: used by `import`'s issuer matching)."""
+    import json as _json
+
+    with _open_engine() as engine, _open_session(engine) as session:
+        issuers = crud.list_issuers(session)
+        if not issuers:
+            typer.echo(
+                "No issuers yet. Create one with 'spend-analyzer issuers add <name>' so a later "
+                "import of its statements can auto-confirm."
+            )
+            return
+        for issuer in issuers:
+            terms = ", ".join(_json.loads(issuer.match_terms))
+            typer.echo(f"{issuer.id}\t{issuer.name}\tmatch_terms=[{terms}]")
+
+
+@issuers_app.command(name="add")
+def issuers_add(
+    name: str = typer.Argument(..., help="The issuer's display name (e.g. a bank's name)."),
+    match_term: list[str] = typer.Option(  # noqa: B008 - typer's documented pattern
+        [],
+        "--match-term",
+        help="Text that identifies this issuer on a statement's first page (repeatable); "
+        "defaults to the name itself.",
+    ),
+    default_spec: int | None = typer.Option(
+        None, "--default-spec", help="An approved layout_specs.id to remember for this issuer."
+    ),
+) -> None:
+    """Register an issuer so `import` can match its statements confidently (§3.12a)."""
+    with _open_engine() as engine, _open_session(engine) as session:
+        issuer = crud.create_issuer(session, name=name, match_terms=list(match_term))
+        if default_spec is not None:
+            issuer = crud.update_issuer(
+                session, issuer, name=None, match_terms=None, default_spec_id=default_spec
+            )
+        session.commit()
+        typer.echo(f"Created issuer #{issuer.id}: {issuer.name}")
 
 
 def _doctor_migrations() -> bool:

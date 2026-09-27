@@ -225,38 +225,45 @@ def test_doctor_reports_pass_fail_lines(home: Path) -> None:
     assert "Database migrated" in result.output
 
 
-def test_gate2_end_to_end_import_classify_report(home: Path) -> None:
-    """Reproduces Gate 2's own failing flow end-to-end on a fresh home: `migrate` -> `import`
-    every layout's 'normal' fixture with no `--user-id` -> `classify` (LLM `mode='none'`, D2's
-    graceful fallback) -> `report`. Asserts the report's grand total matches the hand-computed
-    total from `_expected_report_total()` (purchases/fees/interest by month; payments/transfers/
-    the one adjustment excluded, the one refund netted in with its sign — I11/A7)."""
-    from spend_analyzer.db.models import Issuer
-    from spend_analyzer.db.session import make_session_factory
+def _confirm_command_args(import_output: str) -> list[str]:
+    """Parse the `import <path> --user-id ... [--parser-id ...]` command `import_cmd` prints
+    after an `awaiting_extractor` result, and return it as the argv `runner.invoke` takes
+    (everything after the leading `spend-analyzer`) — exactly what a terminal user would copy
+    and run."""
+    import re
+    import shlex
 
+    match = re.search(r"confirm with:\n\s+spend-analyzer (.+)", import_output)
+    assert match is not None, f"no confirm command printed:\n{import_output}"
+    return shlex.split(match.group(1))
+
+
+def test_gate2_end_to_end_import_classify_report(home: Path) -> None:
+    """Reproduces Gate 2's own flow end-to-end on a fresh home, driving the CLI exactly as a
+    terminal user would: `migrate` -> `import <fixture>` with no flags at all (no issuer is
+    registered yet, so every statement lands `awaiting_extractor`) -> copy-paste-run the exact
+    confirm command `import` printed -> `classify` (LLM `mode='none'`, D2's graceful fallback) ->
+    `report`. Asserts the report's grand total matches the hand-computed total from
+    `_expected_report_total()` (purchases/fees/interest by month; payments/transfers/the one
+    adjustment excluded, the one refund netted in with its sign — I11/A7)."""
     migrate_result = runner.invoke(app, ["migrate"], catch_exceptions=False)
     assert migrate_result.exit_code == 0, migrate_result.output
-
-    engine = make_engine_for_path(home / "spend.db")
-    session_factory = make_session_factory(engine)
-    with session_factory() as session:
-        for _layout_dir, _account_type, issuer_name in _GATE2_FIXTURES:
-            session.add(
-                Issuer(
-                    name=issuer_name,
-                    slug=issuer_name.lower().replace(" ", "-"),
-                    match_terms="[]",
-                )
-            )
-        session.commit()
-    engine.dispose()
 
     fixtures_dir = Path(__file__).resolve().parent / "fixtures" / "generated"
     for layout_dir, _account_type, _issuer_name in _GATE2_FIXTURES:
         pdf_path = fixtures_dir / layout_dir / f"{layout_dir}_normal.pdf"
-        result = runner.invoke(app, ["import", str(pdf_path)], catch_exceptions=False)
-        assert result.exit_code == 0, f"{layout_dir}: {result.output}"
-        assert "imported" in result.output, f"{layout_dir}: {result.output}"
+
+        propose_result = runner.invoke(app, ["import", str(pdf_path)], catch_exceptions=False)
+        assert propose_result.exit_code == 0, f"{layout_dir}: {propose_result.output}"
+        assert "awaiting_extractor" in propose_result.output, (
+            f"{layout_dir}: expected awaiting_extractor with no issuer registered yet, "
+            f"got:\n{propose_result.output}"
+        )
+
+        confirm_args = _confirm_command_args(propose_result.output)
+        confirm_result = runner.invoke(app, confirm_args, catch_exceptions=False)
+        assert confirm_result.exit_code == 0, f"{layout_dir}: {confirm_result.output}"
+        assert "imported" in confirm_result.output, f"{layout_dir}: {confirm_result.output}"
 
     classify_result = runner.invoke(app, ["classify"], catch_exceptions=False)
     assert classify_result.exit_code == 0, classify_result.output
@@ -270,3 +277,32 @@ def test_gate2_end_to_end_import_classify_report(home: Path) -> None:
     total_idx = header.index("total_minor")
     actual_total = sum(int(row[total_idx]) for row in data_rows)
     assert actual_total == _expected_report_total()
+
+
+def test_gate2_registering_an_issuer_first_makes_a_later_import_auto_confirm(home: Path) -> None:
+    """The `issuers` CLI group (§3.12a/A23/A24) reaches the confident path on a *later* import:
+    register the issuer whose match terms appear on the fixture's page 1, confirm one statement
+    (with `--remember`, though it matters only for a layout spec — here it just documents intent),
+    then import a second statement from the same issuer with no flags at all and confirm it
+    auto-confirms (no `awaiting_extractor` message, no manual confirm step)."""
+    migrate_result = runner.invoke(app, ["migrate"], catch_exceptions=False)
+    assert migrate_result.exit_code == 0, migrate_result.output
+
+    add_result = runner.invoke(
+        app, ["issuers", "add", "Fixture Bank", "--match-term", "Fixture Bank"]
+    )
+    assert add_result.exit_code == 0, add_result.output
+
+    fixtures_dir = Path(__file__).resolve().parent / "fixtures" / "generated" / "layout_a_credit"
+    first_pdf = fixtures_dir / "layout_a_credit_normal.pdf"
+    second_pdf = fixtures_dir / "layout_a_credit_refund_and_payment.pdf"
+
+    first_result = runner.invoke(app, ["import", str(first_pdf)], catch_exceptions=False)
+    assert first_result.exit_code == 0, first_result.output
+    assert "imported" in first_result.output, first_result.output
+    assert "awaiting_extractor" not in first_result.output, first_result.output
+
+    second_result = runner.invoke(app, ["import", str(second_pdf)], catch_exceptions=False)
+    assert second_result.exit_code == 0, second_result.output
+    assert "imported" in second_result.output, second_result.output
+    assert "awaiting_extractor" not in second_result.output, second_result.output
