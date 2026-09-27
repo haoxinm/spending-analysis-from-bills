@@ -32,6 +32,23 @@
         "pattern": { "type": "string", "minLength": 1, "maxLength": 200 }
       }
     },
+    "fx": {
+      "type": "object",
+      "required": ["pattern", "amount_group", "currency_group", "rate_group"],
+      "additionalProperties": false,
+      "properties": {
+        "pattern": { "type": "string", "minLength": 1, "maxLength": 200 },
+        "amount_group": {
+          "description": "A regex group name (string) or 1-based index (integer)."
+        },
+        "currency_group": {
+          "description": "A regex group name (string) or 1-based index (integer)."
+        },
+        "rate_group": {
+          "description": "A regex group name (string) or 1-based index (integer)."
+        }
+      }
+    },
     "detect": {
       "type": "object",
       "required": ["score"],
