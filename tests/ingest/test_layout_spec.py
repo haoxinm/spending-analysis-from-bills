@@ -199,7 +199,7 @@ columns:
 # Interpreter: sections, exclude_tables, sign conventions, terminator (Layout-B-shaped)
 # --------------------------------------------------------------------------------------------
 
-_LAYOUT_B_SHAPED_SPEC = """
+_LAYOUT_B_SHAPED_SPEC = r"""
 id: test_layout_b
 version: 1
 account_type: credit
@@ -221,6 +221,11 @@ sections:
 sign: {outflow: unsigned, inflow: leading_minus}
 year_inference: from_period
 totals: {section_totals: true}
+fx:
+  pattern: '^FOREIGN CURRENCY AMOUNT\s+([\d,]+\.\d{2})\s+([A-Z]{3})\s+EXCH(?:ANGE)? RATE\s+([\d.]+)$'
+  amount_group: 1
+  currency_group: 2
+  rate_group: 3
 """
 
 
@@ -495,6 +500,137 @@ def test_spec_parser_account_mask_is_none_when_not_present() -> None:
     loaded = load_spec(_LAYOUT_B_SHAPED_SPEC, source="user_authored")
     parsed = loaded.parser.parse(_layout_b_shaped_doc())
     assert parsed.account_hint.mask is None
+
+
+# --------------------------------------------------------------------------------------------
+# fx: a dateless foreign-currency continuation line (§2c)
+# --------------------------------------------------------------------------------------------
+
+
+def test_spec_parser_fx_line_sets_previous_transaction_and_never_touches_description() -> None:
+    words: list[Word] = []
+    top = 100.0
+
+    def add(row_words: list[Word]) -> None:
+        nonlocal top
+        words.extend(row_words)
+        top += _ROW_HEIGHT + 2.0
+
+    add(_heading("PURCHASES", top))
+    add(_row(top, posted_date="01/05", description="Coffee Shop", amount="10.00"))
+    add(_heading("FOREIGN CURRENCY AMOUNT 35.00 GBP EXCH RATE 1.20000", top))
+    add(_row(top, posted_date="01/06", description="Grocery", amount="32.10"))  # untouched
+    doc = _doc(_PERIOD_TEXT, words)
+
+    loaded = load_spec(_LAYOUT_B_SHAPED_SPEC, source="user_authored")
+    parsed = loaded.parser.parse(doc)
+
+    assert len(parsed.transactions) == 2
+    coffee, grocery = parsed.transactions
+    assert coffee.description == "Coffee Shop"  # not "Coffee Shop FOREIGN CURRENCY AMOUNT ..."
+    assert coffee.fx_amount_minor == 3500
+    assert coffee.fx_currency == "GBP"
+    assert coffee.fx_rate == pytest.approx(1.2)
+    assert grocery.fx_amount_minor is None
+    assert grocery.fx_currency is None
+    assert grocery.fx_rate is None
+
+
+def test_spec_parser_fx_line_that_does_not_match_falls_through_to_continuation() -> None:
+    """A dateless row that doesn't match `fx` is still merged as a plain description
+    continuation — `fx` only intercepts lines that actually match it."""
+    words: list[Word] = []
+    top = 100.0
+
+    def add(row_words: list[Word]) -> None:
+        nonlocal top
+        words.extend(row_words)
+        top += _ROW_HEIGHT + 2.0
+
+    add(_heading("PURCHASES", top))
+    add(_row(top, posted_date="01/05", description="Some Merchant", amount="10.00"))
+    add(_row(top, description="Ref# 12345 extra detail"))
+    doc = _doc(_PERIOD_TEXT, words)
+
+    loaded = load_spec(_LAYOUT_B_SHAPED_SPEC, source="user_authored")
+    parsed = loaded.parser.parse(doc)
+
+    assert len(parsed.transactions) == 1
+    assert parsed.transactions[0].description == "Some Merchant Ref# 12345 extra detail"
+    assert parsed.transactions[0].fx_amount_minor is None
+
+
+def test_load_spec_rejects_fx_pattern_that_is_pathological() -> None:
+    text = """
+id: evil_fx
+version: 1
+account_type: credit
+detect: {score: 0.5}
+fx: {pattern: "(a+)+", amount_group: 1, currency_group: 2, rate_group: 3}
+columns:
+  - {name: posted_date, x0: 0, x1: 50, type: date, formats: ["%m/%d"]}
+  - {name: description, x0: 50, x1: 200, type: text}
+  - {name: amount, x0: 200, x1: 260, type: money}
+"""
+    with pytest.raises(LayoutSpecError) as exc_info:
+        load_spec(text, source="pasted")
+    assert "backtrack" in str(exc_info.value)
+
+
+def test_load_spec_rejects_fx_group_that_is_not_a_name_or_positive_index() -> None:
+    text = """
+id: bad_fx_group
+version: 1
+account_type: credit
+detect: {score: 0.5}
+fx: {pattern: "FX (.+)", amount_group: 0, currency_group: 2, rate_group: 3}
+columns:
+  - {name: posted_date, x0: 0, x1: 50, type: date, formats: ["%m/%d"]}
+  - {name: description, x0: 50, x1: 200, type: text}
+  - {name: amount, x0: 200, x1: 260, type: money}
+"""
+    with pytest.raises(LayoutSpecError) as exc_info:
+        load_spec(text, source="pasted")
+    assert any(e.field == "fx.amount_group" for e in exc_info.value.errors)
+
+
+def test_spec_parser_fx_with_named_groups() -> None:
+    text = r"""
+id: named_fx
+version: 1
+account_type: credit
+detect: {score: 0.5}
+columns:
+  - {name: posted_date, x0: 0, x1: 50, type: date, formats: ["%m/%d"]}
+  - {name: description, x0: 50, x1: 200, type: text, multiline: true}
+  - {name: amount, x0: 200, x1: 260, type: money}
+sign: {outflow: unsigned, inflow: leading_minus}
+year_inference: from_period
+fx:
+  pattern: '^FX (?P<amt>[\d.]+) (?P<cur>[A-Z]{3}) @ (?P<rate>[\d.]+)$'
+  amount_group: amt
+  currency_group: cur
+  rate_group: rate
+"""
+    words: list[Word] = []
+    top = 100.0
+
+    def add(row_words: list[Word]) -> None:
+        nonlocal top
+        words.extend(row_words)
+        top += _ROW_HEIGHT + 2.0
+
+    add(_row(top, posted_date="01/05", description="Coffee Shop", amount="10.00"))
+    add(_heading("FX 35.00 GBP @ 1.20000", top))
+    doc = _doc(_PERIOD_TEXT, words)
+
+    loaded = load_spec(text, source="pasted")
+    parsed = loaded.parser.parse(doc)
+
+    assert len(parsed.transactions) == 1
+    assert parsed.transactions[0].fx_amount_minor == 3500
+    assert parsed.transactions[0].fx_currency == "GBP"
+    assert parsed.transactions[0].fx_rate == pytest.approx(1.2)
 
 
 # --------------------------------------------------------------------------------------------
