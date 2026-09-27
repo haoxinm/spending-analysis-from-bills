@@ -575,17 +575,22 @@ class SpecParser:
                             excluding = True
                             heading_matched = True
                             break
-                    if not heading_matched:
+                    # §2c: disambiguate by which table we are inside, never by label alone.
+                    # Once excluding, a section pattern can never clear it — an excluded table
+                    # (e.g. INTEREST CHARGED) can itself contain a row bearing a section label
+                    # (e.g. "PURCHASES 22.99% ...") that is not a real heading. Only a
+                    # terminator or another excluded-table match changes state.
+                    if not heading_matched and not excluding:
                         for pattern in sections.patterns:
                             if pattern.match.search(text):
                                 current_pattern = pattern
                                 current_section = pattern.match_text
-                                excluding = False
                                 heading_matched = True
                                 break
                 if heading_matched:
                     continue
                 if excluding:
+                    # A row inside an excluded table is never continuation text either.
                     continue
 
                 band_values = assign_to_bands(row, self._bands)

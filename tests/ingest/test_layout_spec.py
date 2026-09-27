@@ -236,10 +236,12 @@ def _layout_b_shaped_doc() -> ExtractedDoc:
     add(_heading("PURCHASES", top))
     add(_row(top, posted_date="01/05", description="Coffee Shop", amount="4.50"))
     add(_row(top, posted_date="01/06", description="Grocery", amount="32.10"))
-    add(_heading("INTEREST CHARGED", top))
-    add(_row(top, posted_date="01/07", description="Interest Charge", amount="1.99"))
     add(_heading("PAYMENTS AND OTHER CREDITS", top))
     add(_row(top, posted_date="01/15", description="Payment Thank You", amount="-100.00"))
+    # INTEREST CHARGED is the real Layout B ordering: it comes last, right before the
+    # terminator, and once inside it a stray section-shaped row must not re-open a section.
+    add(_heading("INTEREST CHARGED", top))
+    add(_row(top, posted_date="01/07", description="Interest Charge", amount="1.99"))
     add(_heading("TOTAL NEW BALANCE FOR THIS PERIOD", top))
     add(_row(top, posted_date="01/20", description="Should Never Appear", amount="9.99"))
     return _doc(_PERIOD_TEXT, words)
@@ -276,6 +278,39 @@ def test_spec_parser_excludes_interest_table_and_applies_sign_conventions() -> N
     assert parsed.section_totals == (("PURCHASES", 3660), ("PAYMENTS AND OTHER CREDITS", -10000))
     assert parsed.period_start == date(2024, 1, 1)
     assert parsed.period_end == date(2024, 1, 31)
+
+
+def test_excluded_table_state_survives_a_label_shaped_row_inside_it() -> None:
+    """§2c: disambiguate by which table we are inside, never by label alone. A row inside
+    INTEREST CHARGED that happens to start with a section label (the APR/finance-charge line,
+    e.g. ``PURCHASES 22.99% 201.95 3.87``) must not re-open that section, and the interest rows
+    that follow it must not become continuation text for the previous transaction."""
+    words: list[Word] = []
+    top = 100.0
+
+    def add(row_words: list[Word]) -> None:
+        nonlocal top
+        words.extend(row_words)
+        top += _ROW_HEIGHT + 2.0
+
+    add(_heading("PURCHASES", top))
+    add(_row(top, posted_date="01/05", description="Coffee Shop", amount="4.50"))
+    add(_heading("INTEREST CHARGED", top))
+    add(_heading("PURCHASES 22.99% 201.95 3.87", top))  # label-shaped APR row, not a real heading
+    add(_row(top, posted_date="01/08", description="Interest Charge A", amount="1.99"))
+    add(_heading("PURCHASES 24.99% 50.00 1.04", top))  # a second one, for good measure
+    add(_row(top, posted_date="01/09", description="Interest Charge B", amount="0.87"))
+    add(_heading("TOTAL NEW BALANCE FOR THIS PERIOD", top))
+    doc = _doc(_PERIOD_TEXT, words)
+
+    loaded = load_spec(_LAYOUT_B_SHAPED_SPEC, source="user_authored")
+    parsed = loaded.parser.parse(doc)
+
+    assert len(parsed.transactions) == 1
+    coffee = parsed.transactions[0]
+    assert coffee.description == "Coffee Shop"  # never merged with any interest-table text
+    assert coffee.amount_minor == 450
+    assert coffee.section == "PURCHASES"
 
 
 def test_spec_parser_multiline_description_continuation() -> None:
