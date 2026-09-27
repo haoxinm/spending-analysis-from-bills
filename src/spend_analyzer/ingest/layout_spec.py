@@ -37,7 +37,6 @@ from spend_analyzer.core.errors import ParserError, SpendAnalyzerError
 from spend_analyzer.core.types import (
     AccountHint,
     ExtractedDoc,
-    Kind,
     KindHint,
     ParsedStatement,
     RawTransaction,
@@ -64,10 +63,6 @@ MAX_PATTERN_LENGTH = 200
 #: quantified — e.g. ``(a+)+``, ``(\\d*)*``, ``(ab+)+``. Not a complete detector, but it catches
 #: the classic shape and needs no execution to check.
 _NESTED_QUANTIFIER_RE = re.compile(r"\([^()]*[+*][^()]*\)[+*]")
-
-#: `Kind`s that mean money left the user (I5: positive `amount_minor`) when a spec has no section
-#: telling us otherwise.
-_OUTFLOW_KINDS: frozenset[Kind] = frozenset({"purchase", "fee", "interest", "adjustment"})
 
 _SourceLiteral = Literal["pasted", "llm_proposed", "user_authored"]
 _ColumnType = Literal["date", "text", "money", "balance"]
@@ -245,9 +240,16 @@ class ColumnSpec:
 
 @dataclass(frozen=True, slots=True)
 class SectionPattern:
+    """A section heading pattern. ``kind_hint`` is the fallback used for both flow directions;
+    ``outflow_kind_hint``/``inflow_kind_hint`` override it for a row whose resolved flow (I5) is
+    that direction — e.g. in Layout A/B, ``PURCHASES`` means `purchase` for an outflow row but
+    `adjustment` for the rare inflow row (a merchant-issued statement credit)."""
+
     match: re.Pattern[str]
     match_text: str
-    kind_hint: KindHint
+    kind_hint: KindHint | None = None
+    outflow_kind_hint: KindHint | None = None
+    inflow_kind_hint: KindHint | None = None
 
 
 @dataclass(frozen=True, slots=True)
@@ -285,6 +287,9 @@ class LayoutSpecDoc:
     sign: SignSpec
     year_inference: _YearInference
     totals: TotalsSpec
+    #: LOCAL ONLY (I1b): last-4 account mask, extracted from the document's full text. `None`
+    #: when the spec declares no `account_mask` block.
+    account_mask_pattern: re.Pattern[str] | None
 
 
 def _build_doc(data: Mapping[str, Any]) -> LayoutSpecDoc:
@@ -345,6 +350,17 @@ def _build_doc(data: Mapping[str, Any]) -> LayoutSpecDoc:
             SpecFieldError("columns", "cannot mix an 'amount' column with debit/credit columns")
         )
 
+    sections_data = data.get("sections")
+    if sections_data is not None:
+        for i, p in enumerate(sections_data.get("patterns", ())):
+            if not any(k in p for k in ("kind_hint", "outflow_kind_hint", "inflow_kind_hint")):
+                errors.append(
+                    SpecFieldError(
+                        f"sections.patterns[{i}]",
+                        "must set kind_hint, outflow_kind_hint, or inflow_kind_hint",
+                    )
+                )
+
     if errors:
         raise LayoutSpecError("layout spec has field-level errors", tuple(errors))
 
@@ -355,14 +371,15 @@ def _build_doc(data: Mapping[str, Any]) -> LayoutSpecDoc:
         score=float(detect_data["score"]),
     )
 
-    sections_data = data.get("sections")
     sections: SectionsSpec | None = None
     if sections_data is not None:
         patterns = tuple(
             SectionPattern(
                 match=_compile_pattern_safe(p["match"], f"sections.patterns[{i}].match"),
                 match_text=p["match"],
-                kind_hint=p["kind_hint"],
+                kind_hint=p.get("kind_hint"),
+                outflow_kind_hint=p.get("outflow_kind_hint"),
+                inflow_kind_hint=p.get("inflow_kind_hint"),
             )
             for i, p in enumerate(sections_data.get("patterns", ()))
         )
@@ -395,6 +412,13 @@ def _build_doc(data: Mapping[str, Any]) -> LayoutSpecDoc:
     totals_data = data.get("totals", {})
     totals = TotalsSpec(section_totals=bool(totals_data.get("section_totals", False)))
 
+    account_mask_data = data.get("account_mask")
+    account_mask_pattern = (
+        _compile_pattern_safe(account_mask_data["pattern"], "account_mask.pattern")
+        if account_mask_data is not None
+        else None
+    )
+
     return LayoutSpecDoc(
         id=data["id"],
         version=int(data["version"]),
@@ -406,6 +430,7 @@ def _build_doc(data: Mapping[str, Any]) -> LayoutSpecDoc:
         sign=sign,
         year_inference=data.get("year_inference", "from_period"),
         totals=totals,
+        account_mask_pattern=account_mask_pattern,
     )
 
 
@@ -414,19 +439,23 @@ def _build_doc(data: Mapping[str, Any]) -> LayoutSpecDoc:
 # ------------------------------------------------------------------------------------------------
 
 
-def _flow_for_kind(kind_hint: KindHint | None) -> Literal["outflow", "inflow"]:
-    if kind_hint is not None and kind_hint not in _OUTFLOW_KINDS:
-        return "inflow"
-    return "outflow"
+_Flow = Literal["outflow", "inflow"]
 
 
-def _resolve_amount(
+def _resolve_amount_and_flow(
     band_values: Mapping[str, str],
     money_cols: Sequence[ColumnSpec],
     sign: SignSpec,
-    kind_hint: KindHint | None,
-) -> int | None:
-    """Resolve one row's signed `amount_minor` (I5) from its money column(s)."""
+) -> tuple[int, _Flow] | None:
+    """Resolve one row's signed `amount_minor` (I5) and flow direction from its money column(s).
+
+    A debit/credit column pair (Layout D, A26) determines the flow directly: a filled `debit`
+    cell is an outflow, a filled `credit` cell is an inflow. A single `amount` column determines
+    it from the printed sign, per `sign` — whichever of `outflow`/`inflow` is `leading_minus` is
+    the direction the printed sign confirms; when both conventions are the same the print carries
+    no directional information and outflow is assumed (a wrong guess here is caught downstream by
+    reconciliation, A25).
+    """
     debit_col = next((c for c in money_cols if c.role == "debit"), None)
     credit_col = next((c for c in money_cols if c.role == "credit"), None)
     if debit_col is not None or credit_col is not None:
@@ -435,9 +464,9 @@ def _resolve_amount(
         debit = parse_money(debit_text) if debit_text.strip() else None
         credit = parse_money(credit_text) if credit_text.strip() else None
         if debit is not None:
-            return debit.magnitude_minor
+            return debit.magnitude_minor, "outflow"
         if credit is not None:
-            return -credit.magnitude_minor
+            return -credit.magnitude_minor, "inflow"
         return None
 
     amount_col = next((c for c in money_cols if (c.role or "amount") == "amount"), None)
@@ -450,11 +479,26 @@ def _resolve_amount(
     if parsed is None:
         return None
 
-    flow = _flow_for_kind(kind_hint)
-    convention = sign.outflow if flow == "outflow" else sign.inflow
-    if convention == "leading_minus":
-        return -parsed.magnitude_minor if parsed.printed_negative else parsed.magnitude_minor
-    return parsed.magnitude_minor if flow == "outflow" else -parsed.magnitude_minor
+    flow: _Flow
+    if sign.inflow == "leading_minus" and sign.outflow != "leading_minus":
+        flow = "inflow" if parsed.printed_negative else "outflow"
+    elif sign.outflow == "leading_minus" and sign.inflow != "leading_minus":
+        flow = "outflow" if parsed.printed_negative else "inflow"
+    else:
+        flow = "outflow"
+
+    amount_minor = -parsed.magnitude_minor if flow == "inflow" else parsed.magnitude_minor
+    return amount_minor, flow
+
+
+def _kind_hint_for_flow(pattern: SectionPattern | None, flow: _Flow) -> KindHint | None:
+    """The `kind_hint` for a row given the section pattern (if any) it fell under and its
+    resolved flow direction — a flow-specific hint wins over the pattern's plain `kind_hint`."""
+    if pattern is None:
+        return None
+    if flow == "outflow":
+        return pattern.outflow_kind_hint or pattern.kind_hint
+    return pattern.inflow_kind_hint or pattern.kind_hint
 
 
 class SpecParser:
@@ -496,8 +540,15 @@ class SpecParser:
 
         summary = extract_period_and_balances(doc)
 
+        mask: str | None = None
+        if spec.account_mask_pattern is not None:
+            mask_match = spec.account_mask_pattern.search(doc.full_text)
+            if mask_match is not None and mask_match.groups():
+                raw_mask = mask_match.group(1)
+                mask = raw_mask[-4:] if raw_mask else None
+
         rows_out: list[dict[str, Any]] = []
-        current_kind_hint: KindHint | None = None
+        current_pattern: SectionPattern | None = None
         current_section: str | None = None
         excluding = False
         terminated = False
@@ -527,7 +578,7 @@ class SpecParser:
                     if not heading_matched:
                         for pattern in sections.patterns:
                             if pattern.match.search(text):
-                                current_kind_hint = pattern.kind_hint
+                                current_pattern = pattern
                                 current_section = pattern.match_text
                                 excluding = False
                                 heading_matched = True
@@ -542,23 +593,20 @@ class SpecParser:
                 partial = parse_date(date_text, date_col.formats) if date_text.strip() else None
 
                 if partial is None:
-                    if rows_out and desc_col is not None and desc_col.multiline:
-                        extra = band_values.get("description", "").strip()
-                        other_bands_empty = all(
-                            not band_values.get(c.name, "").strip()
-                            for c in columns
-                            if c.name != "description"
-                        )
-                        if extra and other_bands_empty:
-                            last = rows_out[-1]
-                            last["description"] = f"{last['description']} {extra}".strip()
+                    # A continuation line for the previous transaction's multiline description
+                    # (no date, not a heading/excluded/terminator row): take the whole row, words
+                    # ordered left to right, not just whatever fell in the description band —
+                    # a continuation printed from the left margin can span the date band too.
+                    if rows_out and desc_col is not None and desc_col.multiline and text:
+                        last = rows_out[-1]
+                        last["description"] = f"{last['description']} {text}".strip()
                     continue
 
-                amount_minor = _resolve_amount(
-                    band_values, money_cols, spec.sign, current_kind_hint
-                )
-                if amount_minor is None:
+                resolved = _resolve_amount_and_flow(band_values, money_cols, spec.sign)
+                if resolved is None:
                     continue
+                amount_minor, flow = resolved
+                kind_hint = _kind_hint_for_flow(current_pattern, flow)
 
                 posted_date = self._resolve_date(
                     partial, summary.period_start, summary.period_end, text
@@ -584,7 +632,7 @@ class SpecParser:
                         "transaction_date": transaction_date,
                         "description": band_values.get("description", "").strip(),
                         "amount_minor": amount_minor,
-                        "kind_hint": current_kind_hint,
+                        "kind_hint": kind_hint,
                         "section": current_section,
                         "issuer_category": issuer_category,
                     }
@@ -618,7 +666,7 @@ class SpecParser:
 
         return ParsedStatement(
             account_hint=AccountHint(
-                account_type=spec.account_type, mask=None, currency=spec.currency
+                account_type=spec.account_type, mask=mask, currency=spec.currency
             ),
             period_start=summary.period_start,
             period_end=summary.period_end,

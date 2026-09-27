@@ -24,6 +24,14 @@
       "minLength": 3,
       "maxLength": 3
     },
+    "account_mask": {
+      "type": "object",
+      "required": ["pattern"],
+      "additionalProperties": false,
+      "properties": {
+        "pattern": { "type": "string", "minLength": 1, "maxLength": 200 }
+      }
+    },
     "detect": {
       "type": "object",
       "required": ["score"],
@@ -75,11 +83,35 @@
           "type": "array",
           "items": {
             "type": "object",
-            "required": ["match", "kind_hint"],
+            "required": ["match"],
             "additionalProperties": false,
             "properties": {
               "match": { "type": "string", "minLength": 1, "maxLength": 200 },
               "kind_hint": {
+                "enum": [
+                  "purchase",
+                  "refund",
+                  "payment",
+                  "transfer",
+                  "fee",
+                  "interest",
+                  "adjustment",
+                  "payment_or_refund"
+                ]
+              },
+              "outflow_kind_hint": {
+                "enum": [
+                  "purchase",
+                  "refund",
+                  "payment",
+                  "transfer",
+                  "fee",
+                  "interest",
+                  "adjustment",
+                  "payment_or_refund"
+                ]
+              },
+              "inflow_kind_hint": {
                 "enum": [
                   "purchase",
                   "refund",

@@ -299,6 +299,31 @@ def test_spec_parser_multiline_description_continuation() -> None:
     assert parsed.transactions[0].description == "Some Merchant Ref# 12345 extra detail"
 
 
+def test_spec_parser_multiline_continuation_keeps_words_that_fall_in_other_bands() -> None:
+    """A continuation line printed flush with the left margin lands in the `posted_date` band,
+    not the `description` band — the whole row (words ordered by x0) must still be kept."""
+    words: list[Word] = []
+    top = 100.0
+
+    def add(row_words: list[Word]) -> None:
+        nonlocal top
+        words.extend(row_words)
+        top += _ROW_HEIGHT + 2.0
+
+    add(_heading("PURCHASES", top))
+    add(_row(top, posted_date="01/05", description="Some Merchant", amount="10.00"))
+    # A continuation word placed inside the posted_date band (x0=0-50), not the description band.
+    words.append(_word("Ref# 12345", 5.0, 49.0, top))
+    top += _ROW_HEIGHT + 2.0
+    doc = _doc(_PERIOD_TEXT, words)
+
+    loaded = load_spec(_LAYOUT_B_SHAPED_SPEC, source="user_authored")
+    parsed = loaded.parser.parse(doc)
+
+    assert len(parsed.transactions) == 1
+    assert parsed.transactions[0].description == "Some Merchant Ref# 12345"
+
+
 def test_spec_parser_raises_parser_error_when_year_cannot_be_resolved() -> None:
     """No period found and dates carry no explicit year -> `ParserError`, not a silent guess."""
     words: list[Word] = []
@@ -386,6 +411,124 @@ columns:
     with pytest.raises(LayoutSpecError) as exc_info:
         load_spec(text, source="pasted")
     assert any(e.field == "columns" for e in exc_info.value.errors)
+
+
+# --------------------------------------------------------------------------------------------
+# account_mask: local-only, extracted from the document's text
+# --------------------------------------------------------------------------------------------
+
+
+def test_load_spec_rejects_account_mask_pattern_that_is_pathological() -> None:
+    text = """
+id: evil_mask
+version: 1
+account_type: credit
+detect: {score: 0.5}
+account_mask: {pattern: "(a+)+"}
+columns:
+  - {name: posted_date, x0: 0, x1: 50, type: date, formats: ["%m/%d"]}
+  - {name: description, x0: 50, x1: 200, type: text}
+  - {name: amount, x0: 200, x1: 260, type: money}
+"""
+    with pytest.raises(LayoutSpecError) as exc_info:
+        load_spec(text, source="pasted")
+    assert "backtrack" in str(exc_info.value)
+
+
+def test_spec_parser_extracts_account_mask_last_four_digits() -> None:
+    text = """
+id: masked_spec
+version: 1
+account_type: credit
+detect: {score: 0.5}
+account_mask: {pattern: "ending in\\\\s+(\\\\d{4,6})"}
+columns:
+  - {name: posted_date, x0: 0, x1: 50, type: date, formats: ["%m/%d"]}
+  - {name: description, x0: 50, x1: 200, type: text}
+  - {name: amount, x0: 200, x1: 260, type: money}
+"""
+    loaded = load_spec(text, source="pasted")
+    doc = _doc(
+        _PERIOD_TEXT + "Account ending in 445678\n",
+        _row(100.0, posted_date="01/05", description="X", amount="1.00"),
+    )
+    parsed = loaded.parser.parse(doc)
+    assert parsed.account_hint.mask == "5678"  # last 4 only (I1b): local-only, never egressed
+
+
+def test_spec_parser_account_mask_is_none_when_not_present() -> None:
+    loaded = load_spec(_LAYOUT_B_SHAPED_SPEC, source="user_authored")
+    parsed = loaded.parser.parse(_layout_b_shaped_doc())
+    assert parsed.account_hint.mask is None
+
+
+# --------------------------------------------------------------------------------------------
+# Sign-dependent kind hints: outflow_kind_hint / inflow_kind_hint on a section pattern
+# --------------------------------------------------------------------------------------------
+
+_SIGN_DEPENDENT_KIND_SPEC = """
+id: test_sign_dependent
+version: 1
+account_type: credit
+detect: {score: 0.5}
+columns:
+  - {name: posted_date, x0: 0, x1: 50, type: date, formats: ["%m/%d"]}
+  - {name: description, x0: 50, x1: 200, type: text}
+  - {name: amount, x0: 200, x1: 260, type: money}
+sections:
+  mode: heading
+  patterns:
+    - {match: "PURCHASES", outflow_kind_hint: purchase, inflow_kind_hint: adjustment}
+sign: {outflow: unsigned, inflow: leading_minus}
+year_inference: from_period
+"""
+
+
+def test_sign_dependent_kind_hints_purchases_section_layout_a_and_b() -> None:
+    """PURCHASES -> `purchase` for an outflow row, `adjustment` for an inflow row (a
+    merchant-issued statement credit) — the convention Layout A and B both need."""
+    words: list[Word] = []
+    top = 100.0
+
+    def add(row_words: list[Word]) -> None:
+        nonlocal top
+        words.extend(row_words)
+        top += _ROW_HEIGHT + 2.0
+
+    add(_heading("PURCHASES", top))
+    add(_row(top, posted_date="01/05", description="Coffee Shop", amount="4.50"))
+    add(_row(top, posted_date="01/06", description="Merchant Credit", amount="-15.00"))
+    doc = _doc(_PERIOD_TEXT, words)
+
+    loaded = load_spec(_SIGN_DEPENDENT_KIND_SPEC, source="user_authored")
+    parsed = loaded.parser.parse(doc)
+
+    assert len(parsed.transactions) == 2
+    purchase, credit = parsed.transactions
+    assert purchase.amount_minor == 450
+    assert purchase.kind_hint == "purchase"
+    assert credit.amount_minor == -1500
+    assert credit.kind_hint == "adjustment"
+
+
+def test_load_spec_rejects_section_pattern_with_no_kind_hint_at_all() -> None:
+    text = """
+id: no_kind_hint
+version: 1
+account_type: credit
+detect: {score: 0.5}
+columns:
+  - {name: posted_date, x0: 0, x1: 50, type: date, formats: ["%m/%d"]}
+  - {name: description, x0: 50, x1: 200, type: text}
+  - {name: amount, x0: 200, x1: 260, type: money}
+sections:
+  mode: heading
+  patterns:
+    - {match: "PURCHASES"}
+"""
+    with pytest.raises(LayoutSpecError) as exc_info:
+        load_spec(text, source="pasted")
+    assert any(e.field == "sections.patterns[0]" for e in exc_info.value.errors)
 
 
 # --------------------------------------------------------------------------------------------
