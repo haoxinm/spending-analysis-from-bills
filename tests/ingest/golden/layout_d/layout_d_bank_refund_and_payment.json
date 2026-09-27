@@ -1,0 +1,42 @@
+{
+  "account_hint": {
+    "account_type": "checking",
+    "currency": "USD",
+    "mask": null
+  },
+  "closing_balance_minor": 73000,
+  "opening_balance_minor": 120000,
+  "period_end": "2026-03-31",
+  "period_start": "2026-03-01",
+  "section_totals": [],
+  "stated_total_minor": null,
+  "transactions": [
+    {
+      "amount_minor": -3000,
+      "currency": "USD",
+      "description": "MERCHANT REFUND WIDGET CO",
+      "fx_amount_minor": null,
+      "fx_currency": null,
+      "fx_rate": null,
+      "issuer_category": null,
+      "kind_hint": "refund",
+      "posted_date": "2026-03-06",
+      "section": "deposits and additions",
+      "transaction_date": null
+    },
+    {
+      "amount_minor": 50000,
+      "currency": "USD",
+      "description": "AUTOPAY CRD PMT VISA CARD",
+      "fx_amount_minor": null,
+      "fx_currency": null,
+      "fx_rate": null,
+      "issuer_category": null,
+      "kind_hint": "transfer",
+      "posted_date": "2026-03-18",
+      "section": "electronic withdrawals",
+      "transaction_date": null
+    }
+  ],
+  "warnings": []
+}

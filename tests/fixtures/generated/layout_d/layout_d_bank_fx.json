@@ -1,0 +1,29 @@
+{
+  "account_hint": {
+    "account_type": "checking",
+    "currency": "USD",
+    "mask": null
+  },
+  "closing_balance_minor": 76000,
+  "opening_balance_minor": 80000,
+  "period_end": "2026-03-31",
+  "period_start": "2026-03-01",
+  "section_totals": [],
+  "stated_total_minor": null,
+  "transactions": [
+    {
+      "amount_minor": 4000,
+      "currency": "USD",
+      "description": "FOREIGN PURCHASE CAFE PARIS",
+      "fx_amount_minor": 4500,
+      "fx_currency": "EUR",
+      "fx_rate": 1.0921,
+      "issuer_category": null,
+      "kind_hint": "purchase",
+      "posted_date": "2026-03-08",
+      "section": "electronic withdrawals",
+      "transaction_date": null
+    }
+  ],
+  "warnings": []
+}
