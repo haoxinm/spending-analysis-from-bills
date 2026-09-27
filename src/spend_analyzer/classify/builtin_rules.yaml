@@ -1,31 +1,168 @@
-# Built-in merchant-classification rules (D8, cascade step 4, §2b P2-B).
+# Built-in merchant-classification rules (D8, cascade step 4, §2b P2-B, expanded by P4-B).
 #
-# This is the P2-B *seed* file: a small, high-precision starter set. The ~120-pattern corpus is
-# P4-B's job later; this file is deliberately short so every entry can be reviewed for precision
-# over recall (D8: a wrong builtin rule is worse than one extra LLM call).
+# ~120 high-precision patterns, grouped by taxonomy category/subcategory below. Precision over
+# recall (D8): a rule earns its place only if a human would label it identically without context.
+# Deliberately excluded, even though they are common: marketplaces and multi-purpose merchants
+# whose category depends on *what* was bought rather than *who* sold it (Amazon marketplace,
+# eBay, Etsy, generic "SQ *" card-network prefixes — the latter is stripped as boilerplate before
+# matching anyway, see `ingest/normalize.py`), and any bank/card-issuer name (D14 — issuer names
+# are user data, never hard-coded).
 #
 # Each entry needs a one-line `justification` and a `test_description` a test asserts it matches
 # (specifically: the `merchant_key` that `ingest.normalize.normalize` derives from
 # `test_description`, exactly what the cascade matches against at runtime — see `classify/rules.py`
 # for why rules match `merchant_key` rather than `description_clean`/`description_raw`).
 #
-# match_type: "contains" (substring) or "regex" (a `re.IGNORECASE` pattern). No "exact" entries
-# here — that match type is far too narrow for a merchant name embedded in a longer description
-# and is left for user-authored rules.
-- pattern: "STARBUCKS"
-  match_type: contains
-  category: restaurant
-  subcategory: dine_in
-  justification: "Starbucks storefronts are dine-in/counter-service coffee shops, never delivery."
-  test_description: "STARBUCKS STORE #1234 SEATTLE WA"
+# match_type: "contains" (substring) or "regex" (a `re.IGNORECASE` pattern, matched with
+# `re.search`). No "exact" entries here — that match type is far too narrow for a merchant name
+# embedded in a longer description and is left for user-authored rules.
+#
+# `merchant_key` has already had punctuation replaced with spaces and store numbers stripped
+# (§3.6, A27), so patterns below deliberately omit apostrophes/hyphens (e.g. "WENDYS", not
+# "WENDY'S") to match the reduced key, and `test_description`s are written the way real card
+# network descriptors actually look (upper-case, punctuation-light).
 
-- pattern: "MCDONALD"
+# --------------------------------------------------------------------------------------------
+# travel / flights
+# --------------------------------------------------------------------------------------------
+- pattern: "DELTA AIR"
   match_type: contains
-  category: restaurant
-  subcategory: dine_in
-  justification: "McDonald's locations are restaurants; the merchant name alone is unambiguous."
-  test_description: "MCDONALDS F1234 PORTLAND OR"
+  category: travel
+  subcategory: flights
+  justification: "Airline ticket/fee descriptors starting \"DELTA AIR\" are unambiguously flights."
+  test_description: "DELTA AIR 0062345678900 ATLANTA GA"
 
+- pattern: "AMERICAN AIRLINES"
+  match_type: contains
+  category: travel
+  subcategory: flights
+  justification: "The full airline name (not bare \"AMERICAN\") is unambiguously a flight purchase."
+  test_description: "AMERICAN AIRLINES 0012345678901 FORT WORTH TX"
+
+- pattern: "UNITED AIRLINES"
+  match_type: contains
+  category: travel
+  subcategory: flights
+  justification: "The full airline name (not bare \"UNITED\") is unambiguously a flight purchase."
+  test_description: "UNITED AIRLINES 0167890123456 CHICAGO IL"
+
+- pattern: "SOUTHWEST AIRLINES"
+  match_type: contains
+  category: travel
+  subcategory: flights
+  justification: "Southwest Airlines is a single-purpose passenger carrier."
+  test_description: "SOUTHWEST AIRLINES 5261234567890 DALLAS TX"
+
+- pattern: "JETBLUE"
+  match_type: contains
+  category: travel
+  subcategory: flights
+  justification: "JetBlue is a single-purpose passenger carrier with no other line of business."
+  test_description: "JETBLUE 2791234567890 NEW YORK NY"
+
+- pattern: "LUFTHANSA"
+  match_type: contains
+  category: travel
+  subcategory: flights
+  justification: "Lufthansa (international carrier) is a single-purpose airline."
+  test_description: "LUFTHANSA AIR 0201234567890 FRANKFURT DE"
+
+# --------------------------------------------------------------------------------------------
+# travel / hotels
+# --------------------------------------------------------------------------------------------
+- pattern: "MARRIOTT"
+  match_type: contains
+  category: travel
+  subcategory: hotels
+  justification: "A card descriptor naming a Marriott property is a hotel-stay charge."
+  test_description: "MARRIOTT HOTELS SEATTLE WA"
+
+- pattern: "HILTON"
+  match_type: contains
+  category: travel
+  subcategory: hotels
+  justification: "A card descriptor naming a Hilton property is a hotel-stay charge."
+  test_description: "HILTON GARDEN INN PORTLAND OR"
+
+- pattern: "HYATT"
+  match_type: contains
+  category: travel
+  subcategory: hotels
+  justification: "A card descriptor naming a Hyatt property is a hotel-stay charge."
+  test_description: "HYATT REGENCY DENVER CO"
+
+- pattern: "HOLIDAY INN"
+  match_type: contains
+  category: travel
+  subcategory: hotels
+  justification: "Holiday Inn is a single-purpose lodging brand."
+  test_description: "HOLIDAY INN EXPRESS AUSTIN TX"
+
+- pattern: "AIRBNB"
+  match_type: contains
+  category: travel
+  subcategory: hotels
+  justification: "Airbnb bookings are short-term lodging, not a general marketplace purchase."
+  test_description: "AIRBNB HMABC12345 SAN FRANCISCO CA"
+
+- pattern: "BOOKING COM"
+  match_type: contains
+  category: travel
+  subcategory: hotels
+  justification: "Booking.com's card descriptor is overwhelmingly hotel/lodging reservations."
+  test_description: "BOOKING.COM RESERVATION AMSTERDAM NL"
+
+# --------------------------------------------------------------------------------------------
+# travel / rental_cars
+# --------------------------------------------------------------------------------------------
+- pattern: "HERTZ"
+  match_type: contains
+  category: travel
+  subcategory: rental_cars
+  justification: "Hertz is a single-purpose car-rental brand."
+  test_description: "HERTZ RENT A CAR LOS ANGELES CA"
+
+- pattern: "AVIS"
+  match_type: contains
+  category: travel
+  subcategory: rental_cars
+  justification: "Avis is a single-purpose car-rental brand."
+  test_description: "AVIS RENT A CAR MIAMI FL"
+
+- pattern: "ENTERPRISE RENT"
+  match_type: contains
+  category: travel
+  subcategory: rental_cars
+  justification: "\"ENTERPRISE RENT\" (not bare \"ENTERPRISE\") is unambiguously car rental."
+  test_description: "ENTERPRISE RENT-A-CAR PHOENIX AZ"
+
+- pattern: "NATIONAL CAR RENTAL"
+  match_type: contains
+  category: travel
+  subcategory: rental_cars
+  justification: "The full brand name is a single-purpose car-rental descriptor."
+  test_description: "NATIONAL CAR RENTAL ORLANDO FL"
+
+# --------------------------------------------------------------------------------------------
+# travel / activities
+# --------------------------------------------------------------------------------------------
+- pattern: "VIATOR"
+  match_type: contains
+  category: travel
+  subcategory: activities
+  justification: "Viator sells only tours and excursions, not general merchandise."
+  test_description: "VIATOR TOURS AND EXCURSIONS NEW YORK NY"
+
+- pattern: "GETYOURGUIDE"
+  match_type: contains
+  category: travel
+  subcategory: activities
+  justification: "GetYourGuide sells only tours and excursions (international)."
+  test_description: "GETYOURGUIDE TOURS BERLIN DE"
+
+# --------------------------------------------------------------------------------------------
+# grocery / wholesale_clubs
+# --------------------------------------------------------------------------------------------
 - pattern: "COSTCO"
   match_type: contains
   category: grocery
@@ -33,6 +170,23 @@
   justification: "store_aliases.yaml canonicalizes both \"COSTCO WHSE\" and \"COSTCO.COM\" to Costco."
   test_description: "COSTCO WHSE #0123 BELLEVUE WA"
 
+- pattern: "SAM S CLUB"
+  match_type: contains
+  category: grocery
+  subcategory: wholesale_clubs
+  justification: "Sam's Club is a single-format membership warehouse club."
+  test_description: "SAMS CLUB #4455 KIRKLAND WA"
+
+- pattern: "BJS WHOLESALE"
+  match_type: contains
+  category: grocery
+  subcategory: wholesale_clubs
+  justification: "BJ's Wholesale Club is a single-format membership warehouse club."
+  test_description: "BJS WHOLESALE CLUB #123 BOSTON MA"
+
+# --------------------------------------------------------------------------------------------
+# grocery / grocery_stores
+# --------------------------------------------------------------------------------------------
 - pattern: "TRADER JOE"
   match_type: contains
   category: grocery
@@ -54,12 +208,158 @@
   justification: "Safeway is a single-format supermarket chain."
   test_description: "SAFEWAY STORE 1122 SEATTLE WA"
 
+- pattern: "KROGER"
+  match_type: contains
+  category: grocery
+  subcategory: grocery_stores
+  justification: "Kroger-branded stores are a single-format supermarket chain."
+  test_description: "KROGER #789 CINCINNATI OH"
+
+- pattern: "PUBLIX"
+  match_type: contains
+  category: grocery
+  subcategory: grocery_stores
+  justification: "Publix is a single-format supermarket chain."
+  test_description: "PUBLIX SUPER MARKETS LAKELAND FL"
+
+- pattern: "WEGMANS"
+  match_type: contains
+  category: grocery
+  subcategory: grocery_stores
+  justification: "Wegmans is a single-format supermarket chain."
+  test_description: "WEGMANS FOOD MARKET ROCHESTER NY"
+
+- pattern: "ALDI"
+  match_type: contains
+  category: grocery
+  subcategory: grocery_stores
+  justification: "Aldi is a single-format discount supermarket chain."
+  test_description: "ALDI 6001 BATAVIA IL"
+
+- pattern: "MEIJER"
+  match_type: contains
+  category: grocery
+  subcategory: grocery_stores
+  justification: "Meijer supermarket locations are grocery even though the chain also sells general merchandise; the card descriptor for the grocery format is a Meijer-only signal."
+  test_description: "MEIJER #045 GRAND RAPIDS MI"
+
+- pattern: "\\b99 RANCH MARKET\\b"
+  match_type: regex
+  category: grocery
+  subcategory: grocery_stores
+  justification: "99 Ranch Market is a single-format Asian-American supermarket chain (A27: the leading digits are part of the name and must not be stripped)."
+  test_description: "99 RANCH MARKET SAN JOSE CA"
+
+# --------------------------------------------------------------------------------------------
+# utilities
+# --------------------------------------------------------------------------------------------
+- pattern: "XFINITY"
+  match_type: contains
+  category: utilities
+  subcategory: internet
+  justification: "Xfinity is Comcast's residential internet/cable billing brand."
+  test_description: "XFINITY COMCAST PHILADELPHIA PA"
+
+- pattern: "SPECTRUM"
+  match_type: contains
+  category: utilities
+  subcategory: internet
+  justification: "Charter's residential internet billing brand is Spectrum."
+  test_description: "SPECTRUM CHARTER STAMFORD CT"
+
+- pattern: "COX COMMUNICATIONS"
+  match_type: contains
+  category: utilities
+  subcategory: internet
+  justification: "Cox Communications is a residential internet/cable provider."
+  test_description: "COX COMMUNICATIONS ATLANTA GA"
+
+- pattern: "VERIZON WIRELESS"
+  match_type: contains
+  category: utilities
+  subcategory: phone
+  justification: "\"VERIZON WIRELESS\" (not bare \"VERIZON\") is unambiguously a mobile phone bill."
+  test_description: "VERIZON WIRELESS PAYMENTS BASKING RIDGE NJ"
+
+- pattern: "T MOBILE"
+  match_type: contains
+  category: utilities
+  subcategory: phone
+  justification: "T-Mobile's card descriptor is overwhelmingly a mobile phone bill."
+  test_description: "T-MOBILE AUTOPAY BELLEVUE WA"
+
+- pattern: "CRICKET WIRELESS"
+  match_type: contains
+  category: utilities
+  subcategory: phone
+  justification: "Cricket Wireless is a single-purpose prepaid mobile carrier."
+  test_description: "CRICKET WIRELESS PAYMENT ATLANTA GA"
+
+- pattern: "BOOST MOBILE"
+  match_type: contains
+  category: utilities
+  subcategory: phone
+  justification: "Boost Mobile is a single-purpose prepaid mobile carrier."
+  test_description: "BOOST MOBILE PAYMENT OVERLAND PARK KS"
+
+- pattern: "PACIFIC GAS"
+  match_type: contains
+  category: utilities
+  subcategory: electricity
+  justification: "Pacific Gas & Electric's electric-service billing descriptor is a utility bill (California)."
+  test_description: "PACIFIC GAS ELECTRIC OAKLAND CA"
+
+- pattern: "CON EDISON"
+  match_type: contains
+  category: utilities
+  subcategory: electricity
+  justification: "Con Edison is a single-purpose electric utility (New York)."
+  test_description: "CON EDISON PAYMENT NEW YORK NY"
+
+- pattern: "SOUTHWEST GAS"
+  match_type: contains
+  category: utilities
+  subcategory: gas
+  justification: "Southwest Gas is a single-purpose natural-gas utility, distinct from vehicle fuel."
+  test_description: "SOUTHWEST GAS CORP LAS VEGAS NV"
+
+- pattern: "AMERICAN WATER"
+  match_type: contains
+  category: utilities
+  subcategory: water
+  justification: "American Water is a single-purpose residential water utility."
+  test_description: "AMERICAN WATER WORKS CAMDEN NJ"
+
+- pattern: "WASTE MANAGEMENT"
+  match_type: contains
+  category: utilities
+  subcategory: trash
+  justification: "Waste Management provides residential trash/recycling pickup."
+  test_description: "WASTE MANAGEMENT HOUSTON TX"
+
+# --------------------------------------------------------------------------------------------
+# fuel
+# --------------------------------------------------------------------------------------------
 - pattern: "^(SHELL|CHEVRON|EXXON|MOBIL|ARCO|CONOCO)\\b"
   match_type: regex
   category: fuel
   subcategory: gasoline
   justification: "Leading fuel-brand names on a card statement are gas station purchases."
   test_description: "SHELL OIL 12345678 SEATTLE WA"
+
+- pattern: "VALERO"
+  match_type: contains
+  category: fuel
+  subcategory: gasoline
+  justification: "Valero is a single-purpose fuel-station brand."
+  test_description: "VALERO 4455 HOUSTON TX"
+
+- pattern: "SUNOCO"
+  match_type: contains
+  category: fuel
+  subcategory: gasoline
+  justification: "Sunoco is a single-purpose fuel-station brand."
+  test_description: "SUNOCO 0099 PHILADELPHIA PA"
 
 - pattern: "TESLA SUPERCHARGER"
   match_type: contains
@@ -68,19 +368,227 @@
   justification: "Tesla Supercharger is unambiguously EV charging."
   test_description: "TESLA SUPERCHARGER SEATTLE WA"
 
-- pattern: "NETFLIX"
+- pattern: "CHARGEPOINT"
   match_type: contains
-  category: entertainment
-  subcategory: streaming
-  justification: "Netflix is a single-purpose streaming subscription merchant."
-  test_description: "NETFLIX.COM"
+  category: fuel
+  subcategory: ev_charging
+  justification: "ChargePoint operates only EV charging stations."
+  test_description: "CHARGEPOINT CAMPBELL CA"
 
-- pattern: "SPOTIFY"
+- pattern: "ELECTRIFY AMERICA"
   match_type: contains
-  category: entertainment
-  subcategory: streaming
-  justification: "Spotify is a single-purpose streaming subscription merchant."
-  test_description: "SPOTIFY USA"
+  category: fuel
+  subcategory: ev_charging
+  justification: "Electrify America operates only EV fast-charging stations."
+  test_description: "ELECTRIFY AMERICA RENO NV"
+
+# --------------------------------------------------------------------------------------------
+# insurance
+# --------------------------------------------------------------------------------------------
+- pattern: "GEICO"
+  match_type: contains
+  category: insurance
+  subcategory: auto
+  justification: "GEICO is predominantly an auto insurer; a human would label a GEICO charge auto insurance without further context."
+  test_description: "GEICO AUTO INSURANCE WASHINGTON DC"
+
+- pattern: "PROGRESSIVE"
+  match_type: contains
+  category: insurance
+  subcategory: auto
+  justification: "Progressive's card descriptor is predominantly auto-insurance premium."
+  test_description: "PROGRESSIVE INSURANCE MAYFIELD VILLAGE OH"
+
+- pattern: "ESURANCE"
+  match_type: contains
+  category: insurance
+  subcategory: auto
+  justification: "Esurance is a direct-to-consumer auto insurance brand."
+  test_description: "ESURANCE INSURANCE SAN FRANCISCO CA"
+
+- pattern: "AETNA"
+  match_type: contains
+  category: insurance
+  subcategory: health
+  justification: "Aetna is a single-purpose health insurer."
+  test_description: "AETNA HEALTH INSURANCE HARTFORD CT"
+
+- pattern: "CIGNA"
+  match_type: contains
+  category: insurance
+  subcategory: health
+  justification: "Cigna is a single-purpose health insurer."
+  test_description: "CIGNA HEALTHCARE BLOOMFIELD CT"
+
+- pattern: "BLUE CROSS"
+  match_type: contains
+  category: insurance
+  subcategory: health
+  justification: "\"Blue Cross\" (any regional affiliate) is a health-insurance premium payment."
+  test_description: "BLUE CROSS BLUE SHIELD PREMIUM CHICAGO IL"
+
+- pattern: "NEW YORK LIFE"
+  match_type: contains
+  category: insurance
+  subcategory: life
+  justification: "New York Life is a single-purpose life insurer."
+  test_description: "NEW YORK LIFE INSURANCE NEW YORK NY"
+
+# --------------------------------------------------------------------------------------------
+# restaurant / dine_in
+# --------------------------------------------------------------------------------------------
+- pattern: "STARBUCKS"
+  match_type: contains
+  category: restaurant
+  subcategory: dine_in
+  justification: "Starbucks storefronts are dine-in/counter-service coffee shops, never delivery."
+  test_description: "STARBUCKS STORE #1234 SEATTLE WA"
+
+- pattern: "MCDONALD"
+  match_type: contains
+  category: restaurant
+  subcategory: dine_in
+  justification: "McDonald's locations are restaurants; the merchant name alone is unambiguous."
+  test_description: "MCDONALDS F1234 PORTLAND OR"
+
+- pattern: "BURGER KING"
+  match_type: contains
+  category: restaurant
+  subcategory: dine_in
+  justification: "Burger King charges the customer directly, not through a delivery app, so it falls under dine_in per the taxonomy's direct-vs-delivery-app split."
+  test_description: "BURGER KING #4321 MIAMI FL"
+
+- pattern: "WENDYS"
+  match_type: contains
+  category: restaurant
+  subcategory: dine_in
+  justification: "Wendy's charges the customer directly; dine_in per the direct-vs-delivery-app split."
+  test_description: "WENDYS #1234 COLUMBUS OH"
+
+- pattern: "TACO BELL"
+  match_type: contains
+  category: restaurant
+  subcategory: dine_in
+  justification: "Taco Bell charges the customer directly; dine_in per the direct-vs-delivery-app split."
+  test_description: "TACO BELL #5678 IRVINE CA"
+
+- pattern: "CHIPOTLE"
+  match_type: contains
+  category: restaurant
+  subcategory: dine_in
+  justification: "Chipotle charges the customer directly; dine_in per the direct-vs-delivery-app split."
+  test_description: "CHIPOTLE MEXICAN GRILL DENVER CO"
+
+- pattern: "SUBWAY"
+  match_type: contains
+  category: restaurant
+  subcategory: dine_in
+  justification: "Subway the sandwich chain charges the customer directly; dine_in per the direct-vs-delivery-app split (distinct from a transit \"subway\" fare, which never carries this brand word)."
+  test_description: "SUBWAY #2233 SAN ANTONIO TX"
+
+- pattern: "\\bKFC\\b"
+  match_type: regex
+  category: restaurant
+  subcategory: dine_in
+  justification: "KFC charges the customer directly; dine_in per the direct-vs-delivery-app split."
+  test_description: "KFC #9988 LOUISVILLE KY"
+
+- pattern: "PIZZA HUT"
+  match_type: contains
+  category: restaurant
+  subcategory: dine_in
+  justification: "Pizza Hut charges the customer directly (even for delivery/carryout orders it fulfills itself), so it falls under dine_in per the taxonomy's direct-vs-third-party-delivery-app split."
+  test_description: "PIZZA HUT #3344 PLANO TX"
+
+- pattern: "DOMINOS"
+  match_type: contains
+  category: restaurant
+  subcategory: dine_in
+  justification: "Domino's charges the customer directly (even for delivery it fulfills itself), so it falls under dine_in per the taxonomy's direct-vs-third-party-delivery-app split."
+  test_description: "DOMINOS PIZZA #7788 ANN ARBOR MI"
+
+- pattern: "CHICKFILA"
+  match_type: contains
+  category: restaurant
+  subcategory: dine_in
+  justification: "Chick-fil-A charges the customer directly; dine_in per the direct-vs-delivery-app split."
+  test_description: "CHICKFILA #6655 ATLANTA GA"
+
+- pattern: "DUNKIN"
+  match_type: contains
+  category: restaurant
+  subcategory: dine_in
+  justification: "Dunkin' charges the customer directly; dine_in per the direct-vs-delivery-app split."
+  test_description: "DUNKIN #1122 CANTON MA"
+
+# --------------------------------------------------------------------------------------------
+# restaurant / delivery
+# --------------------------------------------------------------------------------------------
+- pattern: "DOORDASH"
+  match_type: contains
+  category: restaurant
+  subcategory: delivery
+  justification: "DoorDash is a single-purpose food-delivery merchant."
+  test_description: "DOORDASH*RESTAURANT NAME"
+
+- pattern: "GRUBHUB"
+  match_type: contains
+  category: restaurant
+  subcategory: delivery
+  justification: "Grubhub is a single-purpose food-delivery merchant."
+  test_description: "GRUBHUB*RESTAURANT NAME"
+
+- pattern: "UBER EATS"
+  match_type: contains
+  category: restaurant
+  subcategory: delivery
+  justification: "\"Uber Eats\" (store_aliases.yaml canonicalizes \"UBER*EATS\"-style descriptors to this) is food delivery, distinct from an Uber ride."
+  test_description: "UBER *EATS ORDER SEATTLE WA"
+
+# --------------------------------------------------------------------------------------------
+# transportation
+# --------------------------------------------------------------------------------------------
+- pattern: "AMTRAK"
+  match_type: contains
+  category: transportation
+  subcategory: train
+  justification: "Amtrak is a single-purpose intercity passenger railroad."
+  test_description: "AMTRAK TICKET WASHINGTON DC"
+
+- pattern: "EUROSTAR"
+  match_type: contains
+  category: transportation
+  subcategory: train
+  justification: "Eurostar is a single-purpose international passenger railroad."
+  test_description: "EUROSTAR TICKET LONDON GB"
+
+- pattern: "METROCARD"
+  match_type: contains
+  category: transportation
+  subcategory: subway
+  justification: "MetroCard is the NYC subway/bus fare card; a top-up is transit fare, not a purchase from any other kind of merchant."
+  test_description: "METROCARD VENDING MACHINE NEW YORK NY"
+
+- pattern: "\\bBART\\b"
+  match_type: regex
+  category: transportation
+  subcategory: subway
+  justification: "BART (Bay Area Rapid Transit) fare purchases are single-purpose metro transit."
+  test_description: "BART FARE OAKLAND CA"
+
+- pattern: "SPOTHERO"
+  match_type: contains
+  category: transportation
+  subcategory: parking
+  justification: "SpotHero is a single-purpose parking-reservation app."
+  test_description: "SPOTHERO PARKING CHICAGO IL"
+
+- pattern: "LAZ PARKING"
+  match_type: contains
+  category: transportation
+  subcategory: parking
+  justification: "LAZ Parking operates only paid parking facilities."
+  test_description: "LAZ PARKING BOSTON MA"
 
 - pattern: "^UBER(?!\\s*EATS)"
   match_type: regex
@@ -96,12 +604,148 @@
   justification: "Lyft is a single-purpose rideshare merchant."
   test_description: "LYFT *RIDE THU 8PM"
 
-- pattern: "DOORDASH"
+- pattern: "\\bGRAB\\b"
+  match_type: regex
+  category: transportation
+  subcategory: rideshare
+  justification: "Grab is a single-purpose rideshare merchant across Southeast Asia."
+  test_description: "GRAB RIDE SINGAPORE SG"
+
+- pattern: "EZ ?PASS"
+  match_type: regex
+  category: transportation
+  subcategory: tolls
+  justification: "E-ZPass is a single-purpose electronic toll-collection account replenishment."
+  test_description: "EZPASS REPLENISHMENT NEW JERSEY NJ"
+
+- pattern: "FASTRAK"
   match_type: contains
-  category: restaurant
-  subcategory: delivery
-  justification: "DoorDash is a single-purpose food-delivery merchant."
-  test_description: "DOORDASH*RESTAURANT NAME"
+  category: transportation
+  subcategory: tolls
+  justification: "FasTrak is a single-purpose California electronic toll-collection account."
+  test_description: "FASTRAK TOLL PAYMENT SACRAMENTO CA"
+
+- pattern: "GREYHOUND"
+  match_type: contains
+  category: transportation
+  subcategory: bus
+  justification: "Greyhound is a single-purpose intercity bus line."
+  test_description: "GREYHOUND LINES DALLAS TX"
+
+- pattern: "MEGABUS"
+  match_type: contains
+  category: transportation
+  subcategory: bus
+  justification: "Megabus is a single-purpose intercity bus line."
+  test_description: "MEGABUS.COM CHICAGO IL"
+
+# --------------------------------------------------------------------------------------------
+# maintenance
+# --------------------------------------------------------------------------------------------
+- pattern: "HOME DEPOT"
+  match_type: contains
+  category: maintenance
+  subcategory: home_improvement
+  justification: "The Home Depot sells home-improvement materials as its sole line of business."
+  test_description: "HOME DEPOT #4501 ATLANTA GA"
+
+- pattern: "LOWES"
+  match_type: contains
+  category: maintenance
+  subcategory: home_improvement
+  justification: "Lowe's sells home-improvement materials as its sole line of business."
+  test_description: "LOWES #1234 MOORESVILLE NC"
+
+- pattern: "ACE HARDWARE"
+  match_type: contains
+  category: maintenance
+  subcategory: home_improvement
+  justification: "Ace Hardware is a single-format hardware/home-improvement retailer."
+  test_description: "ACE HARDWARE #99 OAK PARK IL"
+
+- pattern: "JIFFY LUBE"
+  match_type: contains
+  category: maintenance
+  subcategory: auto_repair
+  justification: "Jiffy Lube performs only vehicle maintenance/oil changes."
+  test_description: "JIFFY LUBE #55 SAN DIEGO CA"
+
+- pattern: "\\bMIDAS\\b"
+  match_type: regex
+  category: maintenance
+  subcategory: auto_repair
+  justification: "Midas is a single-purpose auto-repair chain."
+  test_description: "MIDAS AUTO SERVICE DETROIT MI"
+
+- pattern: "PEP BOYS"
+  match_type: contains
+  category: maintenance
+  subcategory: auto_repair
+  justification: "Pep Boys performs auto repair and sells auto parts, both auto_repair."
+  test_description: "PEP BOYS #202 PHILADELPHIA PA"
+
+- pattern: "\\bANGI\\b"
+  match_type: regex
+  category: maintenance
+  subcategory: home_services
+  justification: "Angi (formerly Angie's List/HomeAdvisor) books only home-service jobs."
+  test_description: "ANGI SERVICES INDIANAPOLIS IN"
+
+- pattern: "TERMINIX"
+  match_type: contains
+  category: maintenance
+  subcategory: home_services
+  justification: "Terminix performs only pest-control services."
+  test_description: "TERMINIX PEST CONTROL MEMPHIS TN"
+
+- pattern: "SERVPRO"
+  match_type: contains
+  category: maintenance
+  subcategory: other_maintenance
+  justification: "ServPro performs only property damage restoration/cleanup services."
+  test_description: "SERVPRO RESTORATION GALLATIN TN"
+
+# --------------------------------------------------------------------------------------------
+# online_shopping / other_online (deliberately no "amazon" rule: Amazon is a general
+# marketplace whose category depends on what was bought, exactly the ambiguity D8 excludes)
+# --------------------------------------------------------------------------------------------
+- pattern: "WAYFAIR"
+  match_type: contains
+  category: online_shopping
+  subcategory: other_online
+  justification: "Wayfair sells only furniture/home goods, online-only."
+  test_description: "WAYFAIR.COM BOSTON MA"
+
+- pattern: "CHEWY COM"
+  match_type: contains
+  category: online_shopping
+  subcategory: other_online
+  justification: "Chewy sells only pet supplies, online-only."
+  test_description: "CHEWY.COM DANIA BEACH FL"
+
+- pattern: "ZAPPOS"
+  match_type: contains
+  category: online_shopping
+  subcategory: other_online
+  justification: "Zappos sells only shoes/apparel, online-only."
+  test_description: "ZAPPOS.COM LAS VEGAS NV"
+
+# --------------------------------------------------------------------------------------------
+# entertainment / streaming
+# --------------------------------------------------------------------------------------------
+- pattern: "NETFLIX"
+  match_type: contains
+  category: entertainment
+  subcategory: streaming
+  justification: "Netflix is a single-purpose streaming subscription merchant."
+  test_description: "NETFLIX.COM"
+
+- pattern: "SPOTIFY"
+  match_type: contains
+  category: entertainment
+  subcategory: streaming
+  justification: "Spotify is a single-purpose streaming subscription merchant."
+  test_description: "SPOTIFY USA"
 
 - pattern: "AMAZON PRIME"
   match_type: contains
@@ -109,3 +753,182 @@
   subcategory: streaming
   justification: "\"AMAZON PRIME\" (membership/video) is distinct from AMZN MKTP marketplace orders."
   test_description: "AMAZON PRIME MEMBERSHIP"
+
+- pattern: "\\bHULU\\b"
+  match_type: regex
+  category: entertainment
+  subcategory: streaming
+  justification: "Hulu is a single-purpose streaming subscription merchant."
+  test_description: "HULU SUBSCRIPTION SANTA MONICA CA"
+
+- pattern: "PARAMOUNT PLUS"
+  match_type: contains
+  category: entertainment
+  subcategory: streaming
+  justification: "Paramount+ is a single-purpose streaming subscription merchant."
+  test_description: "PARAMOUNT PLUS NEW YORK NY"
+
+- pattern: "HBO MAX"
+  match_type: contains
+  category: entertainment
+  subcategory: streaming
+  justification: "HBO Max is a single-purpose streaming subscription merchant."
+  test_description: "HBO MAX SUBSCRIPTION NEW YORK NY"
+
+# --------------------------------------------------------------------------------------------
+# entertainment / movies_theater
+# --------------------------------------------------------------------------------------------
+- pattern: "AMC THEATRES"
+  match_type: contains
+  category: entertainment
+  subcategory: movies_theater
+  justification: "AMC Theatres sells only movie tickets/concessions."
+  test_description: "AMC THEATRES #1234 KANSAS CITY MO"
+
+- pattern: "REGAL CINEMAS"
+  match_type: contains
+  category: entertainment
+  subcategory: movies_theater
+  justification: "Regal Cinemas sells only movie tickets/concessions."
+  test_description: "REGAL CINEMAS #55 KNOXVILLE TN"
+
+- pattern: "CINEMARK"
+  match_type: contains
+  category: entertainment
+  subcategory: movies_theater
+  justification: "Cinemark sells only movie tickets/concessions."
+  test_description: "CINEMARK USA PLANO TX"
+
+# --------------------------------------------------------------------------------------------
+# entertainment / theme_parks
+# --------------------------------------------------------------------------------------------
+- pattern: "SIX FLAGS"
+  match_type: contains
+  category: entertainment
+  subcategory: theme_parks
+  justification: "Six Flags operates only amusement parks."
+  test_description: "SIX FLAGS MAGIC MOUNTAIN VALENCIA CA"
+
+- pattern: "DISNEYLAND|DISNEY WORLD"
+  match_type: regex
+  category: entertainment
+  subcategory: theme_parks
+  justification: "A Disneyland/Disney World resort charge is a theme-park visit, distinct from the Disney+ streaming subscription."
+  test_description: "DISNEYLAND RESORT ANAHEIM CA"
+
+# --------------------------------------------------------------------------------------------
+# entertainment / concerts
+# --------------------------------------------------------------------------------------------
+- pattern: "LIVE NATION"
+  match_type: contains
+  category: entertainment
+  subcategory: concerts
+  justification: "Live Nation is predominantly a concert promoter/ticketer."
+  test_description: "LIVE NATION TICKETS BEVERLY HILLS CA"
+
+# --------------------------------------------------------------------------------------------
+# entertainment / other_entertainment
+# --------------------------------------------------------------------------------------------
+- pattern: "TICKETMASTER"
+  match_type: contains
+  category: entertainment
+  subcategory: other_entertainment
+  justification: "Ticketmaster sells tickets to every kind of live event (concerts, theater, sports); other_entertainment is the entertainment catch-all when the event type is not knowable from the merchant name alone."
+  test_description: "TICKETMASTER EVENT LOS ANGELES CA"
+
+- pattern: "\\bSTEAM\\b"
+  match_type: regex
+  category: entertainment
+  subcategory: other_entertainment
+  justification: "Valve's Steam platform sells only video games/software, a single-purpose entertainment merchant."
+  test_description: "STEAM PURCHASE BELLEVUE WA"
+
+# --------------------------------------------------------------------------------------------
+# cash
+# --------------------------------------------------------------------------------------------
+- pattern: "ATM WITHDRAWAL"
+  match_type: contains
+  category: cash
+  subcategory: atm_withdrawal
+  justification: "\"ATM WITHDRAWAL\" describes the transaction itself, not a merchant, and is unambiguously a cash withdrawal."
+  test_description: "ATM WITHDRAWAL SEATTLE WA"
+
+- pattern: "CASH ADVANCE"
+  match_type: contains
+  category: cash
+  subcategory: cash_advance
+  justification: "\"CASH ADVANCE\" describes the transaction itself and is unambiguously a credit-card cash advance."
+  test_description: "CASH ADVANCE FEE SEATTLE WA"
+
+# --------------------------------------------------------------------------------------------
+# others
+# --------------------------------------------------------------------------------------------
+- pattern: "OVERDRAFT FEE"
+  match_type: contains
+  category: others
+  subcategory: fees_charges
+  justification: "\"OVERDRAFT FEE\" describes the transaction itself, not a merchant, and is unambiguously a bank fee."
+  test_description: "OVERDRAFT FEE SEATTLE WA"
+
+- pattern: "LATE FEE"
+  match_type: contains
+  category: others
+  subcategory: fees_charges
+  justification: "\"LATE FEE\" describes the transaction itself and is unambiguously a fee, not a purchase."
+  test_description: "LATE FEE CHARGE SEATTLE WA"
+
+- pattern: "QUEST DIAGNOSTICS"
+  match_type: contains
+  category: others
+  subcategory: medical
+  justification: "Quest Diagnostics performs only clinical lab testing."
+  test_description: "QUEST DIAGNOSTICS SECAUCUS NJ"
+
+- pattern: "LABCORP"
+  match_type: contains
+  category: others
+  subcategory: medical
+  justification: "LabCorp performs only clinical lab testing."
+  test_description: "LABCORP BURLINGTON NC"
+
+- pattern: "COURSERA"
+  match_type: contains
+  category: others
+  subcategory: education
+  justification: "Coursera sells only online courses."
+  test_description: "COURSERA.ORG MOUNTAIN VIEW CA"
+
+- pattern: "\\bUDEMY\\b"
+  match_type: regex
+  category: others
+  subcategory: education
+  justification: "Udemy sells only online courses."
+  test_description: "UDEMY ONLINE COURSE SAN FRANCISCO CA"
+
+- pattern: "GREAT CLIPS"
+  match_type: contains
+  category: others
+  subcategory: personal_care
+  justification: "Great Clips performs only hair-cutting services."
+  test_description: "GREAT CLIPS #34 MINNEAPOLIS MN"
+
+- pattern: "SUPERCUTS"
+  match_type: contains
+  category: others
+  subcategory: personal_care
+  justification: "Supercuts performs only hair-cutting services."
+  test_description: "SUPERCUTS #78 SAN FRANCISCO CA"
+
+- pattern: "GOFUNDME"
+  match_type: contains
+  category: others
+  subcategory: gifts_donations
+  justification: "GoFundMe processes only crowdfunding contributions/donations."
+  test_description: "GOFUNDME DONATION SAN DIEGO CA"
+
+- pattern: "RED CROSS"
+  match_type: contains
+  category: others
+  subcategory: gifts_donations
+  justification: "The American Red Cross accepts only donations, no goods or services for sale."
+  test_description: "AMERICAN RED CROSS DONATION WASHINGTON DC"
