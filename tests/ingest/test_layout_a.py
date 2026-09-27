@@ -105,6 +105,19 @@ def test_golden_stable_across_two_generator_runs(tmp_path: Path) -> None:
         assert first == second
 
 
+def test_committed_pdfs_match_fresh_regeneration(tmp_path: Path) -> None:
+    """The committed PDFs under `tests/fixtures/generated/layout_a_credit/` must be exactly what
+    the (deterministic) generator produces today — this is what catches drift between the
+    builder and what was last committed, since the suite itself never rewrites the committed
+    files."""
+    for variant in builder.variants:
+        name = f"layout_a_credit_{variant}"
+        builder.build(tmp_path, variant=variant, seed=0)
+        committed = (_FIXTURES_DIR / f"{name}.pdf").read_bytes()
+        fresh = (tmp_path / f"{name}.pdf").read_bytes()
+        assert committed == fresh, f"{name}.pdf is stale — regenerate committed fixtures"
+
+
 # --------------------------------------------------------------------------------------------
 # detect()
 # --------------------------------------------------------------------------------------------

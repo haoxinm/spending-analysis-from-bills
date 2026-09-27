@@ -24,7 +24,14 @@ from spend_analyzer.ingest.parsers.generic_table import (
 )
 from tests.fixtures.gen.generic import generic_table_builder
 
-_LAYOUT_DIR = Path(__file__).resolve().parent.parent / "fixtures" / "generated" / "generic_table"
+#: The committed PDFs/goldens under version control — read-only. Tests never write here; each
+#: test session regenerates fixtures into a pytest tmp dir instead (see `_fixtures_generated`)
+#: so running the suite never modifies the repo tree.
+_COMMITTED_DIR = Path(__file__).resolve().parent.parent / "fixtures" / "generated" / "generic_table"
+
+#: Set by the `_fixtures_generated` autouse fixture to a pytest tmp directory holding a fresh
+#: regeneration of every variant. Tests parse from here, never from `_COMMITTED_DIR`.
+_generated_dir: Path | None = None
 
 
 def _extract(path: Path) -> ExtractedDoc:
@@ -56,18 +63,22 @@ def _extract(path: Path) -> ExtractedDoc:
 
 
 def _build(variant: str) -> tuple[ExtractedDoc, dict[str, object]]:
-    golden = generic_table_builder.build(_LAYOUT_DIR, variant=variant, seed=0)
-    pdf_path = _LAYOUT_DIR / f"generic_table_{variant}.pdf"
+    assert _generated_dir is not None, "_fixtures_generated fixture has not run yet"
+    golden = generic_table_builder.build(_generated_dir, variant=variant, seed=0)
+    pdf_path = _generated_dir / f"generic_table_{variant}.pdf"
     return _extract(pdf_path), golden
 
 
 @pytest.fixture(scope="module", autouse=True)
-def _fixtures_generated() -> None:
+def _fixtures_generated(tmp_path_factory: pytest.TempPathFactory) -> None:
     """Fixtures are committed (see `.gitignore`'s `!tests/fixtures/generated/**/*.pdf`), but
-    regenerate them here too so the test is self-sufficient and catches drift between the
-    builder and its own goldens."""
+    regenerate them into a pytest tmp directory here too so the test is self-sufficient and
+    catches drift between the builder and its own goldens, without ever writing into the repo
+    tree (see `test_committed_pdfs_match_fresh_regeneration`)."""
+    global _generated_dir
+    _generated_dir = tmp_path_factory.mktemp("generic_table_generated")
     for variant in generic_table_builder.variants:
-        generic_table_builder.build(_LAYOUT_DIR, variant=variant, seed=0)
+        generic_table_builder.build(_generated_dir, variant=variant, seed=0)
 
 
 def _assert_transactions_match(doc: ExtractedDoc, golden: dict[str, object]) -> None:
@@ -212,7 +223,8 @@ def test_no_text_layer_fixture_has_no_extractable_text() -> None:
 
 
 def test_encrypted_fixture_cannot_be_opened_without_a_password() -> None:
-    pdf_path = _LAYOUT_DIR / "generic_table_encrypted.pdf"
+    assert _generated_dir is not None
+    pdf_path = _generated_dir / "generic_table_encrypted.pdf"
     with pytest.raises(Exception), pdfplumber.open(pdf_path) as pdf:  # noqa: B017
         pdf.pages[0].extract_text()
 
@@ -223,8 +235,28 @@ def test_empty_fixture_is_a_single_blank_page() -> None:
     assert doc.full_text.strip() == ""
 
 
-def test_goldens_are_json_serializable_and_stable_across_two_runs() -> None:
+def test_goldens_are_json_serializable_and_stable_across_two_runs(tmp_path: Path) -> None:
     for variant in generic_table_builder.variants:
-        first = generic_table_builder.build(_LAYOUT_DIR, variant=variant, seed=0)
-        second = generic_table_builder.build(_LAYOUT_DIR, variant=variant, seed=0)
+        first = generic_table_builder.build(tmp_path / "run1", variant=variant, seed=0)
+        second = generic_table_builder.build(tmp_path / "run2", variant=variant, seed=0)
         assert json.dumps(first, sort_keys=True) == json.dumps(second, sort_keys=True)
+
+
+def test_committed_pdfs_match_fresh_regeneration() -> None:
+    """The committed PDFs under `tests/fixtures/generated/generic_table/` must be exactly what
+    the (deterministic) generator produces today — this is what catches drift between the
+    builder and what was last committed, since the suite itself never rewrites the committed
+    files (see `_fixtures_generated`)."""
+    assert _generated_dir is not None
+    for variant in generic_table_builder.variants:
+        name = f"generic_table_{variant}"
+        committed = (_COMMITTED_DIR / f"{name}.pdf").read_bytes()
+        fresh = (_generated_dir / f"{name}.pdf").read_bytes()
+        assert committed == fresh, f"{name}.pdf is stale — regenerate committed fixtures"
+        # `.build()` itself only returns the golden (it is `generate_fixtures.py` that writes it
+        # to a `.json` file next to the PDF), so compare the freshly-built golden dict directly.
+        committed_json = json.loads((_COMMITTED_DIR / f"{name}.json").read_text())
+        fresh_golden = generic_table_builder.build(_generated_dir, variant=variant, seed=0)
+        assert committed_json == json.loads(json.dumps(fresh_golden, default=str)), (
+            f"{name}.json is stale — regenerate committed fixtures"
+        )
