@@ -177,6 +177,70 @@ def test_importing_same_file_twice_is_a_noop(session: Session, tmp_path: Path) -
     assert session.query(Transaction).count() == 3
 
 
+def test_confirm_import_works_from_a_fresh_process(home: Path, tmp_path: Path) -> None:
+    """`propose_import` and `confirm_import` must not depend on anything only the process that
+    called `propose_import` remembers: the CLI's non-interactive `import` (A33) can print a
+    confirm command that runs later, in a different process invocation, and the server can
+    restart in between either way. This uses two independent engines/sessions bound to the same
+    on-disk database — as close to "a different process" as an in-process test can get — with no
+    Python object shared between the two calls beyond the statement id and the data directory.
+    """
+    from spend_analyzer.classify.taxonomy import sync_taxonomy
+    from spend_analyzer.db.migrate import upgrade_head
+    from spend_analyzer.db.models import Statement
+    from spend_analyzer.db.session import make_engine_for_path, make_session_factory
+
+    db_path = home / "spend.db"
+    upgrade_head(f"sqlite:///{db_path}")
+
+    pdf_path = tmp_path / "statement.pdf"
+    _build_card_pdf(
+        pdf_path,
+        [
+            ("01/03/2026", "GROCERY MART", "45.10"),
+            ("01/05/2026", "COFFEE SHOP", "12.34"),
+            ("01/09/2026", "ONLINE BOOKSTORE", "29.99"),
+        ],
+        closing="87.43",
+    )
+
+    engine1 = make_engine_for_path(db_path)
+    try:
+        with make_session_factory(engine1)() as session1:
+            sync_taxonomy(session1)
+            session1.commit()
+            user = _make_user(session1)
+            issuer = _make_issuer(session1, "Fresh Process Bank")
+            user_id, issuer_id = user.id, issuer.id
+            proposal = pipeline.propose_import(
+                session1, pdf_path, user_id=user_id, original_name="statement.pdf"
+            )
+            statement_id = proposal.statement_id
+            parser_id, layout_spec_id = proposal.parser_id, proposal.layout_spec_id
+    finally:
+        engine1.dispose()  # every connection this "process" held is now gone
+
+    # A brand-new engine and session, sharing nothing with the above but the file on disk.
+    engine2 = make_engine_for_path(db_path)
+    try:
+        with make_session_factory(engine2)() as session2:
+            result = pipeline.confirm_import(
+                session2,
+                statement_id,
+                issuer_id=issuer_id,
+                parser_id=parser_id,
+                layout_spec_id=layout_spec_id,
+                remember=True,
+            )
+            assert result.inserted == 3
+            statement = session2.get(Statement, statement_id)
+            assert statement is not None
+            assert statement.status == "parsed"
+            assert statement.user_id == user_id
+    finally:
+        engine2.dispose()
+
+
 # --------------------------------------------------------------------------------------------
 # Dedupe (§3.5): overlapping statements, and the "two identical coffees" fixture
 # --------------------------------------------------------------------------------------------

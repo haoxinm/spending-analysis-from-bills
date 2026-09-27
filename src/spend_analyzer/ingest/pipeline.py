@@ -151,27 +151,40 @@ class ImportResult:
 
 
 # ------------------------------------------------------------------------------------------------
-# Pending-import bookkeeping: the upload path and requesting user for a statement that has been
-# proposed but not yet confirmed.
+# Durable staging: every uploaded PDF is written under the data dir at propose time, keyed by its
+# content hash, so `confirm_import`/`reparse` can re-read it from *any* process — the CLI's A33
+# "leave it `awaiting_extractor` and print the command that confirms it" is a different process
+# from the one that ran `propose_import`, and the server can restart in between either way.
 #
-# `confirm_import`/`reparse` (§3.12a) are frozen with no `user_id` parameter and `statements` has
-# no `user_id` column (§3.2) — the account a statement belongs to, and therefore which user it is
-# for, is not resolved until Phase 2 runs, once `account_type`/`mask` come out of the parse. This
-# module-level map is how Phase 1's `user_id` and file path reach Phase 2 without changing either
-# frozen signature. It is intentionally in-process only (D6: one in-process worker thread), which
-# is a real limitation worth flagging to the orchestrator: it does not survive a server restart
-# between a statement's proposal and its confirmation. Re-proposing the same file (same sha256)
-# repopulates the entry, which is the documented recovery path (see `propose_import`).
+# `[privacy] store_pdf_copies` still controls whether the copy is *kept* (`statements.stored_path`
+# is set only when it is, per A12/§3.11): when it is `False`, the staged file is deleted once Phase
+# 2 reaches a terminal outcome (`parsed`, `error`, or `unsupported_layout`) — the module docstring
+# on §3.12a's frozen signatures already explains why `user_id` and the file both have to be
+# reachable from the `statements` row alone, not from a Python-level `Session`.
 # ------------------------------------------------------------------------------------------------
 
 
-@dataclass(frozen=True, slots=True)
-class _PendingImport:
-    user_id: int
-    pdf_path: Path
+def _staged_pdf_path(file_sha256: str) -> Path:
+    return statements_dir() / f"{file_sha256}.pdf"
 
 
-_PENDING_IMPORTS: dict[int, _PendingImport] = {}
+def _stage_pdf(pdf_path: Path, file_sha256: str) -> Path:
+    """Ensure a durable copy of ``pdf_path`` exists at its content-hash path, and return it.
+    Idempotent: a same-content file re-staged is a no-op write."""
+    ensure_home()
+    dest = _staged_pdf_path(file_sha256)
+    if not dest.exists():
+        dest.write_bytes(pdf_path.read_bytes())
+    return dest
+
+
+def _unstage_pdf_if_not_kept(file_sha256: str, settings: Settings) -> None:
+    """Delete the staged copy once Phase 2 reaches a terminal outcome, unless
+    `[privacy] store_pdf_copies` asked to keep it (in which case `statements.stored_path` already
+    points at it and it stays)."""
+    if settings.privacy.store_pdf_copies:
+        return
+    _staged_pdf_path(file_sha256).unlink(missing_ok=True)
 
 
 # ------------------------------------------------------------------------------------------------
@@ -187,17 +200,22 @@ def propose_import(
 
     Idempotency (I9): if a statement with this file's SHA-256 already exists, nothing is
     re-extracted or re-scored. A `status='parsed'` row is reported back as `status='duplicate'`
-    (this upload is a no-op). Any other existing status (including `'awaiting_extractor'` itself)
-    is reported as-is — this is also how a pending import survives a process restart: re-proposing
-    the same file repopulates the in-process bookkeeping Phase 2 needs (see the module docstring).
+    (this upload is a no-op); its staged PDF, if any, is no longer needed and is left alone. Any
+    other existing status (including `'awaiting_extractor'` itself) is reported as-is, and the
+    file is (re-)staged and `user_id` refreshed on the existing row — the recovery path for a
+    statement whose Phase 2 previously failed, or whose staged copy was deleted because
+    `[privacy] store_pdf_copies` is off: re-proposing the same bytes makes `confirm_import`/
+    `reparse` runnable again from any process, since both derive the user and the file from this
+    row rather than from anything kept only in memory.
 
     Args:
         session: an open session. This function commits the `statements` row it writes.
         pdf_path: path to the uploaded PDF, already saved to local disk by the caller (upload
             validation — size cap, magic-byte check, A12 — is the API layer's job, not this
             module's: `ingest/` takes a trusted local path).
-        user_id: the user this import is for. Not yet persisted anywhere in `statements` (see the
-            module docstring); remembered in-process until `confirm_import` runs.
+        user_id: the user this import is for (D4). Persisted on `statements.user_id` so Phase 2 —
+            a separate call, possibly in a different process or after a restart — can resolve or
+            create the account without any process-local state.
         original_name: the user-supplied filename, stored verbatim for display. The *stored*
             copy's filename is always the content hash, never this value (A12).
 
@@ -211,8 +229,10 @@ def propose_import(
         .first()
     )
     if existing is not None:
-        if existing.status == STATUS_AWAITING_EXTRACTOR:
-            _PENDING_IMPORTS[existing.id] = _PendingImport(user_id=user_id, pdf_path=pdf_path)
+        if existing.status != STATUS_PARSED:
+            _stage_pdf(pdf_path, file_sha256)
+            existing.user_id = user_id
+            session.commit()
         status = "duplicate" if existing.status == STATUS_PARSED else existing.status
         return ImportProposal(
             statement_id=existing.id,
@@ -226,12 +246,12 @@ def propose_import(
 
     doc = extract(pdf_path)
     settings = load_settings()
-    stored_path: str | None = None
-    if settings.privacy.store_pdf_copies:
-        stored_path = _copy_statement(pdf_path, file_sha256)
+    _stage_pdf(pdf_path, file_sha256)
+    stored_path = str(_staged_pdf_path(file_sha256)) if settings.privacy.store_pdf_copies else None
 
     if not doc.has_text_layer:
         statement = Statement(
+            user_id=user_id,
             file_sha256=file_sha256,
             original_name=original_name,
             stored_path=stored_path,
@@ -242,6 +262,7 @@ def propose_import(
         )
         session.add(statement)
         session.commit()
+        _unstage_pdf_if_not_kept(file_sha256, settings)
         return ImportProposal(
             statement_id=statement.id,
             status=STATUS_NO_TEXT_LAYER,
@@ -257,6 +278,7 @@ def propose_import(
     selected, score, layout_spec_id = _select_parser(session, doc, issuer_id)
 
     statement = Statement(
+        user_id=user_id,
         file_sha256=file_sha256,
         original_name=original_name,
         stored_path=stored_path,
@@ -271,8 +293,6 @@ def propose_import(
     )
     session.add(statement)
     session.commit()
-
-    _PENDING_IMPORTS[statement.id] = _PendingImport(user_id=user_id, pdf_path=pdf_path)
 
     return ImportProposal(
         statement_id=statement.id,
@@ -293,14 +313,6 @@ def _is_confident(issuer_id: int | None, score: float | None, status: str) -> bo
         and score is not None
         and score >= CONFIDENT_SCORE_THRESHOLD
     )
-
-
-def _copy_statement(pdf_path: Path, file_sha256: str) -> str:
-    ensure_home()
-    dest = statements_dir() / f"{file_sha256}.pdf"
-    if not dest.exists():
-        dest.write_bytes(pdf_path.read_bytes())
-    return str(dest)
 
 
 def _detect_score(parser: StatementParser, doc: ExtractedDoc) -> float:
@@ -416,9 +428,9 @@ def confirm_import(
         call — reconfirming an already-`parsed` statement is a no-op that reports zero of each.
 
     Raises:
-        SpendAnalyzerError: the statement was not found, or no pending upload is remembered for it
-            and it carries no durable PDF copy to re-parse from (see the module docstring on
-            in-process pending-import bookkeeping).
+        SpendAnalyzerError: the statement was not found, has no `user_id` (every statement
+            `propose_import` writes has one; only possible for a row constructed some other way),
+            or its staged PDF is no longer on disk (re-propose the same file to restage it).
         ValueError: neither or both of `parser_id`/`layout_spec_id` were given.
         UnsupportedLayoutError: the generic parser found too few transactions to be usable.
             `statements.status` is set to `'unsupported_layout'` before this is re-raised.
@@ -443,7 +455,8 @@ def confirm_import(
     if (parser_id is None) == (layout_spec_id is None):
         raise ValueError("exactly one of parser_id or layout_spec_id must be given")
 
-    path, user_id = _resolve_pending_source(statement)
+    user_id, path = _resolve_source(statement)
+    settings = load_settings()
     doc = extract(path)
     parser = _resolve_parser(session, parser_id=parser_id, layout_spec_id=layout_spec_id)
 
@@ -451,9 +464,11 @@ def confirm_import(
         parsed = parser.parse(doc)
     except UnsupportedLayoutError as exc:
         _mark_failed(session, statement, STATUS_UNSUPPORTED_LAYOUT, str(exc))
+        _unstage_pdf_if_not_kept(statement.file_sha256, settings)
         raise
     except ParserError as exc:
         _mark_failed(session, statement, STATUS_ERROR, str(exc))
+        _unstage_pdf_if_not_kept(statement.file_sha256, settings)
         raise
 
     result = _persist_parsed_statement(
@@ -466,23 +481,25 @@ def confirm_import(
         layout_spec_id=layout_spec_id,
         remember=remember,
     )
-    _PENDING_IMPORTS.pop(statement.id, None)
+    _unstage_pdf_if_not_kept(statement.file_sha256, settings)
     return result
 
 
-def _resolve_pending_source(statement: Statement) -> tuple[Path, int]:
-    pending = _PENDING_IMPORTS.get(statement.id)
-    if pending is not None:
-        return pending.pdf_path, pending.user_id
-    if statement.stored_path is not None:
+def _resolve_source(statement: Statement) -> tuple[int, Path]:
+    """Recover `(user_id, pdf_path)` for Phase 2 from the `statements` row and the data dir
+    alone — never from anything only a Python process could remember (see the module docstring
+    on durable staging)."""
+    if statement.user_id is None:  # pragma: no cover - defensive; propose_import always sets it
         raise SpendAnalyzerError(
-            f"statement {statement.id} has no remembered user for this import (the server may "
-            "have restarted since it was proposed); re-propose the same file to resume"
+            f"statement {statement.id} has no user_id; it was not created by propose_import"
         )
-    raise SpendAnalyzerError(
-        f"statement {statement.id} has no PDF copy on disk and no pending upload in memory; "
-        "re-propose the file to resume"
-    )
+    path = _staged_pdf_path(statement.file_sha256)
+    if not path.exists():
+        raise SpendAnalyzerError(
+            f"statement {statement.id} has no staged PDF on disk; re-propose the same file to "
+            "restage it before confirming"
+        )
+    return statement.user_id, path
 
 
 def _mark_failed(session: Session, statement: Statement, status: str, error_detail: str) -> None:
