@@ -1,0 +1,14 @@
+version: 1
+categories:
+  - {key: travel,          label: Travel,                       subcategories: [flights, hotels, rental_cars, activities]}
+  - {key: grocery,         label: Grocery,                      subcategories: [wholesale_clubs, grocery_stores]}
+  - {key: utilities,       label: Utilities,                    subcategories: [internet, phone, electricity, gas, water, trash, sewer]}
+  - {key: fuel,            label: Gasoline & EV Charging,       subcategories: [gasoline, ev_charging]}
+  - {key: insurance,       label: Insurance,                    subcategories: [auto, home, health, life, other_insurance]}
+  - {key: restaurant,      label: Restaurant,                   subcategories: [dine_in, delivery]}
+  - {key: transportation,  label: Transportation,               subcategories: [train, subway, parking, rideshare, tolls, bus]}
+  - {key: maintenance,     label: Maintenance,                  subcategories: [home_improvement, auto_repair, home_services, other_maintenance]}
+  - {key: online_shopping, label: Online Shopping,              dynamic_subcategories: true, subcategories: [amazon, other_online]}
+  - {key: entertainment,   label: Entertainment,                subcategories: [concerts, movies_theater, theme_parks, karaoke, streaming, other_entertainment]}
+  - {key: cash,            label: Cash Withdrawal / Advance,    subcategories: [atm_withdrawal, cash_advance]}
+  - {key: others,          label: Others,                       subcategories: [uncategorized, payments_transfers, fees_charges, medical, education, personal_care, gifts_donations]}
