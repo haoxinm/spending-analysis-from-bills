@@ -1,0 +1,49 @@
+{
+  "account_type": "credit",
+  "closing_balance_minor": 15347,
+  "opening_balance_minor": 0,
+  "period_end": "2026-01-31",
+  "period_start": "2026-01-01",
+  "transactions": [
+    {
+      "amount_minor": 4510,
+      "description": "GROCERY MART",
+      "posted_date": "2026-01-03"
+    },
+    {
+      "amount_minor": 1234,
+      "description": "COFFEE SHOP DOWNTOWN",
+      "posted_date": "2026-01-05"
+    },
+    {
+      "amount_minor": 2999,
+      "description": "ONLINE BOOKSTORE",
+      "posted_date": "2026-01-09"
+    },
+    {
+      "amount_minor": -500,
+      "description": "REFUND ONLINE STORE",
+      "posted_date": "2026-01-15"
+    },
+    {
+      "amount_minor": -1500,
+      "description": "PAYMENT THANK YOU",
+      "posted_date": "2026-01-20"
+    },
+    {
+      "amount_minor": 1599,
+      "description": "STREAMING SERVICE",
+      "posted_date": "2026-01-22"
+    },
+    {
+      "amount_minor": 5995,
+      "description": "HARDWARE STORE",
+      "posted_date": "2026-01-25"
+    },
+    {
+      "amount_minor": 1010,
+      "description": "RESTAURANT DOWNTOWN",
+      "posted_date": "2026-01-28"
+    }
+  ]
+}
