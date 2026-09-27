@@ -1,9 +1,10 @@
 """Tests for Layout D (`layout_d_bank`), §2c — bank statement, debit/credit columns (A26).
 
-Golden fixtures live in `tests/fixtures/generated/layout_d/` (PDFs, committed per `.gitignore`'s
-exception) with a frozen reference copy of their expected `ParsedStatement` under
-`tests/ingest/golden/layout_d/`. `tests/fixtures/gen/layout_d.py` is the `LayoutBuilder` that
-produced both.
+Golden fixtures live in `tests/fixtures/generated/layout_d_bank/` (PDFs, committed per
+`.gitignore`'s exception) with a frozen reference copy of their expected `ParsedStatement` under
+`tests/ingest/golden/layout_d_bank/`. `tests/fixtures/gen/layout_d.py` is the `LayoutBuilder`
+that produced both (the directory name matches `builder.layout_id` / the parser's `id`, per
+`tests/generate_fixtures.py`).
 """
 
 from __future__ import annotations
@@ -21,8 +22,8 @@ from spend_analyzer.ingest.parsers.layout_d_bank import PARSER
 from tests.fixtures.gen.base import format_row, render_lines_pdf
 from tests.fixtures.gen.layout_d import _HEADER, _WIDTHS, BUILDER, _data_row
 
-_GENERATED_DIR = Path(__file__).resolve().parent.parent / "fixtures" / "generated" / "layout_d"
-_GOLDEN_DIR = Path(__file__).resolve().parent / "golden" / "layout_d"
+_GENERATED_DIR = Path(__file__).resolve().parent.parent / "fixtures" / "generated" / "layout_d_bank"
+_GOLDEN_DIR = Path(__file__).resolve().parent / "golden" / "layout_d_bank"
 
 _GOLDEN_VARIANTS = ("normal", "multiline", "fx", "refund_and_payment")
 _ERROR_VARIANTS = ("malformed", "no_summary")
