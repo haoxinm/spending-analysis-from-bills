@@ -115,6 +115,12 @@ class Statement(Base):
     account_id: Mapped[int | None] = mapped_column(
         Integer, ForeignKey("accounts.id"), nullable=True
     )
+    # The user who uploaded this statement (D4), set by `ingest.pipeline.propose_import` at
+    # Phase 1 so Phase 2 (a separate process/request, possibly after a restart) can resolve or
+    # create the account without depending on any in-process state. No `ondelete` (matches
+    # every other `user_id` foreign key in this file: `accounts.user_id`, `transactions.user_id`,
+    # `rules.user_id` — none cascades or nullifies on a user delete).
+    user_id: Mapped[int | None] = mapped_column(Integer, ForeignKey("users.id"), nullable=True)
     file_sha256: Mapped[str] = mapped_column(String, nullable=False, unique=True)
     original_name: Mapped[str] = mapped_column(String, nullable=False)
     stored_path: Mapped[str | None] = mapped_column(String, nullable=True)
