@@ -1,0 +1,94 @@
+{
+  "account_hint": {
+    "account_type": "credit",
+    "currency": "USD",
+    "mask": "4321"
+  },
+  "closing_balance_minor": 40195,
+  "opening_balance_minor": 50000,
+  "period_end": "2026-02-15",
+  "period_start": "2026-01-16",
+  "section_totals": [],
+  "stated_total_minor": null,
+  "transactions": [
+    {
+      "amount_minor": -30000,
+      "currency": "USD",
+      "description": "ONLINE PAYMENT THANK YOU",
+      "fx_amount_minor": null,
+      "fx_currency": null,
+      "fx_rate": null,
+      "issuer_category": null,
+      "kind_hint": "payment",
+      "posted_date": "2026-01-20",
+      "section": "PAYMENTS AND OTHER CREDITS",
+      "transaction_date": null
+    },
+    {
+      "amount_minor": 1250,
+      "currency": "USD",
+      "description": "COFFEE ROASTERS DOWNTOWN",
+      "fx_amount_minor": null,
+      "fx_currency": null,
+      "fx_rate": null,
+      "issuer_category": null,
+      "kind_hint": "purchase",
+      "posted_date": "2026-01-18",
+      "section": "PURCHASES",
+      "transaction_date": null
+    },
+    {
+      "amount_minor": 4500,
+      "currency": "USD",
+      "description": "GROCERY MART",
+      "fx_amount_minor": null,
+      "fx_currency": null,
+      "fx_rate": null,
+      "issuer_category": null,
+      "kind_hint": "purchase",
+      "posted_date": "2026-01-22",
+      "section": "PURCHASES",
+      "transaction_date": null
+    },
+    {
+      "amount_minor": 9250,
+      "currency": "USD",
+      "description": "HARDWARE SUPPLY CO",
+      "fx_amount_minor": null,
+      "fx_currency": null,
+      "fx_rate": null,
+      "issuer_category": null,
+      "kind_hint": "purchase",
+      "posted_date": "2026-01-25",
+      "section": "PURCHASES",
+      "transaction_date": null
+    },
+    {
+      "amount_minor": 3375,
+      "currency": "USD",
+      "description": "BOOKSTORE ANNEX",
+      "fx_amount_minor": null,
+      "fx_currency": null,
+      "fx_rate": null,
+      "issuer_category": null,
+      "kind_hint": "purchase",
+      "posted_date": "2026-02-01",
+      "section": "PURCHASES",
+      "transaction_date": null
+    },
+    {
+      "amount_minor": 1820,
+      "currency": "USD",
+      "description": "GARDEN CENTER",
+      "fx_amount_minor": null,
+      "fx_currency": null,
+      "fx_rate": null,
+      "issuer_category": null,
+      "kind_hint": "purchase",
+      "posted_date": "2026-02-05",
+      "section": "PURCHASES",
+      "transaction_date": null
+    }
+  ],
+  "warnings": []
+}
