@@ -25,24 +25,17 @@ PHASE 2 (`confirm_import`, on user confirmation, or automatically when the propo
   -> return an ImportResult
 ```
 
-**A note on a cross-lane dependency this module does not have.** Layout A/B/C's `'payment_or_
-refund'` `KindHint` is, per those parsers' own docstrings, meant to be resolved by a single
-pattern living in `classify/kinds.py` (owned by P2-B, developed in parallel). `transactions.kind`
-is `NOT NULL` with a `CHECK` constraint that does not accept `'payment_or_refund'`, so *something*
-must resolve it before this module's `INSERT`, and P2-B's module is not on this branch to import
-from. `_resolve_kind` below is a small, self-contained mirror of the documented rule ("a payment
-pattern matches -> `payment`, otherwise `refund`", A29) that keeps this module fully testable on
-its own. It is flagged in this WP's final report as a contract observation for the orchestrator:
-once P2-B lands, this duplicated heuristic should either be deleted in favor of importing
-`classify.kinds`, or `classify/kinds.py` should delegate to (or be moved from) this function —
-either way, both lanes must not keep independent copies of the same pattern past the merge.
+Kind resolution (the ambiguous `'payment_or_refund'` hint, and the hint-less generic-parser
+fallback, including the checking->credit transfer pattern of I11/A26) is `classify.kinds.
+resolve_kind` — the single source of truth for those patterns (P2-B). This module calls it once
+per row, right before persistence, since `transactions.kind` is `NOT NULL` and every row needs a
+concrete `Kind` before the `INSERT`.
 """
 
 from __future__ import annotations
 
 import contextlib
 import json
-import re
 from dataclasses import dataclass
 from datetime import UTC, date, datetime, timedelta
 from pathlib import Path
@@ -52,17 +45,12 @@ from sqlalchemy import delete, select
 from sqlalchemy.dialects.sqlite import insert as sqlite_insert
 from sqlalchemy.orm import Session
 
+from spend_analyzer.classify.kinds import is_spend, resolve_kind
 from spend_analyzer.config import Settings, load_settings
 from spend_analyzer.core.errors import ParserError, SpendAnalyzerError, UnsupportedLayoutError
 from spend_analyzer.core.logging import get_logger
 from spend_analyzer.core.paths import ensure_home, statements_dir
-from spend_analyzer.core.types import (
-    ExtractedDoc,
-    Kind,
-    KindHint,
-    ParsedStatement,
-    StatementParser,
-)
+from spend_analyzer.core.types import ExtractedDoc, ParsedStatement, StatementParser
 from spend_analyzer.db.models import Account, Issuer, LayoutSpec, Statement, Transaction, User
 from spend_analyzer.ingest import issuer_match
 from spend_analyzer.ingest.dedupe import DedupeKey, compute_dedupe_hash, compute_occurrence_indices
@@ -98,21 +86,6 @@ CONFIDENT_SCORE_THRESHOLD = 0.8
 #: the account's previous statement. Not specified numerically by the plan beyond its own
 #: worked example (0.95 -> 0.62); this is a deliberately conservative reading of it.
 DETECT_SCORE_DRIFT_THRESHOLD = 0.15
-
-#: I11/A26: a payment *to* a credit card from a checking/savings account is a transfer, never
-#: spend, no matter which section it printed in or which parser produced it. Mirrors
-#: `layout_d_bank`'s pattern so the generic parser's debit/credit mode (which emits no kind hint
-#: at all) gets the same treatment (D11, A26 — this classification is P2-A's job, not the
-#: parser's, precisely so it also covers layouts that do not do it themselves).
-_CARD_PAYMENT_RE = re.compile(
-    r"\b(AUTOPAY|CRD\s*PMT|CREDIT\s*CARD\s*PAYMENT|EPAY|PAYMENT|PMT)\b", re.IGNORECASE
-)
-
-#: See the module docstring: the interim mirror of `classify/kinds.py`'s payment/refund pattern
-#: (A29), used only to satisfy the `NOT NULL` `kind` column before persistence.
-_PAYMENT_PATTERN_RE = re.compile(
-    r"\b(PAYMENT|PYMT|AUTOPAY|AUTO\s*PAY|THANK\s*YOU|ONLINE\s*PMT)\b", re.IGNORECASE
-)
 
 #: ±5 days (I11): the window within which a checking-side transfer is paired with a credit-side
 #: payment of equal magnitude.
@@ -349,49 +322,6 @@ def _select_parser(
 
 
 # ------------------------------------------------------------------------------------------------
-# Kind resolution (see the module docstring's contract note) and the transfer override (I11, A26)
-# ------------------------------------------------------------------------------------------------
-
-_CONCRETE_KINDS: frozenset[str] = frozenset(
-    {"purchase", "refund", "payment", "transfer", "fee", "interest", "adjustment"}
-)
-
-
-def _resolve_kind(hint: KindHint | None, description: str, amount_minor: int) -> Kind:
-    """Resolve a `RawTransaction.kind_hint` to a concrete `Kind` (`transactions.kind` is
-    `NOT NULL`). See the module docstring for why this lives here rather than in
-    `classify/kinds.py`.
-
-    - An already-concrete hint (every layout parser but the ambiguous payments/credits section of
-      A/B/C) passes through unchanged.
-    - `'payment_or_refund'` resolves by pattern (A29): a payment pattern -> `payment`, else
-      `refund`.
-    - No hint at all (the generic parser never emits one): an outflow is a `purchase`. An inflow
-      is ambiguous exactly the same way an A/B/C payments/credits section is, so it gets the same
-      pattern check rather than defaulting straight to `refund`.
-    """
-    if hint is not None and hint in _CONCRETE_KINDS:
-        return hint  # type: ignore[return-value]
-    if hint is None and amount_minor >= 0:
-        return "purchase"
-    return "payment" if _PAYMENT_PATTERN_RE.search(description) else "refund"
-
-
-def _apply_transfer_override(kind: Kind, description: str, account_type: str) -> Kind:
-    """I11/A26: on a checking/savings account, a row that looks like a payment *to* a credit
-    card is a `transfer`, never spend — regardless of which section it printed in. `layout_d_bank`
-    already applies this itself; this override exists so the generic parser's debit/credit mode
-    (which emits no kind hint) gets the same treatment (D11)."""
-    if (
-        account_type in ("checking", "savings")
-        and kind in ("purchase", "payment")
-        and _CARD_PAYMENT_RE.search(description)
-    ):
-        return "transfer"
-    return kind
-
-
-# ------------------------------------------------------------------------------------------------
 # Phase 2 — confirm_import
 # ------------------------------------------------------------------------------------------------
 
@@ -560,13 +490,19 @@ def _persist_parsed_statement(
     )
 
     pii_terms = _gather_pii_terms(session, settings, user_id)
+    issuer_match_terms = _gather_issuer_match_terms(session)
 
     rows: list[dict[str, object]] = []
     dedupe_keys: list[DedupeKey] = []
     for raw in parsed.transactions:
         normalized = normalize(raw.description, pii_terms)
-        kind = _resolve_kind(raw.kind_hint, raw.description, raw.amount_minor)
-        kind = _apply_transfer_override(kind, raw.description, account_type)
+        kind = resolve_kind(
+            kind_hint=raw.kind_hint,
+            description_clean=normalized.description_clean,
+            amount_minor=raw.amount_minor,
+            account_type=account_type,
+            issuer_match_terms=issuer_match_terms,
+        )
         posted_date_iso = raw.posted_date.isoformat()
         dedupe_keys.append(
             DedupeKey(
@@ -595,7 +531,7 @@ def _persist_parsed_statement(
                 "fx_currency": raw.fx_currency,
                 "fx_rate": raw.fx_rate,
                 "kind": kind,
-                "is_spend": kind in ("purchase", "fee", "interest"),
+                "is_spend": is_spend(kind),
             }
         )
 
@@ -707,6 +643,16 @@ def _gather_pii_terms(session: Session, settings: Settings, user_id: int) -> tup
             terms.update(json.loads(user.pii_aliases))
     for issuer in session.execute(select(Issuer)).scalars():
         terms.add(issuer.name)
+        with contextlib.suppress(json.JSONDecodeError, TypeError):
+            terms.update(json.loads(issuer.match_terms))
+    return tuple(sorted(terms))
+
+
+def _gather_issuer_match_terms(session: Session) -> tuple[str, ...]:
+    """Every configured issuer's `match_terms` (I1b, local-only), flattened for
+    `classify.kinds.resolve_kind`'s issuer-proximity check (A26). Never egressed."""
+    terms: set[str] = set()
+    for issuer in session.execute(select(Issuer)).scalars():
         with contextlib.suppress(json.JSONDecodeError, TypeError):
             terms.update(json.loads(issuer.match_terms))
     return tuple(sorted(terms))

@@ -13,7 +13,6 @@ import pytest
 from sqlalchemy.orm import Session
 
 from spend_analyzer.core.errors import UnsupportedLayoutError
-from spend_analyzer.core.types import KindHint
 from spend_analyzer.db.models import Account, Issuer, Transaction, User
 from spend_analyzer.ingest import pipeline
 from tests.fixtures.gen.base import format_row, render_lines_pdf
@@ -610,32 +609,3 @@ def test_reassign_moves_rows_and_deletes_true_duplicates(session: Session, tmp_p
     moved = session.query(Transaction).filter_by(statement_id=proposal.statement_id).all()
     assert {t.account_id for t in moved} == {other_account.id}
     assert {t.user_id for t in moved} == {other_user.id}
-
-
-# --------------------------------------------------------------------------------------------
-# Pure-function unit tests: kind resolution and the transfer override
-# --------------------------------------------------------------------------------------------
-
-
-@pytest.mark.parametrize(
-    ("hint", "description", "amount_minor", "expected"),
-    [
-        ("purchase", "GROCERY MART", 1000, "purchase"),
-        ("payment_or_refund", "PAYMENT THANK YOU", -2000, "payment"),
-        ("payment_or_refund", "MERCHANDISE CREDIT", -500, "refund"),
-        (None, "SOME CHARGE", 500, "purchase"),
-        (None, "SOME CREDIT", -500, "refund"),
-    ],
-)
-def test_resolve_kind(
-    hint: KindHint | None, description: str, amount_minor: int, expected: str
-) -> None:
-    assert pipeline._resolve_kind(hint, description, amount_minor) == expected
-
-
-def test_apply_transfer_override_only_on_checking_accounts() -> None:
-    assert (
-        pipeline._apply_transfer_override("purchase", "AUTOPAY PAYMENT", "checking") == "transfer"
-    )
-    assert pipeline._apply_transfer_override("purchase", "GROCERY MART", "checking") == "purchase"
-    assert pipeline._apply_transfer_override("purchase", "AUTOPAY PAYMENT", "credit") == "purchase"
