@@ -23,6 +23,7 @@ from sqlalchemy.orm import Session, sessionmaker
 from spend_analyzer.analytics.query import SpendQuery, run_query
 from spend_analyzer.api.services import gateway
 from spend_analyzer.config import load_settings
+from spend_analyzer.core.errors import SpendAnalyzerError
 from spend_analyzer.core.logging import configure_logging, get_logger
 from spend_analyzer.core.paths import ensure_home
 from spend_analyzer.db.migrate import upgrade_head
@@ -79,12 +80,14 @@ def _session_factory_for(engine: Engine) -> sessionmaker[Session]:
 @app.command()
 def migrate() -> None:
     """Create/upgrade the local database to the latest schema and sync the taxonomy."""
+    from spend_analyzer.classify.rules import sync_builtin_rules
     from spend_analyzer.classify.taxonomy import sync_taxonomy
 
     with _open_engine() as engine:
         upgrade_head()
         with _open_session(engine) as session:
             sync_taxonomy(session)
+            sync_builtin_rules(session)
             session.commit()
 
     get_logger("cli").info("migrate: database ready")
@@ -101,9 +104,15 @@ def serve_cmd(
     import uvicorn
 
     from spend_analyzer.api.app import create_app
+    from spend_analyzer.classify.rules import sync_builtin_rules
+    from spend_analyzer.classify.taxonomy import sync_taxonomy
 
     settings = load_settings()
     with _open_engine() as engine:
+        with _open_session(engine) as session:
+            sync_taxonomy(session)
+            sync_builtin_rules(session)
+            session.commit()
         app_instance = create_app(engine=engine, settings=settings)
         token = app_instance.state.token
         port = settings.server.port
@@ -158,6 +167,10 @@ def import_cmd(
             except ModuleNotFoundError as exc:
                 typer.echo(f"ingest pipeline unavailable: {exc}", err=True)
                 raise typer.Exit(code=2) from None
+            except SpendAnalyzerError as exc:
+                typer.echo(f"{raw_path}: {exc}", err=True)
+                any_error = True
+                continue
 
             if proposal.status != "awaiting_extractor":
                 typer.echo(f"{raw_path}: statement #{proposal.statement_id} -> {proposal.status}")
@@ -198,6 +211,10 @@ def import_cmd(
             except ModuleNotFoundError as exc:
                 typer.echo(f"ingest pipeline unavailable: {exc}", err=True)
                 raise typer.Exit(code=2) from None
+            except SpendAnalyzerError as exc:
+                typer.echo(f"{raw_path}: statement #{proposal.statement_id} -> {exc}", err=True)
+                any_error = True
+                continue
 
             typer.echo(
                 f"{raw_path}: statement #{proposal.statement_id} imported "

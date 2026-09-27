@@ -73,15 +73,34 @@ def test_import_rejects_non_pdf(home: Path, tmp_path: Path) -> None:
     assert "not a PDF file" in result.output
 
 
-def test_import_reports_ingest_pipeline_unavailable(home: Path, tmp_path: Path) -> None:
-    """P2-A's `ingest/pipeline.py` is not present in this branch (parallel development, §3.12a);
-    the CLI must fail clearly rather than crash with an unhandled `ModuleNotFoundError`."""
+def test_import_reports_ingest_pipeline_unavailable(
+    home: Path, tmp_path: Path, monkeypatch: object
+) -> None:
+    """The CLI must fail clearly, not crash with an unhandled `ModuleNotFoundError`, if the
+    §3.12a ingest pipeline it calls through `gateway` is ever missing (parallel-development
+    guard; `ingest/pipeline.py` is present in this build, so the failure is faked directly)."""
+    from spend_analyzer.api.services import gateway
+
+    def _raise(*args: object, **kwargs: object) -> None:
+        raise ModuleNotFoundError("spend_analyzer.ingest.pipeline")
+
+    monkeypatch.setattr(gateway, "propose_import", _raise)  # type: ignore[attr-defined]
     runner.invoke(app, ["migrate"])
     pdf_file = tmp_path / "statement.pdf"
     pdf_file.write_bytes(b"%PDF-1.4 fake statement bytes")
     result = runner.invoke(app, ["import", str(pdf_file), "--user-id", "1"])
     assert result.exit_code == 2
     assert "ingest pipeline unavailable" in result.output
+
+
+def test_import_of_unparseable_pdf_reports_error_cleanly(home: Path, tmp_path: Path) -> None:
+    """A real PDF that isn't a recognizable statement fails with a clean per-file message
+    (exit code 1, not an uncaught-exception traceback)."""
+    runner.invoke(app, ["migrate"])
+    pdf_file = tmp_path / "statement.pdf"
+    pdf_file.write_bytes(b"%PDF-1.4 fake statement bytes")
+    result = runner.invoke(app, ["import", str(pdf_file), "--user-id", "1"], catch_exceptions=False)
+    assert result.exit_code == 1, result.output
 
 
 def test_classify_reports_nothing_to_classify(home: Path) -> None:
