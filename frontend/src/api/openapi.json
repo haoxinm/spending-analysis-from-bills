@@ -1,653 +1,857 @@
 {
-  "openapi": "3.0.3",
+  "openapi": "3.1.0",
   "info": {
     "title": "Spend Analyzer API",
-    "version": "0.1.0-placeholder",
-    "description": "Hand-written stand-in for the FastAPI-generated schema (plan §3.12), committed so P1-F can generate a typed client before the routers exist (Phase 2). P2-C replaces this file with the real generated schema; regeneration then becomes a CI step. Do not hand-maintain this file after P2-C lands."
+    "version": "0.1.0"
   },
-  "servers": [{ "url": "/api" }],
-  "components": {
-    "securitySchemes": {
-      "SpendToken": {
-        "type": "apiKey",
-        "in": "header",
-        "name": "X-Spend-Token",
-        "description": "Per-launch token required on every /api request (A31)."
-      }
-    },
-    "schemas": {
-      "Error": {
-        "type": "object",
-        "required": ["detail"],
-        "properties": {
-          "detail": { "type": "string" }
-        }
-      },
-      "Currency": { "type": "string", "example": "USD" },
-      "Kind": {
-        "type": "string",
-        "enum": ["purchase", "refund", "payment", "transfer", "fee", "interest", "adjustment"]
-      },
-      "AccountType": { "type": "string", "enum": ["credit", "checking", "savings"] },
-      "User": {
-        "type": "object",
-        "required": ["id", "name", "is_default"],
-        "properties": {
-          "id": { "type": "integer" },
-          "name": { "type": "string" },
-          "is_default": { "type": "boolean" }
-        }
-      },
-      "UserCreate": {
-        "type": "object",
-        "required": ["name"],
-        "properties": {
-          "name": { "type": "string" },
-          "is_default": { "type": "boolean" }
-        }
-      },
-      "UserUpdate": {
-        "type": "object",
-        "properties": {
-          "name": { "type": "string" },
-          "is_default": { "type": "boolean" }
-        }
-      },
-      "Account": {
-        "type": "object",
-        "required": ["id", "user_id", "issuer_id", "account_type", "mask", "currency"],
-        "properties": {
-          "id": { "type": "integer" },
-          "user_id": { "type": "integer" },
-          "issuer_id": { "type": "integer", "nullable": true },
-          "account_type": { "$ref": "#/components/schemas/AccountType" },
-          "mask": { "type": "string", "description": "Last 4 digits only. LOCAL ONLY (I1b)." },
-          "currency": { "$ref": "#/components/schemas/Currency" }
-        }
-      },
-      "AccountCreate": {
-        "type": "object",
-        "required": ["user_id", "account_type", "currency"],
-        "properties": {
-          "user_id": { "type": "integer" },
-          "issuer_id": { "type": "integer", "nullable": true },
-          "account_type": { "$ref": "#/components/schemas/AccountType" },
-          "mask": { "type": "string" },
-          "currency": { "$ref": "#/components/schemas/Currency" }
-        }
-      },
-      "AccountUpdate": {
-        "type": "object",
-        "properties": {
-          "issuer_id": { "type": "integer", "nullable": true },
-          "account_type": { "$ref": "#/components/schemas/AccountType" },
-          "mask": { "type": "string" },
-          "currency": { "$ref": "#/components/schemas/Currency" }
-        }
-      },
-      "StatementStatus": {
-        "type": "string",
-        "enum": [
-          "awaiting_extractor",
-          "queued",
-          "processing",
-          "done",
-          "error",
-          "no_text_layer",
-          "unsupported_layout"
-        ]
-      },
-      "Statement": {
-        "type": "object",
-        "required": ["id", "status", "created_at"],
-        "properties": {
-          "id": { "type": "integer" },
-          "user_id": { "type": "integer", "nullable": true },
-          "account_id": { "type": "integer", "nullable": true },
-          "status": { "$ref": "#/components/schemas/StatementStatus" },
-          "period_start": { "type": "string", "format": "date", "nullable": true },
-          "period_end": { "type": "string", "format": "date", "nullable": true },
-          "txn_count": { "type": "integer" },
-          "reconciliation_delta_minor": {
-            "type": "integer",
-            "nullable": true,
-            "description": "Signed minor units; 0 when the balance equation reconciles exactly (§3.1 A25)."
-          },
-          "detect_score": { "type": "number", "nullable": true },
-          "shape_warnings": { "type": "string", "nullable": true },
-          "error_detail": { "type": "string", "nullable": true },
-          "created_at": { "type": "string", "format": "date-time" }
-        }
-      },
-      "ExtractorProposal": {
-        "type": "object",
-        "properties": {
-          "issuer_id": { "type": "integer", "nullable": true },
-          "parser_id": { "type": "string", "nullable": true },
-          "layout_spec_id": { "type": "integer", "nullable": true },
-          "confidence": { "type": "number" },
-          "auto_confirmed": { "type": "boolean" }
-        }
-      },
-      "StatementUploadResponse": {
-        "type": "object",
-        "required": ["statement", "proposal"],
-        "properties": {
-          "statement": { "$ref": "#/components/schemas/Statement" },
-          "proposal": { "$ref": "#/components/schemas/ExtractorProposal" }
-        }
-      },
-      "ExtractRequest": {
-        "type": "object",
-        "required": ["issuer_id", "remember"],
-        "properties": {
-          "issuer_id": { "type": "integer" },
-          "layout_spec_id": { "type": "integer", "nullable": true },
-          "parser_id": { "type": "string", "nullable": true },
-          "remember": { "type": "boolean" }
-        }
-      },
-      "StatementPatch": {
-        "type": "object",
-        "properties": {
-          "user_id": { "type": "integer" },
-          "account_id": { "type": "integer" }
-        }
-      },
-      "Job": {
-        "type": "object",
-        "required": ["id", "kind", "status", "progress"],
-        "properties": {
-          "id": { "type": "string" },
-          "kind": { "type": "string", "enum": ["import", "classify"] },
-          "status": { "type": "string", "enum": ["queued", "running", "done", "error"] },
-          "progress": { "type": "number", "minimum": 0, "maximum": 1 },
-          "message": { "type": "string", "nullable": true },
-          "group_id": { "type": "string", "nullable": true },
-          "error_detail": { "type": "string", "nullable": true }
-        }
-      },
-      "Transaction": {
-        "type": "object",
-        "required": [
-          "id",
-          "statement_id",
-          "account_id",
-          "posted_date",
-          "description_clean",
-          "amount_minor",
-          "currency",
-          "kind",
-          "category_key",
-          "subcategory_key",
-          "needs_review"
-        ],
-        "properties": {
-          "id": { "type": "integer" },
-          "statement_id": { "type": "integer" },
-          "account_id": { "type": "integer" },
-          "posted_date": { "type": "string", "format": "date" },
-          "transaction_date": { "type": "string", "format": "date", "nullable": true },
-          "description_clean": { "type": "string" },
-          "amount_minor": {
-            "type": "integer",
-            "description": "Signed minor units; positive = outflow (I5)."
-          },
-          "currency": { "$ref": "#/components/schemas/Currency" },
-          "kind": { "$ref": "#/components/schemas/Kind" },
-          "category_key": { "type": "string", "nullable": true },
-          "subcategory_key": { "type": "string", "nullable": true },
-          "merchant_key": { "type": "string", "nullable": true },
-          "notes": { "type": "string", "nullable": true },
-          "needs_review": { "type": "boolean" }
-        }
-      },
-      "TransactionPatch": {
-        "type": "object",
-        "properties": {
-          "category_key": { "type": "string" },
-          "subcategory_key": { "type": "string" },
-          "kind": { "$ref": "#/components/schemas/Kind" },
-          "notes": { "type": "string" },
-          "create_rule": { "type": "boolean" }
-        }
-      },
-      "BulkUpdateRequest": {
-        "type": "object",
-        "required": ["transaction_ids"],
-        "properties": {
-          "transaction_ids": { "type": "array", "items": { "type": "integer" } },
-          "category_key": { "type": "string" },
-          "subcategory_key": { "type": "string" },
-          "kind": { "$ref": "#/components/schemas/Kind" }
-        }
-      },
-      "ClassifyRunRequest": {
-        "type": "object",
-        "properties": {
-          "user_id": { "type": "integer", "nullable": true },
-          "statement_id": { "type": "integer", "nullable": true },
-          "only_unclassified": { "type": "boolean", "default": true }
-        }
-      },
-      "ClassifyRunResponse": {
-        "type": "object",
-        "required": ["job_id", "group_id"],
-        "properties": {
-          "job_id": { "type": "string" },
-          "group_id": { "type": "string" }
-        }
-      },
-      "ClassifyPreviewRow": {
-        "type": "object",
-        "properties": {
-          "merchant_key": { "type": "string" },
-          "description_clean": { "type": "string" }
-        }
-      },
-      "LlmRun": {
-        "type": "object",
-        "properties": {
-          "id": { "type": "integer" },
-          "group_id": { "type": "string" },
-          "provider": { "type": "string" },
-          "model": { "type": "string" },
-          "schema_mode": { "type": "string" },
-          "cost_usd": { "type": "number", "nullable": true },
-          "prompt_tokens": { "type": "integer", "nullable": true },
-          "completion_tokens": { "type": "integer", "nullable": true },
-          "created_at": { "type": "string", "format": "date-time" }
-        }
-      },
-      "AnalyticsRow": {
-        "type": "object",
-        "required": ["currency", "total_minor", "txn_count", "avg_minor"],
-        "properties": {
-          "period": { "type": "string", "nullable": true },
-          "category": { "type": "string", "nullable": true },
-          "subcategory": { "type": "string", "nullable": true },
-          "user": { "type": "string", "nullable": true },
-          "account": { "type": "string", "nullable": true },
-          "merchant": { "type": "string", "nullable": true },
-          "currency": { "$ref": "#/components/schemas/Currency" },
-          "total_minor": { "type": "integer" },
-          "txn_count": { "type": "integer" },
-          "avg_minor": { "type": "integer" }
-        }
-      },
-      "TopMerchantRow": {
-        "type": "object",
-        "properties": {
-          "merchant": { "type": "string" },
-          "total_minor": { "type": "integer" },
-          "txn_count": { "type": "integer" }
-        }
-      },
-      "Subcategory": {
-        "type": "object",
-        "required": ["key", "name", "pending"],
-        "properties": {
-          "key": { "type": "string" },
-          "name": { "type": "string" },
-          "pending": { "type": "boolean" },
-          "merged_into": { "type": "string", "nullable": true }
-        }
-      },
-      "Category": {
-        "type": "object",
-        "required": ["key", "name", "subcategories"],
-        "properties": {
-          "key": { "type": "string" },
-          "name": { "type": "string" },
-          "subcategories": {
-            "type": "array",
-            "items": { "$ref": "#/components/schemas/Subcategory" }
-          }
-        }
-      },
-      "MergeRequest": {
-        "type": "object",
-        "required": ["into_id"],
-        "properties": { "into_id": { "type": "string" } }
-      },
-      "Issuer": {
-        "type": "object",
-        "required": ["id", "name", "slug", "match_terms"],
-        "properties": {
-          "id": { "type": "integer" },
-          "name": { "type": "string" },
-          "slug": { "type": "string" },
-          "match_terms": { "type": "array", "items": { "type": "string" } },
-          "default_spec_id": { "type": "integer", "nullable": true }
-        }
-      },
-      "IssuerCreate": {
-        "type": "object",
-        "required": ["name"],
-        "properties": {
-          "name": { "type": "string" },
-          "match_terms": { "type": "array", "items": { "type": "string" } }
-        }
-      },
-      "IssuerUpdate": {
-        "type": "object",
-        "properties": {
-          "name": { "type": "string" },
-          "match_terms": { "type": "array", "items": { "type": "string" } },
-          "default_spec_id": { "type": "integer", "nullable": true }
-        }
-      },
-      "LayoutSpec": {
-        "type": "object",
-        "required": ["id", "name", "version", "approved", "source"],
-        "properties": {
-          "id": { "type": "integer" },
-          "name": { "type": "string" },
-          "version": { "type": "integer" },
-          "issuer_id": { "type": "integer", "nullable": true },
-          "approved": { "type": "boolean" },
-          "source": { "type": "string", "enum": ["hand_mapped", "pasted"] }
-        }
-      },
-      "LayoutSpecCreate": {
-        "type": "object",
-        "required": ["name", "spec_yaml"],
-        "properties": {
-          "name": { "type": "string" },
-          "spec_yaml": { "type": "string" },
-          "issuer_id": { "type": "integer", "nullable": true }
-        }
-      },
-      "Rule": {
-        "type": "object",
-        "required": ["id", "pattern", "category_key", "subcategory_key"],
-        "properties": {
-          "id": { "type": "integer" },
-          "pattern": { "type": "string" },
-          "category_key": { "type": "string" },
-          "subcategory_key": { "type": "string" },
-          "kind": { "$ref": "#/components/schemas/Kind" },
-          "source": { "type": "string", "enum": ["builtin", "user"] }
-        }
-      },
-      "RuleCreate": {
-        "type": "object",
-        "required": ["pattern", "category_key", "subcategory_key"],
-        "properties": {
-          "pattern": { "type": "string" },
-          "category_key": { "type": "string" },
-          "subcategory_key": { "type": "string" },
-          "kind": { "$ref": "#/components/schemas/Kind" }
-        }
-      },
-      "RuleUpdate": {
-        "type": "object",
-        "properties": {
-          "pattern": { "type": "string" },
-          "category_key": { "type": "string" },
-          "subcategory_key": { "type": "string" },
-          "kind": { "$ref": "#/components/schemas/Kind" }
-        }
-      },
-      "LlmMode": { "type": "string", "enum": ["none", "local", "remote"] },
-      "Settings": {
-        "type": "object",
-        "properties": {
-          "llm": {
-            "type": "object",
-            "properties": {
-              "mode": { "$ref": "#/components/schemas/LlmMode" },
-              "provider": { "type": "string" },
-              "model": { "type": "string" },
-              "api_base": { "type": "string" },
-              "batch_size": { "type": "integer" },
-              "timeout_s": { "type": "integer" },
-              "confidence_threshold": { "type": "number" }
-            }
-          },
-          "privacy": {
-            "type": "object",
-            "properties": {
-              "store_pdf_copies": { "type": "boolean" },
-              "store_extract_cache": { "type": "boolean" },
-              "pii_terms": { "type": "array", "items": { "type": "string" } }
-            }
-          },
-          "ingest": {
-            "type": "object",
-            "properties": {
-              "always_confirm_extractor": { "type": "boolean" },
-              "date_format_hints": { "type": "array", "items": { "type": "string" } },
-              "default_currency": { "$ref": "#/components/schemas/Currency" }
-            }
-          },
-          "server": {
-            "type": "object",
-            "properties": {
-              "port": { "type": "integer" }
-            }
-          }
-        }
-      },
-      "TestLlmResponse": {
-        "type": "object",
-        "required": ["ok"],
-        "properties": {
-          "ok": { "type": "boolean" },
-          "detail": { "type": "string", "nullable": true }
-        }
-      }
-    },
-    "parameters": {
-      "UserIds": {
-        "name": "user_ids",
-        "in": "query",
-        "style": "form",
-        "explode": true,
-        "schema": { "type": "array", "items": { "type": "integer" } }
-      },
-      "AccountIds": {
-        "name": "account_ids",
-        "in": "query",
-        "style": "form",
-        "explode": true,
-        "schema": { "type": "array", "items": { "type": "integer" } }
-      },
-      "DateFrom": { "name": "date_from", "in": "query", "schema": { "type": "string", "format": "date" } },
-      "DateTo": { "name": "date_to", "in": "query", "schema": { "type": "string", "format": "date" } },
-      "Granularity": {
-        "name": "granularity",
-        "in": "query",
-        "schema": {
-          "type": "string",
-          "enum": ["day", "week", "month", "quarter", "year", "all"],
-          "default": "month"
-        }
-      },
-      "GroupBy": {
-        "name": "group_by",
-        "in": "query",
-        "style": "form",
-        "explode": true,
-        "schema": {
-          "type": "array",
-          "items": {
-            "type": "string",
-            "enum": ["category", "subcategory", "user", "account", "merchant", "period"]
-          }
-        }
-      },
-      "CategoryKeys": {
-        "name": "category_keys",
-        "in": "query",
-        "style": "form",
-        "explode": true,
-        "schema": { "type": "array", "items": { "type": "string" } }
-      },
-      "SubcategoryKeys": {
-        "name": "subcategory_keys",
-        "in": "query",
-        "style": "form",
-        "explode": true,
-        "schema": { "type": "array", "items": { "type": "string" } }
-      },
-      "AmountMinMinor": { "name": "amount_min_minor", "in": "query", "schema": { "type": "integer" } },
-      "AmountMaxMinor": { "name": "amount_max_minor", "in": "query", "schema": { "type": "integer" } },
-      "Kinds": {
-        "name": "kinds",
-        "in": "query",
-        "style": "form",
-        "explode": true,
-        "schema": { "type": "array", "items": { "$ref": "#/components/schemas/Kind" } }
-      },
-      "IncludeNonSpend": { "name": "include_non_spend", "in": "query", "schema": { "type": "boolean", "default": false } },
-      "NetRefunds": { "name": "net_refunds", "in": "query", "schema": { "type": "boolean", "default": true } },
-      "Search": { "name": "search", "in": "query", "schema": { "type": "string" } },
-      "Currency": { "name": "currency", "in": "query", "schema": { "type": "string", "default": "USD" } },
-      "Page": { "name": "page", "in": "query", "schema": { "type": "integer", "default": 1 } },
-      "PageSize": { "name": "page_size", "in": "query", "schema": { "type": "integer", "default": 50 } },
-      "Sort": { "name": "sort", "in": "query", "schema": { "type": "string" } }
-    }
-  },
-  "security": [{ "SpendToken": [] }],
   "paths": {
     "/users": {
       "get": {
-        "operationId": "listUsers",
+        "tags": [
+          "users"
+        ],
+        "summary": "List Users",
+        "operationId": "list_users_api_users_get",
         "responses": {
           "200": {
-            "description": "OK",
-            "content": { "application/json": { "schema": { "type": "array", "items": { "$ref": "#/components/schemas/User" } } } }
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/User"
+                  },
+                  "type": "array",
+                  "title": "Response List Users Api Users Get"
+                }
+              }
+            }
           }
         }
       },
       "post": {
-        "operationId": "createUser",
-        "requestBody": { "content": { "application/json": { "schema": { "$ref": "#/components/schemas/UserCreate" } } } },
+        "tags": [
+          "users"
+        ],
+        "summary": "Create User",
+        "operationId": "create_user_api_users_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/UserCreate"
+              }
+            }
+          },
+          "required": true
+        },
         "responses": {
-          "201": { "description": "Created", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/User" } } } }
+          "201": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/User"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
         }
       }
     },
-    "/users/{id}": {
-      "parameters": [{ "name": "id", "in": "path", "required": true, "schema": { "type": "integer" } }],
+    "/users/{user_id}": {
       "patch": {
-        "operationId": "updateUser",
-        "requestBody": { "content": { "application/json": { "schema": { "$ref": "#/components/schemas/UserUpdate" } } } },
-        "responses": { "200": { "description": "OK", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/User" } } } } }
+        "tags": [
+          "users"
+        ],
+        "summary": "Update User",
+        "operationId": "update_user_api_users__user_id__patch",
+        "parameters": [
+          {
+            "name": "user_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "title": "User Id"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/UserUpdate"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/User"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
       },
       "delete": {
-        "operationId": "deleteUser",
-        "responses": { "204": { "description": "No Content" } }
+        "tags": [
+          "users"
+        ],
+        "summary": "Delete User",
+        "operationId": "delete_user_api_users__user_id__delete",
+        "parameters": [
+          {
+            "name": "user_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "title": "User Id"
+            }
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "Successful Response"
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
       }
     },
     "/accounts": {
       "get": {
-        "operationId": "listAccounts",
-        "responses": { "200": { "description": "OK", "content": { "application/json": { "schema": { "type": "array", "items": { "$ref": "#/components/schemas/Account" } } } } } }
+        "tags": [
+          "accounts"
+        ],
+        "summary": "List Accounts",
+        "operationId": "list_accounts_api_accounts_get",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/Account"
+                  },
+                  "type": "array",
+                  "title": "Response List Accounts Api Accounts Get"
+                }
+              }
+            }
+          }
+        }
       },
       "post": {
-        "operationId": "createAccount",
-        "requestBody": { "content": { "application/json": { "schema": { "$ref": "#/components/schemas/AccountCreate" } } } },
-        "responses": { "201": { "description": "Created", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/Account" } } } } }
+        "tags": [
+          "accounts"
+        ],
+        "summary": "Create Account",
+        "operationId": "create_account_api_accounts_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/AccountCreate"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Account"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
       }
     },
-    "/accounts/{id}": {
-      "parameters": [{ "name": "id", "in": "path", "required": true, "schema": { "type": "integer" } }],
+    "/accounts/{account_id}": {
       "patch": {
-        "operationId": "updateAccount",
-        "requestBody": { "content": { "application/json": { "schema": { "$ref": "#/components/schemas/AccountUpdate" } } } },
-        "responses": { "200": { "description": "OK", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/Account" } } } } }
+        "tags": [
+          "accounts"
+        ],
+        "summary": "Update Account",
+        "operationId": "update_account_api_accounts__account_id__patch",
+        "parameters": [
+          {
+            "name": "account_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "title": "Account Id"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/AccountUpdate"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Account"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
       }
     },
     "/statements": {
       "post": {
-        "operationId": "uploadStatement",
-        "description": "Multipart upload. A22 phase 1: text extracted, issuer matched, extractor proposed; status='awaiting_extractor'; nothing parsed yet.",
+        "tags": [
+          "statements"
+        ],
+        "summary": "Upload Statement",
+        "description": "Multipart upload. `user_id` (D4: chosen in the Import screen, sticky) is a form field\nalongside `file`.",
+        "operationId": "upload_statement_api_statements_post",
         "requestBody": {
+          "required": true,
           "content": {
             "multipart/form-data": {
-              "schema": { "type": "object", "required": ["file"], "properties": { "file": { "type": "string", "format": "binary" } } }
+              "schema": {
+                "$ref": "#/components/schemas/Body_upload_statement_api_statements_post"
+              }
             }
           }
         },
-        "responses": { "201": { "description": "Created", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/StatementUploadResponse" } } } } }
+        "responses": {
+          "201": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/StatementUploadResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
       },
       "get": {
-        "operationId": "listStatements",
-        "parameters": [{ "name": "user_id", "in": "query", "schema": { "type": "integer" } }],
-        "responses": { "200": { "description": "OK", "content": { "application/json": { "schema": { "type": "array", "items": { "$ref": "#/components/schemas/Statement" } } } } } }
+        "tags": [
+          "statements"
+        ],
+        "summary": "List Statements",
+        "operationId": "list_statements_api_statements_get",
+        "parameters": [
+          {
+            "name": "user_id",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "integer"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "User Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/Statement"
+                  },
+                  "title": "Response List Statements Api Statements Get"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
       }
     },
-    "/statements/{id}": {
-      "parameters": [{ "name": "id", "in": "path", "required": true, "schema": { "type": "integer" } }],
+    "/statements/{statement_id}": {
       "get": {
-        "operationId": "getStatement",
-        "responses": { "200": { "description": "OK", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/Statement" } } } } }
+        "tags": [
+          "statements"
+        ],
+        "summary": "Get Statement",
+        "operationId": "get_statement_api_statements__statement_id__get",
+        "parameters": [
+          {
+            "name": "statement_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "title": "Statement Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Statement"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
       },
       "patch": {
-        "operationId": "patchStatement",
-        "description": "Reassign user/account (§3.5).",
-        "requestBody": { "content": { "application/json": { "schema": { "$ref": "#/components/schemas/StatementPatch" } } } },
-        "responses": { "200": { "description": "OK", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/Statement" } } } } }
+        "tags": [
+          "statements"
+        ],
+        "summary": "Patch Statement",
+        "operationId": "patch_statement_api_statements__statement_id__patch",
+        "parameters": [
+          {
+            "name": "statement_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "title": "Statement Id"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/StatementPatch"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Statement"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
       },
       "delete": {
-        "operationId": "deleteStatement",
-        "description": "Cascades to transactions.",
-        "responses": { "204": { "description": "No Content" } }
+        "tags": [
+          "statements"
+        ],
+        "summary": "Delete Statement",
+        "operationId": "delete_statement_api_statements__statement_id__delete",
+        "parameters": [
+          {
+            "name": "statement_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "title": "Statement Id"
+            }
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "Successful Response"
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
       }
     },
-    "/statements/{id}/extract": {
-      "parameters": [{ "name": "id", "in": "path", "required": true, "schema": { "type": "integer" } }],
+    "/statements/{statement_id}/extract": {
       "post": {
-        "operationId": "extractStatement",
-        "description": "A22 phase 2: parse + persist.",
-        "requestBody": { "content": { "application/json": { "schema": { "$ref": "#/components/schemas/ExtractRequest" } } } },
-        "responses": { "202": { "description": "Accepted", "content": { "application/json": { "schema": { "type": "object", "required": ["job_id"], "properties": { "job_id": { "type": "string" } } } } } } }
+        "tags": [
+          "statements"
+        ],
+        "summary": "Extract Statement",
+        "description": "A22 phase 2: enqueues an `import` job that calls `confirm_import`, then (job flow, P2-C\nplan section) enqueues a `classify` job for the transactions it inserted.",
+        "operationId": "extract_statement_api_statements__statement_id__extract_post",
+        "parameters": [
+          {
+            "name": "statement_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "title": "Statement Id"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ExtractRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "202": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/JobIdResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
       }
     },
-    "/statements/{id}/reparse": {
-      "parameters": [{ "name": "id", "in": "path", "required": true, "schema": { "type": "integer" } }],
+    "/statements/{statement_id}/reparse": {
       "post": {
-        "operationId": "reparseStatement",
-        "description": "Re-run with a different extractor (rebuilds that statement's rows).",
-        "requestBody": { "content": { "application/json": { "schema": { "$ref": "#/components/schemas/ExtractRequest" } } } },
-        "responses": { "202": { "description": "Accepted", "content": { "application/json": { "schema": { "type": "object", "required": ["job_id"], "properties": { "job_id": { "type": "string" } } } } } } }
+        "tags": [
+          "statements"
+        ],
+        "summary": "Reparse Statement",
+        "operationId": "reparse_statement_api_statements__statement_id__reparse_post",
+        "parameters": [
+          {
+            "name": "statement_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "title": "Statement Id"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ExtractRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "202": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/JobIdResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
       }
     },
     "/transactions": {
       "get": {
-        "operationId": "listTransactions",
-        "description": "Filters mirror SpendQuery; paginated, sortable.",
+        "tags": [
+          "transactions"
+        ],
+        "summary": "List Transactions",
+        "operationId": "list_transactions_api_transactions_get",
         "parameters": [
-          { "$ref": "#/components/parameters/UserIds" },
-          { "$ref": "#/components/parameters/AccountIds" },
-          { "$ref": "#/components/parameters/DateFrom" },
-          { "$ref": "#/components/parameters/DateTo" },
-          { "$ref": "#/components/parameters/CategoryKeys" },
-          { "$ref": "#/components/parameters/SubcategoryKeys" },
-          { "$ref": "#/components/parameters/AmountMinMinor" },
-          { "$ref": "#/components/parameters/AmountMaxMinor" },
-          { "$ref": "#/components/parameters/Kinds" },
-          { "$ref": "#/components/parameters/IncludeNonSpend" },
-          { "$ref": "#/components/parameters/Search" },
-          { "$ref": "#/components/parameters/Currency" },
-          { "$ref": "#/components/parameters/Page" },
-          { "$ref": "#/components/parameters/PageSize" },
-          { "$ref": "#/components/parameters/Sort" }
+          {
+            "name": "user_ids",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "array",
+                  "items": {
+                    "type": "integer"
+                  }
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "User Ids"
+            }
+          },
+          {
+            "name": "account_ids",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "array",
+                  "items": {
+                    "type": "integer"
+                  }
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Account Ids"
+            }
+          },
+          {
+            "name": "date_from",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "format": "date"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Date From"
+            }
+          },
+          {
+            "name": "date_to",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "format": "date"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Date To"
+            }
+          },
+          {
+            "name": "category_keys",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "array",
+                  "items": {
+                    "type": "string"
+                  }
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Category Keys"
+            }
+          },
+          {
+            "name": "subcategory_keys",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "array",
+                  "items": {
+                    "type": "string"
+                  }
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Subcategory Keys"
+            }
+          },
+          {
+            "name": "amount_min_minor",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "integer"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Amount Min Minor"
+            }
+          },
+          {
+            "name": "amount_max_minor",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "integer"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Amount Max Minor"
+            }
+          },
+          {
+            "name": "kinds",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/Kind"
+                  }
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Kinds"
+            }
+          },
+          {
+            "name": "include_non_spend",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "boolean",
+              "default": false,
+              "title": "Include Non Spend"
+            }
+          },
+          {
+            "name": "search",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Search"
+            }
+          },
+          {
+            "name": "currency",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "default": "USD",
+              "title": "Currency"
+            }
+          },
+          {
+            "name": "page",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "default": 1,
+              "title": "Page"
+            }
+          },
+          {
+            "name": "page_size",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "default": 50,
+              "title": "Page Size"
+            }
+          },
+          {
+            "name": "sort",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Sort"
+            }
+          }
         ],
         "responses": {
           "200": {
-            "description": "OK",
+            "description": "Successful Response",
             "content": {
               "application/json": {
                 "schema": {
-                  "type": "object",
-                  "required": ["items", "total"],
-                  "properties": {
-                    "items": { "type": "array", "items": { "$ref": "#/components/schemas/Transaction" } },
-                    "total": { "type": "integer" }
-                  }
+                  "$ref": "#/components/schemas/TransactionList"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
                 }
               }
             }
@@ -656,261 +860,3485 @@
       }
     },
     "/transactions/{id}": {
-      "parameters": [{ "name": "id", "in": "path", "required": true, "schema": { "type": "integer" } }],
       "patch": {
-        "operationId": "patchTransaction",
-        "description": "Set category/subcategory/kind/notes → writes merchant_map(source='user'), optionally creates a rule.",
-        "requestBody": { "content": { "application/json": { "schema": { "$ref": "#/components/schemas/TransactionPatch" } } } },
-        "responses": { "200": { "description": "OK", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/Transaction" } } } } }
+        "tags": [
+          "transactions"
+        ],
+        "summary": "Patch Transaction",
+        "operationId": "patch_transaction_api_transactions__id__patch",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "title": "Id"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/TransactionPatch"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Transaction"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
       }
     },
     "/transactions/bulk-update": {
       "post": {
-        "operationId": "bulkUpdateTransactions",
-        "description": "Apply one label to a filtered selection.",
-        "requestBody": { "content": { "application/json": { "schema": { "$ref": "#/components/schemas/BulkUpdateRequest" } } } },
-        "responses": { "200": { "description": "OK", "content": { "application/json": { "schema": { "type": "object", "required": ["updated"], "properties": { "updated": { "type": "integer" } } } } } } }
+        "tags": [
+          "transactions"
+        ],
+        "summary": "Bulk Update Transactions",
+        "operationId": "bulk_update_transactions_api_transactions_bulk_update_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/BulkUpdateRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/BulkUpdateResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
       }
     },
     "/classify/run": {
       "post": {
-        "operationId": "runClassify",
-        "requestBody": { "content": { "application/json": { "schema": { "$ref": "#/components/schemas/ClassifyRunRequest" } } } },
-        "responses": { "202": { "description": "Accepted", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/ClassifyRunResponse" } } } } }
+        "tags": [
+          "classify"
+        ],
+        "summary": "Run Classify",
+        "operationId": "run_classify_api_classify_run_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ClassifyRunRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "202": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ClassifyRunResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
       }
     },
     "/classify/preview": {
       "get": {
-        "operationId": "previewClassify",
-        "description": "The exact CSV that would be sent (NO network call).",
-        "parameters": [
-          { "name": "user_id", "in": "query", "schema": { "type": "integer" } },
-          { "name": "statement_id", "in": "query", "schema": { "type": "integer" } }
+        "tags": [
+          "classify"
         ],
-        "responses": { "200": { "description": "OK", "content": { "application/json": { "schema": { "type": "array", "items": { "$ref": "#/components/schemas/ClassifyPreviewRow" } } } } } }
+        "summary": "Preview Classify",
+        "description": "The exact CSV the next run would send (A5), decoded back into rows. No network call.",
+        "operationId": "preview_classify_api_classify_preview_get",
+        "parameters": [
+          {
+            "name": "user_id",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "integer"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "User Id"
+            }
+          },
+          {
+            "name": "statement_id",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "integer"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Statement Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/ClassifyPreviewRow"
+                  },
+                  "title": "Response Preview Classify Api Classify Preview Get"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
       }
     },
     "/classify/runs": {
       "get": {
-        "operationId": "listClassifyRuns",
-        "description": "llm_runs audit list w/ cost, tokens, model, schema_mode.",
-        "responses": { "200": { "description": "OK", "content": { "application/json": { "schema": { "type": "array", "items": { "$ref": "#/components/schemas/LlmRun" } } } } } }
+        "tags": [
+          "classify"
+        ],
+        "summary": "List Classify Runs",
+        "operationId": "list_classify_runs_api_classify_runs_get",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/LlmRun"
+                  },
+                  "type": "array",
+                  "title": "Response List Classify Runs Api Classify Runs Get"
+                }
+              }
+            }
+          }
+        }
       }
     },
-    "/jobs/{id}": {
-      "parameters": [{ "name": "id", "in": "path", "required": true, "schema": { "type": "string" } }],
+    "/jobs/{job_id}": {
       "get": {
-        "operationId": "getJob",
-        "responses": { "200": { "description": "OK", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/Job" } } } } }
+        "tags": [
+          "jobs"
+        ],
+        "summary": "Get Job",
+        "operationId": "get_job_api_jobs__job_id__get",
+        "parameters": [
+          {
+            "name": "job_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Job Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Job"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
       }
     },
-    "/jobs/{id}/events": {
-      "parameters": [{ "name": "id", "in": "path", "required": true, "schema": { "type": "string" } }],
+    "/jobs/{job_id}/events": {
       "get": {
-        "operationId": "getJobEvents",
-        "description": "SSE progress stream. The per-launch token is passed as a query parameter (A31), since EventSource cannot set headers.",
-        "parameters": [{ "name": "token", "in": "query", "schema": { "type": "string" } }],
-        "responses": { "200": { "description": "text/event-stream", "content": { "text/event-stream": { "schema": { "type": "string" } } } } }
+        "tags": [
+          "jobs"
+        ],
+        "summary": "Job Events",
+        "operationId": "job_events_api_jobs__job_id__events_get",
+        "parameters": [
+          {
+            "name": "job_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Job Id"
+            }
+          },
+          {
+            "name": "token",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Token"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
       }
     },
     "/analytics/summary": {
       "get": {
-        "operationId": "getAnalyticsSummary",
-        "parameters": [
-          { "$ref": "#/components/parameters/UserIds" },
-          { "$ref": "#/components/parameters/AccountIds" },
-          { "$ref": "#/components/parameters/DateFrom" },
-          { "$ref": "#/components/parameters/DateTo" },
-          { "$ref": "#/components/parameters/Granularity" },
-          { "$ref": "#/components/parameters/GroupBy" },
-          { "$ref": "#/components/parameters/CategoryKeys" },
-          { "$ref": "#/components/parameters/SubcategoryKeys" },
-          { "$ref": "#/components/parameters/AmountMinMinor" },
-          { "$ref": "#/components/parameters/AmountMaxMinor" },
-          { "$ref": "#/components/parameters/Kinds" },
-          { "$ref": "#/components/parameters/IncludeNonSpend" },
-          { "$ref": "#/components/parameters/NetRefunds" },
-          { "$ref": "#/components/parameters/Search" },
-          { "$ref": "#/components/parameters/Currency" }
+        "tags": [
+          "analytics"
         ],
-        "responses": { "200": { "description": "OK", "content": { "application/json": { "schema": { "type": "array", "items": { "$ref": "#/components/schemas/AnalyticsRow" } } } } } }
+        "summary": "Analytics Summary",
+        "operationId": "analytics_summary_api_analytics_summary_get",
+        "parameters": [
+          {
+            "name": "user_ids",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "array",
+                  "items": {
+                    "type": "integer"
+                  }
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "User Ids"
+            }
+          },
+          {
+            "name": "account_ids",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "array",
+                  "items": {
+                    "type": "integer"
+                  }
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Account Ids"
+            }
+          },
+          {
+            "name": "date_from",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "format": "date"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Date From"
+            }
+          },
+          {
+            "name": "date_to",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "format": "date"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Date To"
+            }
+          },
+          {
+            "name": "granularity",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "enum": [
+                "day",
+                "week",
+                "month",
+                "quarter",
+                "year",
+                "all"
+              ],
+              "type": "string",
+              "default": "month",
+              "title": "Granularity"
+            }
+          },
+          {
+            "name": "group_by",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "array",
+                  "items": {
+                    "enum": [
+                      "category",
+                      "subcategory",
+                      "user",
+                      "account",
+                      "merchant",
+                      "period"
+                    ],
+                    "type": "string"
+                  }
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Group By"
+            }
+          },
+          {
+            "name": "category_keys",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "array",
+                  "items": {
+                    "type": "string"
+                  }
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Category Keys"
+            }
+          },
+          {
+            "name": "subcategory_keys",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "array",
+                  "items": {
+                    "type": "string"
+                  }
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Subcategory Keys"
+            }
+          },
+          {
+            "name": "amount_min_minor",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "integer"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Amount Min Minor"
+            }
+          },
+          {
+            "name": "amount_max_minor",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "integer"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Amount Max Minor"
+            }
+          },
+          {
+            "name": "kinds",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/Kind"
+                  }
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Kinds"
+            }
+          },
+          {
+            "name": "include_non_spend",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "boolean",
+              "default": false,
+              "title": "Include Non Spend"
+            }
+          },
+          {
+            "name": "net_refunds",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "boolean",
+              "default": true,
+              "title": "Net Refunds"
+            }
+          },
+          {
+            "name": "search",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Search"
+            }
+          },
+          {
+            "name": "currency",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "default": "USD",
+              "title": "Currency"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/AnalyticsRow"
+                  },
+                  "title": "Response Analytics Summary Api Analytics Summary Get"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
       }
     },
     "/analytics/timeseries": {
       "get": {
-        "operationId": "getAnalyticsTimeseries",
-        "parameters": [
-          { "$ref": "#/components/parameters/UserIds" },
-          { "$ref": "#/components/parameters/AccountIds" },
-          { "$ref": "#/components/parameters/DateFrom" },
-          { "$ref": "#/components/parameters/DateTo" },
-          { "$ref": "#/components/parameters/Granularity" },
-          { "$ref": "#/components/parameters/GroupBy" },
-          { "$ref": "#/components/parameters/CategoryKeys" },
-          { "$ref": "#/components/parameters/SubcategoryKeys" },
-          { "$ref": "#/components/parameters/Kinds" },
-          { "$ref": "#/components/parameters/IncludeNonSpend" },
-          { "$ref": "#/components/parameters/NetRefunds" },
-          { "$ref": "#/components/parameters/Currency" }
+        "tags": [
+          "analytics"
         ],
-        "responses": { "200": { "description": "OK", "content": { "application/json": { "schema": { "type": "array", "items": { "$ref": "#/components/schemas/AnalyticsRow" } } } } } }
+        "summary": "Analytics Timeseries",
+        "operationId": "analytics_timeseries_api_analytics_timeseries_get",
+        "parameters": [
+          {
+            "name": "user_ids",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "array",
+                  "items": {
+                    "type": "integer"
+                  }
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "User Ids"
+            }
+          },
+          {
+            "name": "account_ids",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "array",
+                  "items": {
+                    "type": "integer"
+                  }
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Account Ids"
+            }
+          },
+          {
+            "name": "date_from",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "format": "date"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Date From"
+            }
+          },
+          {
+            "name": "date_to",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "format": "date"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Date To"
+            }
+          },
+          {
+            "name": "granularity",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "enum": [
+                "day",
+                "week",
+                "month",
+                "quarter",
+                "year",
+                "all"
+              ],
+              "type": "string",
+              "default": "month",
+              "title": "Granularity"
+            }
+          },
+          {
+            "name": "group_by",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "array",
+                  "items": {
+                    "enum": [
+                      "category",
+                      "subcategory",
+                      "user",
+                      "account",
+                      "merchant",
+                      "period"
+                    ],
+                    "type": "string"
+                  }
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Group By"
+            }
+          },
+          {
+            "name": "category_keys",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "array",
+                  "items": {
+                    "type": "string"
+                  }
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Category Keys"
+            }
+          },
+          {
+            "name": "subcategory_keys",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "array",
+                  "items": {
+                    "type": "string"
+                  }
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Subcategory Keys"
+            }
+          },
+          {
+            "name": "kinds",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/Kind"
+                  }
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Kinds"
+            }
+          },
+          {
+            "name": "include_non_spend",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "boolean",
+              "default": false,
+              "title": "Include Non Spend"
+            }
+          },
+          {
+            "name": "net_refunds",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "boolean",
+              "default": true,
+              "title": "Net Refunds"
+            }
+          },
+          {
+            "name": "currency",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "default": "USD",
+              "title": "Currency"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/AnalyticsRow"
+                  },
+                  "title": "Response Analytics Timeseries Api Analytics Timeseries Get"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
       }
     },
     "/analytics/top-merchants": {
       "get": {
-        "operationId": "getTopMerchants",
-        "parameters": [
-          { "$ref": "#/components/parameters/UserIds" },
-          { "$ref": "#/components/parameters/AccountIds" },
-          { "$ref": "#/components/parameters/DateFrom" },
-          { "$ref": "#/components/parameters/DateTo" },
-          { "$ref": "#/components/parameters/CategoryKeys" },
-          { "$ref": "#/components/parameters/Currency" }
+        "tags": [
+          "analytics"
         ],
-        "responses": { "200": { "description": "OK", "content": { "application/json": { "schema": { "type": "array", "items": { "$ref": "#/components/schemas/TopMerchantRow" } } } } } }
+        "summary": "Analytics Top Merchants",
+        "operationId": "analytics_top_merchants_api_analytics_top_merchants_get",
+        "parameters": [
+          {
+            "name": "user_ids",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "array",
+                  "items": {
+                    "type": "integer"
+                  }
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "User Ids"
+            }
+          },
+          {
+            "name": "account_ids",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "array",
+                  "items": {
+                    "type": "integer"
+                  }
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Account Ids"
+            }
+          },
+          {
+            "name": "date_from",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "format": "date"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Date From"
+            }
+          },
+          {
+            "name": "date_to",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "format": "date"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Date To"
+            }
+          },
+          {
+            "name": "category_keys",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "array",
+                  "items": {
+                    "type": "string"
+                  }
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Category Keys"
+            }
+          },
+          {
+            "name": "currency",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "default": "USD",
+              "title": "Currency"
+            }
+          },
+          {
+            "name": "limit",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "default": 20,
+              "title": "Limit"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/TopMerchantRow"
+                  },
+                  "title": "Response Analytics Top Merchants Api Analytics Top Merchants Get"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
       }
     },
     "/taxonomy": {
       "get": {
-        "operationId": "getTaxonomy",
-        "description": "Categories + subcategories incl. pending.",
-        "responses": { "200": { "description": "OK", "content": { "application/json": { "schema": { "type": "array", "items": { "$ref": "#/components/schemas/Category" } } } } } }
+        "tags": [
+          "taxonomy"
+        ],
+        "summary": "Get Taxonomy",
+        "operationId": "get_taxonomy_api_taxonomy_get",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/Category"
+                  },
+                  "type": "array",
+                  "title": "Response Get Taxonomy Api Taxonomy Get"
+                }
+              }
+            }
+          }
+        }
       }
     },
-    "/taxonomy/subcategories/{id}/approve": {
-      "parameters": [{ "name": "id", "in": "path", "required": true, "schema": { "type": "string" } }],
+    "/taxonomy/subcategories/{subcategory_id}/approve": {
       "post": {
-        "operationId": "approveSubcategory",
-        "responses": { "200": { "description": "OK", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/Subcategory" } } } } }
+        "tags": [
+          "taxonomy"
+        ],
+        "summary": "Approve Subcategory",
+        "operationId": "approve_subcategory_api_taxonomy_subcategories__subcategory_id__approve_post",
+        "parameters": [
+          {
+            "name": "subcategory_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "title": "Subcategory Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Subcategory"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
       }
     },
-    "/taxonomy/subcategories/{id}/merge": {
-      "parameters": [{ "name": "id", "in": "path", "required": true, "schema": { "type": "string" } }],
+    "/taxonomy/subcategories/{subcategory_id}/merge": {
       "post": {
-        "operationId": "mergeSubcategory",
-        "requestBody": { "content": { "application/json": { "schema": { "$ref": "#/components/schemas/MergeRequest" } } } },
-        "responses": { "200": { "description": "OK", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/Subcategory" } } } } }
+        "tags": [
+          "taxonomy"
+        ],
+        "summary": "Merge Subcategory",
+        "operationId": "merge_subcategory_api_taxonomy_subcategories__subcategory_id__merge_post",
+        "parameters": [
+          {
+            "name": "subcategory_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "title": "Subcategory Id"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/MergeRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Subcategory"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
       }
     },
     "/issuers": {
       "get": {
-        "operationId": "listIssuers",
-        "responses": { "200": { "description": "OK", "content": { "application/json": { "schema": { "type": "array", "items": { "$ref": "#/components/schemas/Issuer" } } } } } }
+        "tags": [
+          "issuers"
+        ],
+        "summary": "List Issuers",
+        "operationId": "list_issuers_api_issuers_get",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/Issuer"
+                  },
+                  "type": "array",
+                  "title": "Response List Issuers Api Issuers Get"
+                }
+              }
+            }
+          }
+        }
       },
       "post": {
-        "operationId": "createIssuer",
-        "requestBody": { "content": { "application/json": { "schema": { "$ref": "#/components/schemas/IssuerCreate" } } } },
-        "responses": { "201": { "description": "Created", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/Issuer" } } } } }
+        "tags": [
+          "issuers"
+        ],
+        "summary": "Create Issuer",
+        "operationId": "create_issuer_api_issuers_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/IssuerCreate"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Issuer"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
       }
     },
-    "/issuers/{id}": {
-      "parameters": [{ "name": "id", "in": "path", "required": true, "schema": { "type": "integer" } }],
+    "/issuers/{issuer_id}": {
       "patch": {
-        "operationId": "updateIssuer",
-        "requestBody": { "content": { "application/json": { "schema": { "$ref": "#/components/schemas/IssuerUpdate" } } } },
-        "responses": { "200": { "description": "OK", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/Issuer" } } } } }
+        "tags": [
+          "issuers"
+        ],
+        "summary": "Update Issuer",
+        "operationId": "update_issuer_api_issuers__issuer_id__patch",
+        "parameters": [
+          {
+            "name": "issuer_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "title": "Issuer Id"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/IssuerUpdate"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Issuer"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
       },
       "delete": {
-        "operationId": "deleteIssuer",
-        "responses": { "204": { "description": "No Content" } }
+        "tags": [
+          "issuers"
+        ],
+        "summary": "Delete Issuer",
+        "operationId": "delete_issuer_api_issuers__issuer_id__delete",
+        "parameters": [
+          {
+            "name": "issuer_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "title": "Issuer Id"
+            }
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "Successful Response"
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
       }
     },
     "/layout-specs": {
       "get": {
-        "operationId": "listLayoutSpecs",
-        "description": "list (name, version, issuer, approved, source).",
-        "responses": { "200": { "description": "OK", "content": { "application/json": { "schema": { "type": "array", "items": { "$ref": "#/components/schemas/LayoutSpec" } } } } } }
+        "tags": [
+          "layout-specs"
+        ],
+        "summary": "List Layout Specs",
+        "operationId": "list_layout_specs_api_layout_specs_get",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/LayoutSpec"
+                  },
+                  "type": "array",
+                  "title": "Response List Layout Specs Api Layout Specs Get"
+                }
+              }
+            }
+          }
+        }
       },
       "post": {
-        "operationId": "createLayoutSpec",
-        "description": "Create v1, or paste.",
-        "requestBody": { "content": { "application/json": { "schema": { "$ref": "#/components/schemas/LayoutSpecCreate" } } } },
-        "responses": { "201": { "description": "Created", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/LayoutSpec" } } } } }
+        "tags": [
+          "layout-specs"
+        ],
+        "summary": "Create Layout Spec",
+        "operationId": "create_layout_spec_api_layout_specs_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/LayoutSpecCreate"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LayoutSpec"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
       }
     },
-    "/layout-specs/{id}/revise": {
-      "parameters": [{ "name": "id", "in": "path", "required": true, "schema": { "type": "integer" } }],
+    "/layout-specs/{spec_id}/revise": {
       "post": {
-        "operationId": "reviseLayoutSpec",
-        "description": "Inserts version+1 (never mutates).",
-        "requestBody": { "content": { "application/json": { "schema": { "$ref": "#/components/schemas/LayoutSpecCreate" } } } },
-        "responses": { "201": { "description": "Created", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/LayoutSpec" } } } } }
+        "tags": [
+          "layout-specs"
+        ],
+        "summary": "Revise Layout Spec",
+        "operationId": "revise_layout_spec_api_layout_specs__spec_id__revise_post",
+        "parameters": [
+          {
+            "name": "spec_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "title": "Spec Id"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/LayoutSpecCreate"
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LayoutSpec"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
       }
     },
-    "/layout-specs/{id}/approve": {
-      "parameters": [{ "name": "id", "in": "path", "required": true, "schema": { "type": "integer" } }],
+    "/layout-specs/{spec_id}/approve": {
       "post": {
-        "operationId": "approveLayoutSpec",
-        "description": "Approve a user-authored or pasted spec.",
-        "responses": { "200": { "description": "OK", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/LayoutSpec" } } } } }
+        "tags": [
+          "layout-specs"
+        ],
+        "summary": "Approve Layout Spec",
+        "operationId": "approve_layout_spec_api_layout_specs__spec_id__approve_post",
+        "parameters": [
+          {
+            "name": "spec_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "title": "Spec Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LayoutSpec"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
       }
     },
-    "/layout-specs/{id}/export": {
-      "parameters": [{ "name": "id", "in": "path", "required": true, "schema": { "type": "integer" } }],
+    "/layout-specs/{spec_id}/export": {
       "get": {
-        "operationId": "exportLayoutSpec",
-        "description": "YAML download.",
-        "responses": { "200": { "description": "OK", "content": { "application/x-yaml": { "schema": { "type": "string" } } } } }
+        "tags": [
+          "layout-specs"
+        ],
+        "summary": "Export Layout Spec",
+        "operationId": "export_layout_spec_api_layout_specs__spec_id__export_get",
+        "parameters": [
+          {
+            "name": "spec_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "title": "Spec Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
       }
     },
     "/rules": {
       "get": {
-        "operationId": "listRules",
-        "responses": { "200": { "description": "OK", "content": { "application/json": { "schema": { "type": "array", "items": { "$ref": "#/components/schemas/Rule" } } } } } }
+        "tags": [
+          "rules"
+        ],
+        "summary": "List Rules",
+        "operationId": "list_rules_api_rules_get",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/Rule"
+                  },
+                  "type": "array",
+                  "title": "Response List Rules Api Rules Get"
+                }
+              }
+            }
+          }
+        }
       },
       "post": {
-        "operationId": "createRule",
-        "requestBody": { "content": { "application/json": { "schema": { "$ref": "#/components/schemas/RuleCreate" } } } },
-        "responses": { "201": { "description": "Created", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/Rule" } } } } }
+        "tags": [
+          "rules"
+        ],
+        "summary": "Create Rule",
+        "operationId": "create_rule_api_rules_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/RuleCreate"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Rule"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
       }
     },
-    "/rules/{id}": {
-      "parameters": [{ "name": "id", "in": "path", "required": true, "schema": { "type": "integer" } }],
+    "/rules/{rule_id}": {
       "patch": {
-        "operationId": "updateRule",
-        "requestBody": { "content": { "application/json": { "schema": { "$ref": "#/components/schemas/RuleUpdate" } } } },
-        "responses": { "200": { "description": "OK", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/Rule" } } } } }
+        "tags": [
+          "rules"
+        ],
+        "summary": "Update Rule",
+        "operationId": "update_rule_api_rules__rule_id__patch",
+        "parameters": [
+          {
+            "name": "rule_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "title": "Rule Id"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/RuleUpdate"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Rule"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
       },
       "delete": {
-        "operationId": "deleteRule",
-        "responses": { "204": { "description": "No Content" } }
+        "tags": [
+          "rules"
+        ],
+        "summary": "Delete Rule",
+        "operationId": "delete_rule_api_rules__rule_id__delete",
+        "parameters": [
+          {
+            "name": "rule_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "title": "Rule Id"
+            }
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "Successful Response"
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
       }
     },
     "/settings": {
       "get": {
-        "operationId": "getSettings",
-        "description": "Never returns key material.",
-        "responses": { "200": { "description": "OK", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/Settings" } } } } }
+        "tags": [
+          "settings"
+        ],
+        "summary": "Get Settings Route",
+        "operationId": "get_settings_route_api_settings_get",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Settings"
+                }
+              }
+            }
+          }
+        }
       },
       "put": {
-        "operationId": "putSettings",
-        "description": "Rewrites config.toml atomically (A4).",
-        "requestBody": { "content": { "application/json": { "schema": { "$ref": "#/components/schemas/Settings" } } } },
-        "responses": { "200": { "description": "OK", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/Settings" } } } } }
+        "tags": [
+          "settings"
+        ],
+        "summary": "Put Settings",
+        "operationId": "put_settings_api_settings_put",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/Settings"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Settings"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
       }
     },
     "/settings/test-llm": {
       "post": {
-        "operationId": "testLlmSettings",
-        "description": "One-row round trip verifying credentials.",
-        "responses": { "200": { "description": "OK", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/TestLlmResponse" } } } } }
+        "tags": [
+          "settings"
+        ],
+        "summary": "Test Llm Settings",
+        "description": "One-row round trip verifying credentials, via the same `classify_batch` egress path every\nreal classification uses (never a bespoke LLM call).",
+        "operationId": "test_llm_settings_api_settings_test_llm_post",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/TestLlmResponse"
+                }
+              }
+            }
+          }
+        }
       }
     },
     "/export": {
       "get": {
-        "operationId": "exportTransactions",
-        "description": "Full transaction export — MUST exclude accounts.mask.",
-        "parameters": [{ "name": "format", "in": "query", "schema": { "type": "string", "enum": ["csv", "json"] } }],
+        "tags": [
+          "export"
+        ],
+        "summary": "Export Transactions",
+        "operationId": "export_transactions_api_export_get",
+        "parameters": [
+          {
+            "name": "format",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "enum": [
+                "csv",
+                "json"
+              ],
+              "type": "string",
+              "default": "csv",
+              "title": "Format"
+            }
+          }
+        ],
         "responses": {
           "200": {
-            "description": "OK",
+            "description": "Successful Response",
             "content": {
-              "text/csv": { "schema": { "type": "string" } },
-              "application/json": { "schema": { "type": "array", "items": { "$ref": "#/components/schemas/Transaction" } } }
+              "application/json": {
+                "schema": {}
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
             }
           }
         }
       }
     }
-  }
+  },
+  "components": {
+    "schemas": {
+      "Account": {
+        "properties": {
+          "id": {
+            "type": "integer",
+            "title": "Id"
+          },
+          "user_id": {
+            "type": "integer",
+            "title": "User Id"
+          },
+          "issuer_id": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Issuer Id"
+          },
+          "account_type": {
+            "type": "string",
+            "enum": [
+              "credit",
+              "checking",
+              "savings"
+            ],
+            "title": "Account Type"
+          },
+          "currency": {
+            "type": "string",
+            "title": "Currency"
+          }
+        },
+        "type": "object",
+        "required": [
+          "id",
+          "user_id",
+          "issuer_id",
+          "account_type",
+          "currency"
+        ],
+        "title": "Account"
+      },
+      "AccountCreate": {
+        "properties": {
+          "user_id": {
+            "type": "integer",
+            "title": "User Id"
+          },
+          "issuer_id": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Issuer Id"
+          },
+          "account_type": {
+            "type": "string",
+            "enum": [
+              "credit",
+              "checking",
+              "savings"
+            ],
+            "title": "Account Type"
+          },
+          "mask": {
+            "type": "string",
+            "title": "Mask",
+            "default": ""
+          },
+          "currency": {
+            "type": "string",
+            "title": "Currency",
+            "default": "USD"
+          }
+        },
+        "type": "object",
+        "required": [
+          "user_id",
+          "account_type"
+        ],
+        "title": "AccountCreate"
+      },
+      "AccountUpdate": {
+        "properties": {
+          "issuer_id": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Issuer Id"
+          },
+          "account_type": {
+            "anyOf": [
+              {
+                "type": "string",
+                "enum": [
+                  "credit",
+                  "checking",
+                  "savings"
+                ]
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Account Type"
+          },
+          "mask": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Mask"
+          },
+          "currency": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Currency"
+          }
+        },
+        "type": "object",
+        "title": "AccountUpdate"
+      },
+      "AnalyticsRow": {
+        "properties": {
+          "period": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Period"
+          },
+          "category": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Category"
+          },
+          "subcategory": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Subcategory"
+          },
+          "user": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "User"
+          },
+          "account": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Account"
+          },
+          "merchant": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Merchant"
+          },
+          "currency": {
+            "type": "string",
+            "title": "Currency"
+          },
+          "total_minor": {
+            "type": "integer",
+            "title": "Total Minor"
+          },
+          "txn_count": {
+            "type": "integer",
+            "title": "Txn Count"
+          },
+          "avg_minor": {
+            "type": "integer",
+            "title": "Avg Minor"
+          }
+        },
+        "type": "object",
+        "required": [
+          "currency",
+          "total_minor",
+          "txn_count",
+          "avg_minor"
+        ],
+        "title": "AnalyticsRow"
+      },
+      "Body_upload_statement_api_statements_post": {
+        "properties": {
+          "file": {
+            "type": "string",
+            "contentMediaType": "application/octet-stream",
+            "title": "File"
+          },
+          "user_id": {
+            "type": "integer",
+            "title": "User Id"
+          }
+        },
+        "type": "object",
+        "required": [
+          "file",
+          "user_id"
+        ],
+        "title": "Body_upload_statement_api_statements_post"
+      },
+      "BulkUpdateRequest": {
+        "properties": {
+          "transaction_ids": {
+            "items": {
+              "type": "integer"
+            },
+            "type": "array",
+            "title": "Transaction Ids"
+          },
+          "category_key": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Category Key"
+          },
+          "subcategory_key": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Subcategory Key"
+          },
+          "kind": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/Kind"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          }
+        },
+        "type": "object",
+        "required": [
+          "transaction_ids"
+        ],
+        "title": "BulkUpdateRequest"
+      },
+      "BulkUpdateResponse": {
+        "properties": {
+          "updated": {
+            "type": "integer",
+            "title": "Updated"
+          }
+        },
+        "type": "object",
+        "required": [
+          "updated"
+        ],
+        "title": "BulkUpdateResponse"
+      },
+      "Category": {
+        "properties": {
+          "key": {
+            "type": "string",
+            "title": "Key"
+          },
+          "name": {
+            "type": "string",
+            "title": "Name"
+          },
+          "subcategories": {
+            "items": {
+              "$ref": "#/components/schemas/Subcategory"
+            },
+            "type": "array",
+            "title": "Subcategories"
+          }
+        },
+        "type": "object",
+        "required": [
+          "key",
+          "name",
+          "subcategories"
+        ],
+        "title": "Category"
+      },
+      "ClassifyPreviewRow": {
+        "properties": {
+          "merchant_key": {
+            "type": "string",
+            "title": "Merchant Key"
+          },
+          "description_clean": {
+            "type": "string",
+            "title": "Description Clean"
+          }
+        },
+        "type": "object",
+        "required": [
+          "merchant_key",
+          "description_clean"
+        ],
+        "title": "ClassifyPreviewRow"
+      },
+      "ClassifyRunRequest": {
+        "properties": {
+          "user_id": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "User Id"
+          },
+          "statement_id": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Statement Id"
+          },
+          "only_unclassified": {
+            "type": "boolean",
+            "title": "Only Unclassified",
+            "default": true
+          }
+        },
+        "type": "object",
+        "title": "ClassifyRunRequest"
+      },
+      "ClassifyRunResponse": {
+        "properties": {
+          "job_id": {
+            "type": "string",
+            "title": "Job Id"
+          },
+          "group_id": {
+            "type": "string",
+            "title": "Group Id"
+          }
+        },
+        "type": "object",
+        "required": [
+          "job_id",
+          "group_id"
+        ],
+        "title": "ClassifyRunResponse"
+      },
+      "ExtractRequest": {
+        "properties": {
+          "issuer_id": {
+            "type": "integer",
+            "title": "Issuer Id"
+          },
+          "layout_spec_id": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Layout Spec Id"
+          },
+          "parser_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Parser Id"
+          },
+          "remember": {
+            "type": "boolean",
+            "title": "Remember",
+            "default": false
+          }
+        },
+        "type": "object",
+        "required": [
+          "issuer_id"
+        ],
+        "title": "ExtractRequest"
+      },
+      "ExtractorProposal": {
+        "properties": {
+          "issuer_id": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Issuer Id"
+          },
+          "parser_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Parser Id"
+          },
+          "layout_spec_id": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Layout Spec Id"
+          },
+          "confidence": {
+            "type": "number",
+            "title": "Confidence"
+          },
+          "auto_confirmed": {
+            "type": "boolean",
+            "title": "Auto Confirmed"
+          }
+        },
+        "type": "object",
+        "required": [
+          "issuer_id",
+          "parser_id",
+          "layout_spec_id",
+          "confidence",
+          "auto_confirmed"
+        ],
+        "title": "ExtractorProposal"
+      },
+      "HTTPValidationError": {
+        "properties": {
+          "detail": {
+            "items": {
+              "$ref": "#/components/schemas/ValidationError"
+            },
+            "type": "array",
+            "title": "Detail"
+          }
+        },
+        "type": "object",
+        "title": "HTTPValidationError"
+      },
+      "IngestSettings": {
+        "properties": {
+          "always_confirm_extractor": {
+            "type": "boolean",
+            "title": "Always Confirm Extractor"
+          },
+          "date_format_hints": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Date Format Hints"
+          },
+          "default_currency": {
+            "type": "string",
+            "title": "Default Currency"
+          }
+        },
+        "type": "object",
+        "required": [
+          "always_confirm_extractor",
+          "date_format_hints",
+          "default_currency"
+        ],
+        "title": "IngestSettings"
+      },
+      "Issuer": {
+        "properties": {
+          "id": {
+            "type": "integer",
+            "title": "Id"
+          },
+          "name": {
+            "type": "string",
+            "title": "Name"
+          },
+          "slug": {
+            "type": "string",
+            "title": "Slug"
+          },
+          "match_terms": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Match Terms"
+          },
+          "default_spec_id": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Default Spec Id"
+          }
+        },
+        "type": "object",
+        "required": [
+          "id",
+          "name",
+          "slug",
+          "match_terms"
+        ],
+        "title": "Issuer"
+      },
+      "IssuerCreate": {
+        "properties": {
+          "name": {
+            "type": "string",
+            "title": "Name"
+          },
+          "match_terms": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Match Terms"
+          }
+        },
+        "type": "object",
+        "required": [
+          "name"
+        ],
+        "title": "IssuerCreate"
+      },
+      "IssuerUpdate": {
+        "properties": {
+          "name": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Name"
+          },
+          "match_terms": {
+            "anyOf": [
+              {
+                "items": {
+                  "type": "string"
+                },
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Match Terms"
+          },
+          "default_spec_id": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Default Spec Id"
+          }
+        },
+        "type": "object",
+        "title": "IssuerUpdate"
+      },
+      "Job": {
+        "properties": {
+          "id": {
+            "type": "string",
+            "title": "Id"
+          },
+          "kind": {
+            "type": "string",
+            "enum": [
+              "import",
+              "classify"
+            ],
+            "title": "Kind"
+          },
+          "status": {
+            "type": "string",
+            "enum": [
+              "queued",
+              "running",
+              "done",
+              "error",
+              "cancelled"
+            ],
+            "title": "Status"
+          },
+          "progress": {
+            "type": "number",
+            "maximum": 1.0,
+            "minimum": 0.0,
+            "title": "Progress"
+          },
+          "message": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Message"
+          },
+          "group_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Group Id"
+          },
+          "error_detail": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Error Detail"
+          }
+        },
+        "type": "object",
+        "required": [
+          "id",
+          "kind",
+          "status",
+          "progress"
+        ],
+        "title": "Job"
+      },
+      "JobIdResponse": {
+        "properties": {
+          "job_id": {
+            "type": "string",
+            "title": "Job Id"
+          }
+        },
+        "type": "object",
+        "required": [
+          "job_id"
+        ],
+        "title": "JobIdResponse"
+      },
+      "Kind": {
+        "type": "string",
+        "enum": [
+          "purchase",
+          "refund",
+          "payment",
+          "transfer",
+          "fee",
+          "interest",
+          "adjustment"
+        ],
+        "title": "Kind",
+        "description": "The seven `Kind` values (\u00a73.1), as a real enum rather than a `Literal` alias: FastAPI\nonly emits a named, reusable `components.schemas.Kind` in the OpenAPI document (which the\nfrontend's generated client references as `components[\"schemas\"][\"Kind\"]`) for an enum type\n\u2014 a `Literal` field is inlined per-field instead."
+      },
+      "LayoutSpec": {
+        "properties": {
+          "id": {
+            "type": "integer",
+            "title": "Id"
+          },
+          "name": {
+            "type": "string",
+            "title": "Name"
+          },
+          "version": {
+            "type": "integer",
+            "title": "Version"
+          },
+          "issuer_id": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Issuer Id"
+          },
+          "approved": {
+            "type": "boolean",
+            "title": "Approved"
+          },
+          "source": {
+            "type": "string",
+            "title": "Source"
+          }
+        },
+        "type": "object",
+        "required": [
+          "id",
+          "name",
+          "version",
+          "issuer_id",
+          "approved",
+          "source"
+        ],
+        "title": "LayoutSpec"
+      },
+      "LayoutSpecCreate": {
+        "properties": {
+          "name": {
+            "type": "string",
+            "title": "Name"
+          },
+          "spec_yaml": {
+            "type": "string",
+            "title": "Spec Yaml"
+          },
+          "issuer_id": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Issuer Id"
+          }
+        },
+        "type": "object",
+        "required": [
+          "name",
+          "spec_yaml"
+        ],
+        "title": "LayoutSpecCreate"
+      },
+      "LlmRun": {
+        "properties": {
+          "id": {
+            "type": "integer",
+            "title": "Id"
+          },
+          "group_id": {
+            "type": "string",
+            "title": "Group Id"
+          },
+          "provider": {
+            "type": "string",
+            "title": "Provider"
+          },
+          "model": {
+            "type": "string",
+            "title": "Model"
+          },
+          "schema_mode": {
+            "type": "string",
+            "title": "Schema Mode"
+          },
+          "cost_usd": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Cost Usd"
+          },
+          "prompt_tokens": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Prompt Tokens"
+          },
+          "completion_tokens": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Completion Tokens"
+          },
+          "created_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Created At"
+          }
+        },
+        "type": "object",
+        "required": [
+          "id",
+          "group_id",
+          "provider",
+          "model",
+          "schema_mode",
+          "cost_usd",
+          "created_at"
+        ],
+        "title": "LlmRun"
+      },
+      "LlmSettings": {
+        "properties": {
+          "mode": {
+            "type": "string",
+            "enum": [
+              "none",
+              "local",
+              "remote"
+            ],
+            "title": "Mode"
+          },
+          "provider": {
+            "type": "string",
+            "title": "Provider"
+          },
+          "model": {
+            "type": "string",
+            "title": "Model"
+          },
+          "api_base": {
+            "type": "string",
+            "title": "Api Base"
+          },
+          "batch_size": {
+            "type": "integer",
+            "title": "Batch Size"
+          },
+          "timeout_s": {
+            "type": "integer",
+            "title": "Timeout S"
+          },
+          "confidence_threshold": {
+            "type": "number",
+            "title": "Confidence Threshold"
+          },
+          "has_key": {
+            "type": "boolean",
+            "title": "Has Key",
+            "default": false
+          }
+        },
+        "type": "object",
+        "required": [
+          "mode",
+          "provider",
+          "model",
+          "api_base",
+          "batch_size",
+          "timeout_s",
+          "confidence_threshold"
+        ],
+        "title": "LlmSettings"
+      },
+      "MergeRequest": {
+        "properties": {
+          "into_id": {
+            "type": "integer",
+            "title": "Into Id"
+          }
+        },
+        "type": "object",
+        "required": [
+          "into_id"
+        ],
+        "title": "MergeRequest"
+      },
+      "PrivacySettings": {
+        "properties": {
+          "store_pdf_copies": {
+            "type": "boolean",
+            "title": "Store Pdf Copies"
+          },
+          "store_extract_cache": {
+            "type": "boolean",
+            "title": "Store Extract Cache"
+          },
+          "pii_terms": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Pii Terms"
+          }
+        },
+        "type": "object",
+        "required": [
+          "store_pdf_copies",
+          "store_extract_cache",
+          "pii_terms"
+        ],
+        "title": "PrivacySettings"
+      },
+      "Rule": {
+        "properties": {
+          "id": {
+            "type": "integer",
+            "title": "Id"
+          },
+          "pattern": {
+            "type": "string",
+            "title": "Pattern"
+          },
+          "category_key": {
+            "type": "string",
+            "title": "Category Key"
+          },
+          "subcategory_key": {
+            "type": "string",
+            "title": "Subcategory Key"
+          },
+          "kind": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/Kind"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "source": {
+            "type": "string",
+            "title": "Source"
+          }
+        },
+        "type": "object",
+        "required": [
+          "id",
+          "pattern",
+          "category_key",
+          "subcategory_key",
+          "source"
+        ],
+        "title": "Rule"
+      },
+      "RuleCreate": {
+        "properties": {
+          "pattern": {
+            "type": "string",
+            "title": "Pattern"
+          },
+          "match_type": {
+            "type": "string",
+            "enum": [
+              "exact",
+              "contains",
+              "regex"
+            ],
+            "title": "Match Type",
+            "default": "contains"
+          },
+          "category_key": {
+            "type": "string",
+            "title": "Category Key"
+          },
+          "subcategory_key": {
+            "type": "string",
+            "title": "Subcategory Key"
+          },
+          "kind": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/Kind"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          }
+        },
+        "type": "object",
+        "required": [
+          "pattern",
+          "category_key",
+          "subcategory_key"
+        ],
+        "title": "RuleCreate"
+      },
+      "RuleUpdate": {
+        "properties": {
+          "pattern": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Pattern"
+          },
+          "category_key": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Category Key"
+          },
+          "subcategory_key": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Subcategory Key"
+          },
+          "kind": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/Kind"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          }
+        },
+        "type": "object",
+        "title": "RuleUpdate"
+      },
+      "ServerSettings": {
+        "properties": {
+          "port": {
+            "type": "integer",
+            "title": "Port"
+          }
+        },
+        "type": "object",
+        "required": [
+          "port"
+        ],
+        "title": "ServerSettings"
+      },
+      "Settings": {
+        "properties": {
+          "llm": {
+            "$ref": "#/components/schemas/LlmSettings"
+          },
+          "privacy": {
+            "$ref": "#/components/schemas/PrivacySettings"
+          },
+          "ingest": {
+            "$ref": "#/components/schemas/IngestSettings"
+          },
+          "server": {
+            "$ref": "#/components/schemas/ServerSettings"
+          }
+        },
+        "type": "object",
+        "required": [
+          "llm",
+          "privacy",
+          "ingest",
+          "server"
+        ],
+        "title": "Settings"
+      },
+      "Statement": {
+        "properties": {
+          "id": {
+            "type": "integer",
+            "title": "Id"
+          },
+          "user_id": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "User Id"
+          },
+          "account_id": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Account Id"
+          },
+          "status": {
+            "type": "string",
+            "enum": [
+              "pending",
+              "awaiting_extractor",
+              "parsed",
+              "no_text_layer",
+              "unsupported_layout",
+              "error"
+            ],
+            "title": "Status"
+          },
+          "period_start": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Period Start"
+          },
+          "period_end": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Period End"
+          },
+          "txn_count": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Txn Count"
+          },
+          "reconciliation_delta_minor": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Reconciliation Delta Minor"
+          },
+          "detect_score": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Detect Score"
+          },
+          "shape_warnings": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Shape Warnings"
+          },
+          "error_detail": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Error Detail"
+          },
+          "created_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Created At"
+          }
+        },
+        "type": "object",
+        "required": [
+          "id",
+          "account_id",
+          "status",
+          "period_start",
+          "period_end",
+          "txn_count",
+          "detect_score",
+          "shape_warnings",
+          "error_detail",
+          "created_at"
+        ],
+        "title": "Statement"
+      },
+      "StatementPatch": {
+        "properties": {
+          "user_id": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "User Id"
+          },
+          "account_id": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Account Id"
+          }
+        },
+        "type": "object",
+        "title": "StatementPatch"
+      },
+      "StatementUploadResponse": {
+        "properties": {
+          "statement": {
+            "$ref": "#/components/schemas/Statement"
+          },
+          "proposal": {
+            "$ref": "#/components/schemas/ExtractorProposal"
+          }
+        },
+        "type": "object",
+        "required": [
+          "statement",
+          "proposal"
+        ],
+        "title": "StatementUploadResponse"
+      },
+      "Subcategory": {
+        "properties": {
+          "key": {
+            "type": "string",
+            "title": "Key"
+          },
+          "name": {
+            "type": "string",
+            "title": "Name"
+          },
+          "pending": {
+            "type": "boolean",
+            "title": "Pending"
+          },
+          "merged_into": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Merged Into"
+          }
+        },
+        "type": "object",
+        "required": [
+          "key",
+          "name",
+          "pending"
+        ],
+        "title": "Subcategory"
+      },
+      "TestLlmResponse": {
+        "properties": {
+          "ok": {
+            "type": "boolean",
+            "title": "Ok"
+          },
+          "detail": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Detail"
+          }
+        },
+        "type": "object",
+        "required": [
+          "ok"
+        ],
+        "title": "TestLlmResponse"
+      },
+      "TopMerchantRow": {
+        "properties": {
+          "merchant": {
+            "type": "string",
+            "title": "Merchant"
+          },
+          "total_minor": {
+            "type": "integer",
+            "title": "Total Minor"
+          },
+          "txn_count": {
+            "type": "integer",
+            "title": "Txn Count"
+          }
+        },
+        "type": "object",
+        "required": [
+          "merchant",
+          "total_minor",
+          "txn_count"
+        ],
+        "title": "TopMerchantRow"
+      },
+      "Transaction": {
+        "properties": {
+          "id": {
+            "type": "integer",
+            "title": "Id"
+          },
+          "statement_id": {
+            "type": "integer",
+            "title": "Statement Id"
+          },
+          "account_id": {
+            "type": "integer",
+            "title": "Account Id"
+          },
+          "posted_date": {
+            "type": "string",
+            "format": "date",
+            "title": "Posted Date"
+          },
+          "transaction_date": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Transaction Date"
+          },
+          "description_clean": {
+            "type": "string",
+            "title": "Description Clean"
+          },
+          "amount_minor": {
+            "type": "integer",
+            "title": "Amount Minor"
+          },
+          "currency": {
+            "type": "string",
+            "title": "Currency"
+          },
+          "kind": {
+            "$ref": "#/components/schemas/Kind"
+          },
+          "category_key": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Category Key"
+          },
+          "subcategory_key": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Subcategory Key"
+          },
+          "merchant_key": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Merchant Key"
+          },
+          "notes": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Notes"
+          },
+          "needs_review": {
+            "type": "boolean",
+            "title": "Needs Review"
+          }
+        },
+        "type": "object",
+        "required": [
+          "id",
+          "statement_id",
+          "account_id",
+          "posted_date",
+          "transaction_date",
+          "description_clean",
+          "amount_minor",
+          "currency",
+          "kind",
+          "category_key",
+          "subcategory_key",
+          "merchant_key",
+          "notes",
+          "needs_review"
+        ],
+        "title": "Transaction"
+      },
+      "TransactionList": {
+        "properties": {
+          "items": {
+            "items": {
+              "$ref": "#/components/schemas/Transaction"
+            },
+            "type": "array",
+            "title": "Items"
+          },
+          "total": {
+            "type": "integer",
+            "title": "Total"
+          }
+        },
+        "type": "object",
+        "required": [
+          "items",
+          "total"
+        ],
+        "title": "TransactionList"
+      },
+      "TransactionPatch": {
+        "properties": {
+          "category_key": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Category Key"
+          },
+          "subcategory_key": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Subcategory Key"
+          },
+          "kind": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/Kind"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "notes": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Notes"
+          },
+          "create_rule": {
+            "type": "boolean",
+            "title": "Create Rule",
+            "default": false
+          }
+        },
+        "type": "object",
+        "title": "TransactionPatch"
+      },
+      "User": {
+        "properties": {
+          "id": {
+            "type": "integer",
+            "title": "Id"
+          },
+          "name": {
+            "type": "string",
+            "title": "Name"
+          },
+          "is_default": {
+            "type": "boolean",
+            "title": "Is Default"
+          }
+        },
+        "type": "object",
+        "required": [
+          "id",
+          "name",
+          "is_default"
+        ],
+        "title": "User"
+      },
+      "UserCreate": {
+        "properties": {
+          "name": {
+            "type": "string",
+            "title": "Name"
+          },
+          "is_default": {
+            "type": "boolean",
+            "title": "Is Default",
+            "default": false
+          }
+        },
+        "type": "object",
+        "required": [
+          "name"
+        ],
+        "title": "UserCreate"
+      },
+      "UserUpdate": {
+        "properties": {
+          "name": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Name"
+          },
+          "is_default": {
+            "anyOf": [
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Is Default"
+          }
+        },
+        "type": "object",
+        "title": "UserUpdate"
+      },
+      "ValidationError": {
+        "properties": {
+          "loc": {
+            "items": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "integer"
+                }
+              ]
+            },
+            "type": "array",
+            "title": "Location"
+          },
+          "msg": {
+            "type": "string",
+            "title": "Message"
+          },
+          "type": {
+            "type": "string",
+            "title": "Error Type"
+          },
+          "input": {
+            "title": "Input"
+          },
+          "ctx": {
+            "type": "object",
+            "title": "Context"
+          }
+        },
+        "type": "object",
+        "required": [
+          "loc",
+          "msg",
+          "type"
+        ],
+        "title": "ValidationError"
+      }
+    }
+  },
+  "servers": [
+    {
+      "url": "/api"
+    }
+  ]
 }
