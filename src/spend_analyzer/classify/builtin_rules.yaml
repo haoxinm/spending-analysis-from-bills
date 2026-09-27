@@ -1,0 +1,111 @@
+# Built-in merchant-classification rules (D8, cascade step 4, §2b P2-B).
+#
+# This is the P2-B *seed* file: a small, high-precision starter set. The ~120-pattern corpus is
+# P4-B's job later; this file is deliberately short so every entry can be reviewed for precision
+# over recall (D8: a wrong builtin rule is worse than one extra LLM call).
+#
+# Each entry needs a one-line `justification` and a `test_description` a test asserts it matches
+# (specifically: the `merchant_key` that `ingest.normalize.normalize` derives from
+# `test_description`, exactly what the cascade matches against at runtime — see `classify/rules.py`
+# for why rules match `merchant_key` rather than `description_clean`/`description_raw`).
+#
+# match_type: "contains" (substring) or "regex" (a `re.IGNORECASE` pattern). No "exact" entries
+# here — that match type is far too narrow for a merchant name embedded in a longer description
+# and is left for user-authored rules.
+- pattern: "STARBUCKS"
+  match_type: contains
+  category: restaurant
+  subcategory: dine_in
+  justification: "Starbucks storefronts are dine-in/counter-service coffee shops, never delivery."
+  test_description: "STARBUCKS STORE #1234 SEATTLE WA"
+
+- pattern: "MCDONALD"
+  match_type: contains
+  category: restaurant
+  subcategory: dine_in
+  justification: "McDonald's locations are restaurants; the merchant name alone is unambiguous."
+  test_description: "MCDONALDS F1234 PORTLAND OR"
+
+- pattern: "COSTCO"
+  match_type: contains
+  category: grocery
+  subcategory: wholesale_clubs
+  justification: "store_aliases.yaml canonicalizes both \"COSTCO WHSE\" and \"COSTCO.COM\" to Costco."
+  test_description: "COSTCO WHSE #0123 BELLEVUE WA"
+
+- pattern: "TRADER JOE"
+  match_type: contains
+  category: grocery
+  subcategory: grocery_stores
+  justification: "Trader Joe's is a single-format grocery chain with no non-grocery locations."
+  test_description: "TRADER JOES #456 SEATTLE WA"
+
+- pattern: "WHOLE FOODS"
+  match_type: contains
+  category: grocery
+  subcategory: grocery_stores
+  justification: "Whole Foods Market storefronts are unambiguously grocery."
+  test_description: "WHOLE FOODS MARKET SEATTLE WA"
+
+- pattern: "SAFEWAY"
+  match_type: contains
+  category: grocery
+  subcategory: grocery_stores
+  justification: "Safeway is a single-format supermarket chain."
+  test_description: "SAFEWAY STORE 1122 SEATTLE WA"
+
+- pattern: "^(SHELL|CHEVRON|EXXON|MOBIL|ARCO|CONOCO)\\b"
+  match_type: regex
+  category: fuel
+  subcategory: gasoline
+  justification: "Leading fuel-brand names on a card statement are gas station purchases."
+  test_description: "SHELL OIL 12345678 SEATTLE WA"
+
+- pattern: "TESLA SUPERCHARGER"
+  match_type: contains
+  category: fuel
+  subcategory: ev_charging
+  justification: "Tesla Supercharger is unambiguously EV charging."
+  test_description: "TESLA SUPERCHARGER SEATTLE WA"
+
+- pattern: "NETFLIX"
+  match_type: contains
+  category: entertainment
+  subcategory: streaming
+  justification: "Netflix is a single-purpose streaming subscription merchant."
+  test_description: "NETFLIX.COM"
+
+- pattern: "SPOTIFY"
+  match_type: contains
+  category: entertainment
+  subcategory: streaming
+  justification: "Spotify is a single-purpose streaming subscription merchant."
+  test_description: "SPOTIFY USA"
+
+- pattern: "^UBER(?!\\s*EATS)"
+  match_type: regex
+  category: transportation
+  subcategory: rideshare
+  justification: "store_aliases.yaml canonicalizes an Uber ride to \"Uber\"; exclude \"Uber Eats\" (delivery)."
+  test_description: "UBER *TRIP HELP.UBER.COM"
+
+- pattern: "LYFT"
+  match_type: contains
+  category: transportation
+  subcategory: rideshare
+  justification: "Lyft is a single-purpose rideshare merchant."
+  test_description: "LYFT *RIDE THU 8PM"
+
+- pattern: "DOORDASH"
+  match_type: contains
+  category: restaurant
+  subcategory: delivery
+  justification: "DoorDash is a single-purpose food-delivery merchant."
+  test_description: "DOORDASH*RESTAURANT NAME"
+
+- pattern: "AMAZON PRIME"
+  match_type: contains
+  category: entertainment
+  subcategory: streaming
+  justification: "\"AMAZON PRIME\" (membership/video) is distinct from AMZN MKTP marketplace orders."
+  test_description: "AMAZON PRIME MEMBERSHIP"
