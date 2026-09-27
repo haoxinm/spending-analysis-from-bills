@@ -65,6 +65,31 @@ def get_user(session: Session, user_id: int) -> User | None:
     return session.get(User, user_id)
 
 
+def default_user(session: Session) -> User | None:
+    """The user with `is_default=True`, if one exists."""
+    return session.execute(select(User).where(User.is_default.is_(True))).scalars().first()
+
+
+def ensure_default_user(session: Session) -> User:
+    """Idempotently ensure at least one user exists (D4): if the `users` table already has a
+    default, return it unchanged; if it has users but none flagged default, promote the first
+    (by id); otherwise create a neutral single-user default (`name="Me"`, `is_default=True`).
+
+    Called from `migrate`/`serve` startup (never from a route: a route that needs a user id
+    resolves it via `default_user`/`default_user_id` and reports a clean error if none exists,
+    since an empty `users` table on a running server is a legitimate, if unusual, state).
+    """
+    existing_default = default_user(session)
+    if existing_default is not None:
+        return existing_default
+    first_user = session.execute(select(User).order_by(User.id)).scalars().first()
+    if first_user is not None:
+        first_user.is_default = True
+        session.flush()
+        return first_user
+    return create_user(session, name="Me", is_default=True)
+
+
 def _clear_default_user(session: Session) -> None:
     for other in session.execute(select(User).where(User.is_default.is_(True))).scalars():
         other.is_default = False

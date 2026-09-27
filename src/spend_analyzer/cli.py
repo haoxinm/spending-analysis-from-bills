@@ -21,7 +21,7 @@ from sqlalchemy import Engine, select
 from sqlalchemy.orm import Session, sessionmaker
 
 from spend_analyzer.analytics.query import SpendQuery, run_query
-from spend_analyzer.api.services import gateway
+from spend_analyzer.api.services import crud, gateway
 from spend_analyzer.config import load_settings
 from spend_analyzer.core.errors import SpendAnalyzerError
 from spend_analyzer.core.logging import configure_logging, get_logger
@@ -34,6 +34,9 @@ app = typer.Typer(
     help="Locally-run spend analysis for credit/debit card bills and bank statements.",
     no_args_is_help=True,
 )
+
+users_app = typer.Typer(help="Manage local users (D4).")
+app.add_typer(users_app, name="users")
 
 _NOT_YET_IMPLEMENTED = "not yet implemented in this build"
 
@@ -77,18 +80,70 @@ def _session_factory_for(engine: Engine) -> sessionmaker[Session]:
     return make_session_factory(engine)
 
 
-@app.command()
-def migrate() -> None:
-    """Create/upgrade the local database to the latest schema and sync the taxonomy."""
+def _sync_taxonomy_and_defaults(session: Session) -> None:
+    """Everything `migrate` and `serve` startup both need before the database is usable:
+    taxonomy + builtin rules synced (idempotent), and a default user guaranteed to exist (D4) so
+    `import`/`report`/`classify`/`export` always have a user to fall back to on a fresh home."""
     from spend_analyzer.classify.rules import sync_builtin_rules
     from spend_analyzer.classify.taxonomy import sync_taxonomy
 
+    sync_taxonomy(session)
+    sync_builtin_rules(session)
+    crud.ensure_default_user(session)
+    session.commit()
+
+
+def _require_user_id(session: Session, user_id: int | None) -> int:
+    """Resolve a required user id: the given `--user-id` (validated), or the `is_default` user
+    when none was given.
+
+    Raises:
+        typer.Exit: an explicit `user_id` does not exist, or none was given and no user exists
+            yet (a clean message, not a traceback — Gate 2's original failure mode).
+    """
+    if user_id is not None:
+        if crud.get_user(session, user_id) is None:
+            typer.echo(f"no user with id {user_id}", err=True)
+            raise typer.Exit(code=1)
+        return user_id
+    default = crud.default_user(session)
+    if default is None:
+        typer.echo(
+            "no user exists yet; run 'spend-analyzer migrate' first, or create one with "
+            "'spend-analyzer users add <name>'",
+            err=True,
+        )
+        raise typer.Exit(code=1)
+    return default.id
+
+
+def _resolve_user_filter(session: Session, user_id: int | None, *, all_users: bool) -> int | None:
+    """Resolve the optional `--user-id`/`--all-users` pair to a filter value: `None` means "no
+    filter, every user" (either `--all-users`, or no default user exists yet to fall back to);
+    otherwise the id to filter on (D4: an omitted `--user-id` defaults to the `is_default` user).
+
+    Raises:
+        typer.Exit: an explicit `user_id` does not exist (a clean message, not a traceback).
+    """
+    if all_users:
+        return None
+    if user_id is not None:
+        if crud.get_user(session, user_id) is None:
+            typer.echo(f"no user with id {user_id}", err=True)
+            raise typer.Exit(code=1)
+        return user_id
+    default = crud.default_user(session)
+    return default.id if default is not None else None
+
+
+@app.command()
+def migrate() -> None:
+    """Create/upgrade the local database to the latest schema, sync the taxonomy and builtin
+    rules, and ensure a default user exists (D4)."""
     with _open_engine() as engine:
         upgrade_head()
         with _open_session(engine) as session:
-            sync_taxonomy(session)
-            sync_builtin_rules(session)
-            session.commit()
+            _sync_taxonomy_and_defaults(session)
 
     get_logger("cli").info("migrate: database ready")
     typer.echo("Database migrated and taxonomy synced.")
@@ -104,15 +159,11 @@ def serve_cmd(
     import uvicorn
 
     from spend_analyzer.api.app import create_app
-    from spend_analyzer.classify.rules import sync_builtin_rules
-    from spend_analyzer.classify.taxonomy import sync_taxonomy
 
     settings = load_settings()
     with _open_engine() as engine:
         with _open_session(engine) as session:
-            sync_taxonomy(session)
-            sync_builtin_rules(session)
-            session.commit()
+            _sync_taxonomy_and_defaults(session)
         app_instance = create_app(engine=engine, settings=settings)
         token = app_instance.state.token
         port = settings.server.port
@@ -129,7 +180,11 @@ def import_cmd(
     paths: list[str] = typer.Argument(  # noqa: B008 - typer's documented pattern
         ..., help="Statement PDF paths (globs are expanded by the shell, not by this command)."
     ),
-    user_id: int = typer.Option(..., "--user-id", help="The user these statements belong to."),
+    user_id: int | None = typer.Option(
+        None,
+        "--user-id",
+        help="The user these statements belong to (defaults to the default user).",
+    ),
     issuer_id: int | None = typer.Option(
         None, "--issuer-id", help="Confirm with this issuer instead of the auto-proposed one."
     ),
@@ -147,6 +202,7 @@ def import_cmd(
     """
     settings = load_settings()
     with _open_engine() as engine, _open_session(engine) as session:
+        resolved_user_id = _require_user_id(session, user_id)
         any_error = False
         for raw_path in paths:
             pdf_path = Path(raw_path)
@@ -161,12 +217,9 @@ def import_cmd(
 
             try:
                 proposal = gateway.propose_import(
-                    session, pdf_path, user_id=user_id, original_name=pdf_path.name
+                    session, pdf_path, user_id=resolved_user_id, original_name=pdf_path.name
                 )
                 session.commit()
-            except ModuleNotFoundError as exc:
-                typer.echo(f"ingest pipeline unavailable: {exc}", err=True)
-                raise typer.Exit(code=2) from None
             except SpendAnalyzerError as exc:
                 typer.echo(f"{raw_path}: {exc}", err=True)
                 any_error = True
@@ -185,7 +238,7 @@ def import_cmd(
             )
 
             if not should_confirm:
-                confirm_cmd = f"spend-analyzer import {raw_path} --user-id {user_id}"
+                confirm_cmd = f"spend-analyzer import {raw_path} --user-id {resolved_user_id}"
                 if proposal.issuer_id is not None:
                     confirm_cmd += f" --issuer-id {proposal.issuer_id}"
                 if proposal.parser_id is not None:
@@ -208,9 +261,6 @@ def import_cmd(
                     remember=remember,
                 )
                 session.commit()
-            except ModuleNotFoundError as exc:
-                typer.echo(f"ingest pipeline unavailable: {exc}", err=True)
-                raise typer.Exit(code=2) from None
             except SpendAnalyzerError as exc:
                 typer.echo(f"{raw_path}: statement #{proposal.statement_id} -> {exc}", err=True)
                 any_error = True
@@ -230,7 +280,12 @@ def import_cmd(
 
 @app.command()
 def classify(
-    user_id: int | None = typer.Option(None, "--user-id"),
+    user_id: int | None = typer.Option(
+        None, "--user-id", help="Only this user's transactions (defaults to the default user)."
+    ),
+    all_users: bool = typer.Option(
+        False, "--all-users", help="Classify every user's transactions, ignoring --user-id."
+    ),
     statement_id: int | None = typer.Option(None, "--statement-id"),
     only_unclassified: bool = typer.Option(
         True, help="Skip transactions that already have a category."
@@ -241,9 +296,10 @@ def classify(
 
     settings = load_settings()
     with _open_engine() as engine, _open_session(engine) as session:
+        resolved_user_id = _resolve_user_filter(session, user_id, all_users=all_users)
         stmt = select(Transaction.id)
-        if user_id is not None:
-            stmt = stmt.where(Transaction.user_id == user_id)
+        if resolved_user_id is not None:
+            stmt = stmt.where(Transaction.user_id == resolved_user_id)
         if statement_id is not None:
             stmt = stmt.where(Transaction.statement_id == statement_id)
         if only_unclassified:
@@ -257,17 +313,13 @@ def classify(
         def progress_cb(done: int, total: int, cost_usd: float) -> None:
             typer.echo(f"  {done}/{total} classified (${cost_usd:.4f})", err=True)
 
-        try:
-            result = gateway.classify_transactions(
-                _session_factory_for(engine),
-                transaction_ids,
-                cfg=settings.llm,
-                group_id=str(uuid.uuid4()),
-                progress_cb=progress_cb,
-            )
-        except ModuleNotFoundError as exc:
-            typer.echo(f"classification cascade unavailable: {exc}", err=True)
-            raise typer.Exit(code=2) from None
+        result = gateway.classify_transactions(
+            _session_factory_for(engine),
+            transaction_ids,
+            cfg=settings.llm,
+            group_id=str(uuid.uuid4()),
+            progress_cb=progress_cb,
+        )
 
     typer.echo(
         f"Classified {result.classified} transaction(s); {result.needs_review} need review; "
@@ -279,18 +331,26 @@ def classify(
 def report(
     date_from: str | None = typer.Option(None, "--from", help="YYYY-MM-DD"),
     date_to: str | None = typer.Option(None, "--to", help="YYYY-MM-DD"),
+    user_id: int | None = typer.Option(
+        None, "--user-id", help="Only this user's transactions (defaults to the default user)."
+    ),
+    all_users: bool = typer.Option(
+        False, "--all-users", help="Report on every user's transactions, ignoring --user-id."
+    ),
     currency: str = typer.Option("USD"),
     csv_output: bool = typer.Option(False, "--csv", help="Print as CSV instead of a table."),
 ) -> None:
     """Print monthly category totals for a date range (A33)."""
-    query = SpendQuery(
-        date_from=date.fromisoformat(date_from) if date_from else None,
-        date_to=date.fromisoformat(date_to) if date_to else None,
-        granularity="month",
-        group_by=["period", "category"],
-        currency=currency,
-    )
     with _open_engine() as engine, _open_session(engine) as session:
+        resolved_user_id = _resolve_user_filter(session, user_id, all_users=all_users)
+        query = SpendQuery(
+            user_ids=[resolved_user_id] if resolved_user_id is not None else None,
+            date_from=date.fromisoformat(date_from) if date_from else None,
+            date_to=date.fromisoformat(date_to) if date_to else None,
+            granularity="month",
+            group_by=["period", "category"],
+            currency=currency,
+        )
         rows = run_query(session, query)
 
     _print_report(rows, as_csv=csv_output)
@@ -345,6 +405,12 @@ def _format_minor(amount_minor: int) -> str:
 def export(
     output: str = typer.Option("-", "--output", help="File path, or '-' for stdout."),
     format: str = typer.Option("csv", "--format", help="csv or json"),
+    user_id: int | None = typer.Option(
+        None, "--user-id", help="Only this user's transactions (defaults to the default user)."
+    ),
+    all_users: bool = typer.Option(
+        False, "--all-users", help="Export every user's transactions, ignoring --user-id."
+    ),
 ) -> None:
     """Export transactions to CSV/JSON. Never includes `accounts.mask` (A12/export guard)."""
     if format not in ("csv", "json"):
@@ -354,7 +420,12 @@ def export(
     from spend_analyzer.api.routers.export import export_transactions
 
     with _open_engine() as engine, _open_session(engine) as session:
-        response = export_transactions(format=format, session=session)  # type: ignore[arg-type]
+        resolved_user_id = _resolve_user_filter(session, user_id, all_users=all_users)
+        response = export_transactions(
+            format=format,  # type: ignore[arg-type]
+            session=session,
+            user_id=resolved_user_id,
+        )
         body = (
             response.body.decode("utf-8")
             if isinstance(response.body, bytes)
@@ -387,6 +458,47 @@ def doctor() -> None:
 
     if not ok:
         raise typer.Exit(code=1)
+
+
+@users_app.command(name="list")
+def users_list() -> None:
+    """List every local user (D4)."""
+    with _open_engine() as engine, _open_session(engine) as session:
+        users = crud.list_users(session)
+        if not users:
+            typer.echo("No users yet. Create one with 'spend-analyzer users add <name>'.")
+            return
+        for user in users:
+            marker = " (default)" if user.is_default else ""
+            typer.echo(f"{user.id}\t{user.name}{marker}")
+
+
+@users_app.command(name="add")
+def users_add(
+    name: str = typer.Argument(..., help="The new user's display name."),
+    default: bool = typer.Option(
+        False, "--default", help="Make this the default user (D4: used when --user-id is omitted)."
+    ),
+) -> None:
+    """Create a new local user."""
+    with _open_engine() as engine, _open_session(engine) as session:
+        user = crud.create_user(session, name=name, is_default=default)
+        session.commit()
+        marker = " (default)" if user.is_default else ""
+        typer.echo(f"Created user #{user.id}: {user.name}{marker}")
+
+
+@users_app.command(name="set-default")
+def users_set_default(user_id: int = typer.Argument(..., help="The user to make default.")) -> None:
+    """Make an existing user the default (D4)."""
+    with _open_engine() as engine, _open_session(engine) as session:
+        user = crud.get_user(session, user_id)
+        if user is None:
+            typer.echo(f"no user with id {user_id}", err=True)
+            raise typer.Exit(code=1)
+        crud.update_user(session, user, name=None, is_default=True)
+        session.commit()
+        typer.echo(f"User #{user.id} ({user.name}) is now the default.")
 
 
 def _doctor_migrations() -> bool:
