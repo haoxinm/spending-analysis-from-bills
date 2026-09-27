@@ -14,6 +14,7 @@ router = APIRouter(tags=["taxonomy"])
 
 def _subcategory_schema(sub: SubcategoryModel) -> schemas.Subcategory:
     return schemas.Subcategory(
+        id=sub.id,
         key=sub.key,
         name=sub.label,
         pending=sub.status == "pending_approval",
@@ -41,12 +42,7 @@ def approve_subcategory(subcategory_id: int, session: SessionDep) -> schemas.Sub
     sub = crud.get_subcategory(session, subcategory_id)
     if sub is None:
         raise HTTPException(status_code=404, detail="subcategory not found")
-    try:
-        gateway.approve_subcategory(session, subcategory_id)
-    except ModuleNotFoundError as exc:  # pragma: no cover - only until P2-B merges
-        raise HTTPException(
-            status_code=503, detail=f"classification cascade unavailable: {exc}"
-        ) from None
+    gateway.approve_subcategory(session, subcategory_id)
     session.commit()
     session.refresh(sub)
     return _subcategory_schema(sub)
@@ -59,12 +55,7 @@ def merge_subcategory(
     sub = crud.get_subcategory(session, subcategory_id)
     if sub is None:
         raise HTTPException(status_code=404, detail="subcategory not found")
-    try:
-        gateway.merge_subcategory(session, subcategory_id, into_id=body.into_id)
-    except ModuleNotFoundError as exc:  # pragma: no cover - only until P2-B merges
-        raise HTTPException(
-            status_code=503, detail=f"classification cascade unavailable: {exc}"
-        ) from None
+    gateway.merge_subcategory(session, subcategory_id, into_id=body.into_id)
     session.commit()
     session.refresh(sub)
     return _subcategory_schema(sub)

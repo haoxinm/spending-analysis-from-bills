@@ -559,9 +559,38 @@ def _check(label: str, passed: bool) -> bool:
 
 
 @app.command(name="eval")
-def eval_cmd() -> None:
-    """Run the classifier evaluation harness."""
-    _stub("eval")
+def eval_cmd(
+    csv_path: str = typer.Option(
+        "tests/eval/descriptions.csv",
+        "--csv",
+        help="Labelled CSV (description,category,subcategory).",
+    ),
+    mode: str = typer.Option(
+        "rules", "--mode", help="'rules' (deterministic only) or 'llm' (rules, then the LLM)."
+    ),
+    as_json: bool = typer.Option(False, "--json", help="Print the full report as JSON."),
+) -> None:
+    """Run the classifier evaluation harness (P4-C) against a labelled CSV."""
+    if mode not in ("rules", "llm"):
+        typer.echo("--mode must be 'rules' or 'llm'", err=True)
+        raise typer.Exit(code=2)
+
+    from spend_analyzer.eval.harness import EvalMode, run_eval
+
+    resolved_csv = Path(csv_path)
+    if not resolved_csv.is_file():
+        typer.echo(f"eval failed: no such file: {resolved_csv}", err=True)
+        raise typer.Exit(code=2)
+
+    settings = load_settings()
+    eval_mode: EvalMode = "rules" if mode == "rules" else "llm"
+    try:
+        report = run_eval(settings.llm, csv_path=resolved_csv, mode=eval_mode)
+    except SpendAnalyzerError as exc:
+        typer.echo(f"eval failed: {exc}", err=True)
+        raise typer.Exit(code=2) from None
+
+    typer.echo(report.to_json() if as_json else report.text_table())
 
 
 def main() -> None:  # pragma: no cover - thin wrapper around Typer's own entry point

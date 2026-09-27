@@ -104,6 +104,9 @@ class Statement(_Model):
     id: int
     user_id: int | None = None
     account_id: int | None
+    issuer_id: int | None = None
+    parser_id: str | None = None
+    layout_spec_id: int | None = None
     status: StatementStatus
     period_start: date | None
     period_end: date | None
@@ -155,6 +158,15 @@ class Job(_Model):
     message: str | None = None
     group_id: str | None = None
     error_detail: str | None = None
+    #: Set on an `import` job that chained a `classify` job for the rows it inserted (job_tasks.
+    #: py's `enqueue_import_then_classify`) — `None` on any other job, or an import job that
+    #: inserted nothing to classify.
+    classify_job_id: str | None = None
+    #: The chained classify job's own result counts, once *it* is `done` (looked up via
+    #: `classify_job_id`; `None` until then). Lets a caller show an exact "N need review" for
+    #: the statement this import job was for without polling the classify job separately.
+    classified: int | None = None
+    needs_review: int | None = None
 
 
 # --- Transactions ----------------------------------------------------------------------------------
@@ -166,6 +178,7 @@ class Transaction(_Model):
     account_id: int
     posted_date: date
     transaction_date: date | None
+    description_raw: str
     description_clean: str
     amount_minor: int
     currency: str
@@ -258,6 +271,7 @@ class TopMerchantRow(_Model):
 
 
 class Subcategory(_Model):
+    id: int
     key: str
     name: str
     pending: bool
@@ -296,6 +310,18 @@ class IssuerUpdate(_Model):
     default_spec_id: int | None = None
 
 
+class IssuerMatchPreviewRequest(_Model):
+    match_terms: list[str]
+
+
+class IssuerMatchPreviewRow(_Model):
+    statement_id: int
+    original_name: str
+    status: StatementStatus
+    period_start: date | None = None
+    period_end: date | None = None
+
+
 # --- Layout specs ------------------------------------------------------------------------------------
 
 
@@ -312,6 +338,46 @@ class LayoutSpecCreate(_Model):
     name: str
     spec_yaml: str
     issuer_id: int | None = None
+
+
+class LayoutSpecFieldError(_Model):
+    field: str
+    message: str
+
+
+class LayoutSpecDryRunRequest(_Model):
+    statement_id: int
+    spec_yaml: str
+
+
+class LayoutSpecDryRunRow(_Model):
+    description_clean: str
+    posted_date: date
+    amount_minor: int
+
+
+class LayoutSpecDryRunResponse(_Model):
+    txn_count: int
+    total_minor: int
+    currency: str
+    sample_rows: list[LayoutSpecDryRunRow]
+    warnings: list[str]
+    reconciliation_delta_minor: int | None = None
+
+
+class StatementPreviewWord(_Model):
+    text: str
+    x0: float
+    x1: float
+    top: float
+    bottom: float
+
+
+class StatementPreviewPage(_Model):
+    page_number: int
+    width: float
+    height: float
+    words: list[StatementPreviewWord]
 
 
 # --- Rules -------------------------------------------------------------------------------------------
@@ -381,3 +447,11 @@ class Settings(_Model):
 class TestLlmResponse(_Model):
     ok: bool
     detail: str | None = None
+
+
+class ApiKeyPut(_Model):
+    """`PUT /api/settings/api-key` body (I7: the key is written straight to the OS keychain via
+    `config.set_api_key` — never to `config.toml`, the database, a response, or a log line)."""
+
+    provider: str
+    api_key: str

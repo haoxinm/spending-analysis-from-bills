@@ -44,9 +44,10 @@ def enqueue_import_then_classify(
             )
             session.commit()
         progress.update(1, 1)
+        classify_job_id: str | None = None
         if result.transaction_ids:
             group_id = str(uuid.uuid4())
-            runner.run_job(
+            classify_job_id = runner.run_job(
                 kind="classify",
                 task=_classify_task(
                     session_factory,
@@ -61,6 +62,10 @@ def enqueue_import_then_classify(
             "transaction_ids": list(result.transaction_ids),
             "layout_drift": result.layout_drift,
             "warnings": list(result.warnings),
+            # Surfaced by `GET /api/jobs/{id}` (jobs.py's `_job_response`) as `classify_job_id`,
+            # so a caller can follow the chain and report an exact "N need review" once it's
+            # done, without this module needing a `parent_job_id` column (db/** is frozen here).
+            "classify_job_id": classify_job_id,
         }
 
     return runner.run_job(kind="import", task=import_task)

@@ -11,10 +11,12 @@ import json
 import uuid
 from collections.abc import Sequence
 from datetime import date
+from pathlib import Path
 
 from sqlalchemy import Select, select
 from sqlalchemy.orm import Session
 
+from spend_analyzer.core.paths import statements_dir
 from spend_analyzer.db.models import (
     Account,
     Category,
@@ -167,6 +169,20 @@ def get_statement(session: Session, statement_id: int) -> Statement | None:
     return session.get(Statement, statement_id)
 
 
+def staged_pdf_path(statement: Statement) -> Path | None:
+    """The one PDF `statement` can still be re-read from, or `None` if none is available
+    (`[privacy] store_pdf_copies` was off and it was already confirmed, so `ingest.pipeline`
+    deleted its staged copy — see that module's own docstring on durable staging).
+
+    Checks `stored_path` first (the copy kept because `store_pdf_copies` is on), then the
+    content-hash staging path every upload writes to at `propose_import` time (still present for
+    a statement not yet confirmed, or whose Phase 2 hasn't reached a terminal outcome)."""
+    if statement.stored_path and Path(statement.stored_path).is_file():
+        return Path(statement.stored_path)
+    staged = statements_dir() / f"{statement.file_sha256}.pdf"
+    return staged if staged.is_file() else None
+
+
 def list_statements(session: Session, *, user_id: int | None) -> Sequence[Statement]:
     stmt: Select[Statement] = select(Statement).order_by(Statement.id.desc())
     if user_id is not None:
@@ -230,6 +246,7 @@ def list_transactions(
     *,
     user_ids: list[int] | None,
     account_ids: list[int] | None,
+    statement_id: int | None = None,
     date_from: date | None,
     date_to: date | None,
     category_keys: list[str] | None,
@@ -238,6 +255,7 @@ def list_transactions(
     amount_max_minor: int | None,
     kinds: list[str] | None,
     include_non_spend: bool,
+    needs_review: bool | None,
     search: str | None,
     currency: str,
     page: int,
@@ -249,6 +267,8 @@ def list_transactions(
         stmt = stmt.where(Transaction.user_id.in_(user_ids))
     if account_ids is not None:
         stmt = stmt.where(Transaction.account_id.in_(account_ids))
+    if statement_id is not None:
+        stmt = stmt.where(Transaction.statement_id == statement_id)
     if date_from is not None:
         stmt = stmt.where(Transaction.posted_date >= date_from.isoformat())
     if date_to is not None:
@@ -269,6 +289,8 @@ def list_transactions(
         stmt = stmt.where(Transaction.kind.in_(kinds))
     elif not include_non_spend:
         stmt = stmt.where(Transaction.kind.in_(("purchase", "fee", "interest", "refund")))
+    if needs_review is not None:
+        stmt = stmt.where(Transaction.needs_review.is_(needs_review))
     if search:
         stmt = stmt.where(Transaction.description_clean.contains(search, autoescape=True))
 

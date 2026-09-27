@@ -28,6 +28,7 @@ def _transaction_response(session: Session, txn: Transaction) -> schemas.Transac
         account_id=txn.account_id,
         posted_date=txn.posted_date,
         transaction_date=txn.transaction_date,
+        description_raw=txn.description_raw,
         description_clean=txn.description_clean,
         amount_minor=txn.amount_minor,
         currency=txn.currency,
@@ -45,6 +46,7 @@ def list_transactions(
     session: SessionDep,
     user_ids: Annotated[list[int] | None, Query()] = None,
     account_ids: Annotated[list[int] | None, Query()] = None,
+    statement_id: int | None = None,
     date_from: date | None = None,
     date_to: date | None = None,
     category_keys: Annotated[list[str] | None, Query()] = None,
@@ -53,6 +55,7 @@ def list_transactions(
     amount_max_minor: int | None = None,
     kinds: Annotated[list[schemas.Kind] | None, Query()] = None,
     include_non_spend: bool = False,
+    needs_review: bool | None = None,
     search: str | None = None,
     currency: str = "USD",
     page: int = 1,
@@ -63,6 +66,7 @@ def list_transactions(
         session,
         user_ids=user_ids,
         account_ids=account_ids,
+        statement_id=statement_id,
         date_from=date_from,
         date_to=date_to,
         category_keys=category_keys,
@@ -71,6 +75,7 @@ def list_transactions(
         amount_max_minor=amount_max_minor,
         kinds=list(kinds) if kinds is not None else None,
         include_non_spend=include_non_spend,
+        needs_review=needs_review,
         search=search,
         currency=currency,
         page=page,
@@ -102,19 +107,14 @@ def patch_transaction(
                 status_code=400,
                 detail="category_key and subcategory_key are both required to set either",
             )
-        try:
-            gateway.apply_user_correction(
-                session,
-                transaction_id,
-                category_key=category_key,
-                subcategory_key=subcategory_key,
-                kind=body.kind.value if body.kind is not None else None,
-                create_rule=body.create_rule,
-            )
-        except ModuleNotFoundError as exc:  # pragma: no cover - only until P2-B merges
-            raise HTTPException(
-                status_code=503, detail=f"classification cascade unavailable: {exc}"
-            ) from None
+        gateway.apply_user_correction(
+            session,
+            transaction_id,
+            category_key=category_key,
+            subcategory_key=subcategory_key,
+            kind=body.kind.value if body.kind is not None else None,
+            create_rule=body.create_rule,
+        )
         session.commit()
         session.refresh(txn)
 
@@ -138,19 +138,14 @@ def bulk_update_transactions(
         if txn is None:
             continue
         if body.category_key is not None and body.subcategory_key is not None:
-            try:
-                gateway.apply_user_correction(
-                    session,
-                    transaction_id,
-                    category_key=body.category_key,
-                    subcategory_key=body.subcategory_key,
-                    kind=body.kind.value if body.kind is not None else None,
-                    create_rule=False,
-                )
-            except ModuleNotFoundError as exc:  # pragma: no cover - only until P2-B merges
-                raise HTTPException(
-                    status_code=503, detail=f"classification cascade unavailable: {exc}"
-                ) from None
+            gateway.apply_user_correction(
+                session,
+                transaction_id,
+                category_key=body.category_key,
+                subcategory_key=body.subcategory_key,
+                kind=body.kind.value if body.kind is not None else None,
+                create_rule=False,
+            )
         elif body.kind is not None:
             crud.update_transaction_fields(session, txn, kind=body.kind, notes=None)
         updated += 1

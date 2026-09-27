@@ -113,10 +113,32 @@ def test_help_lists_all_subcommands() -> None:
         assert name in result.output
 
 
-def test_unimplemented_subcommand_exits_2(home: Path) -> None:
-    # `eval` (P4-C, the classifier eval harness) is the one subcommand P2-C does not implement.
-    result = runner.invoke(app, ["eval"])
+def test_eval_rules_mode_prints_a_text_table(home: Path) -> None:
+    # `eval` (P4-C's classifier eval harness): rules mode never touches the network, so it
+    # needs no LLM configured and can run against the real fixture CSV as-is.
+    result = runner.invoke(app, ["eval", "--mode", "rules"])
+    assert result.exit_code == 0, result.output
+    assert "Eval report (mode=rules)" in result.output
+    assert "Accuracy by category:" in result.output
+
+
+def test_eval_rules_mode_json(home: Path) -> None:
+    result = runner.invoke(app, ["eval", "--mode", "rules", "--json"])
+    assert result.exit_code == 0, result.output
+    payload = json.loads(result.output)
+    assert payload["mode"] == "rules"
+    assert payload["total"] > 0
+
+
+def test_eval_rejects_an_unknown_mode(home: Path) -> None:
+    result = runner.invoke(app, ["eval", "--mode", "bogus"])
     assert result.exit_code == 2
+
+
+def test_eval_reports_a_clean_error_for_a_missing_csv(home: Path) -> None:
+    result = runner.invoke(app, ["eval", "--csv", "does-not-exist.csv"])
+    assert result.exit_code == 2
+    assert "eval failed" in result.output
 
 
 def test_report_prints_a_table(home: Path) -> None:

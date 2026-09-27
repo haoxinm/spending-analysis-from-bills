@@ -488,6 +488,59 @@
         }
       }
     },
+    "/statements/{statement_id}/preview": {
+      "get": {
+        "tags": [
+          "statements"
+        ],
+        "summary": "Preview Statement Page",
+        "description": "One page's words (`x0`/`x1`/`top`/`bottom`) plus page size, for the Layout mapper's\nclick-to-map UI (\u00a72c). Local-only: this stays on the token-protected localhost API and never\ngoes through egress (I1b/I3).",
+        "operationId": "preview_statement_page_api_statements__statement_id__preview_get",
+        "parameters": [
+          {
+            "name": "statement_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "title": "Statement Id"
+            }
+          },
+          {
+            "name": "page",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "default": 1,
+              "title": "Page"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/StatementPreviewPage"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/statements/{statement_id}/extract": {
       "post": {
         "tags": [
@@ -640,6 +693,22 @@
             }
           },
           {
+            "name": "statement_id",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "integer"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Statement Id"
+            }
+          },
+          {
             "name": "date_from",
             "in": "query",
             "required": false,
@@ -770,6 +839,22 @@
               "type": "boolean",
               "default": false,
               "title": "Include Non Spend"
+            }
+          },
+          {
+            "name": "needs_review",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "boolean"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Needs Review"
             }
           },
           {
@@ -2132,6 +2217,52 @@
         }
       }
     },
+    "/issuers/preview-match": {
+      "post": {
+        "tags": [
+          "issuers"
+        ],
+        "summary": "Preview Issuer Match",
+        "description": "A dry run for A24: which existing statements `body.match_terms` would match, before\nsaving them to a real issuer (never writes anything; never returns page text).",
+        "operationId": "preview_issuer_match_api_issuers_preview_match_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/IssuerMatchPreviewRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/IssuerMatchPreviewRow"
+                  },
+                  "type": "array",
+                  "title": "Response Preview Issuer Match Api Issuers Preview Match Post"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/layout-specs": {
       "get": {
         "tags": [
@@ -2231,6 +2362,48 @@
               "application/json": {
                 "schema": {
                   "$ref": "#/components/schemas/LayoutSpec"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/layout-specs/dry-run": {
+      "post": {
+        "tags": [
+          "layout-specs"
+        ],
+        "summary": "Dry Run Layout Spec",
+        "description": "Parse `body.statement_id`'s staged PDF with `body.spec_yaml`, without writing anything to\nthe database (\u00a72c's own \"try before you save\" workflow) \u2014 the Layout mapper's own preview.",
+        "operationId": "dry_run_layout_spec_api_layout_specs_dry_run_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/LayoutSpecDryRunRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LayoutSpecDryRunResponse"
                 }
               }
             }
@@ -2539,6 +2712,75 @@
         }
       }
     },
+    "/settings/api-key": {
+      "put": {
+        "tags": [
+          "settings"
+        ],
+        "summary": "Put Api Key",
+        "description": "Store `body.api_key` for `body.provider` in the OS keychain (I7). Never returned, logged,\nor written to `config.toml`/the database \u2014 `body` itself is never included in any response.",
+        "operationId": "put_api_key_api_settings_api_key_put",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ApiKeyPut"
+              }
+            }
+          }
+        },
+        "responses": {
+          "204": {
+            "description": "Successful Response"
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      },
+      "delete": {
+        "tags": [
+          "settings"
+        ],
+        "summary": "Delete Api Key Route",
+        "description": "Remove `provider`'s key from the OS keychain, if present (I7). Idempotent: clearing an\nalready-absent key is not an error.",
+        "operationId": "delete_api_key_route_api_settings_api_key_delete",
+        "parameters": [
+          {
+            "name": "provider",
+            "in": "query",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Provider"
+            }
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "Successful Response"
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/settings/test-llm": {
       "post": {
         "tags": [
@@ -2567,6 +2809,7 @@
           "export"
         ],
         "summary": "Export Transactions",
+        "description": "Export every transaction, or (with `user_id`) just one user's, oldest first. The CLI's\n`export --user-id`/`--all-users` call this directly with a resolved id or `None`; the HTTP\nroute itself leaves `user_id` unset by default (exports everything).",
         "operationId": "export_transactions_api_export_get",
         "parameters": [
           {
@@ -2581,6 +2824,22 @@
               "type": "string",
               "default": "csv",
               "title": "Format"
+            }
+          },
+          {
+            "name": "user_id",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "integer"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "User Id"
             }
           }
         ],
@@ -2846,6 +3105,25 @@
           "avg_minor"
         ],
         "title": "AnalyticsRow"
+      },
+      "ApiKeyPut": {
+        "properties": {
+          "provider": {
+            "type": "string",
+            "title": "Provider"
+          },
+          "api_key": {
+            "type": "string",
+            "title": "Api Key"
+          }
+        },
+        "type": "object",
+        "required": [
+          "provider",
+          "api_key"
+        ],
+        "title": "ApiKeyPut",
+        "description": "`PUT /api/settings/api-key` body (I7: the key is written straight to the OS keychain via\n`config.set_api_key` \u2014 never to `config.toml`, the database, a response, or a log line)."
       },
       "Body_upload_statement_api_statements_post": {
         "properties": {
@@ -3217,6 +3495,77 @@
         ],
         "title": "IssuerCreate"
       },
+      "IssuerMatchPreviewRequest": {
+        "properties": {
+          "match_terms": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Match Terms"
+          }
+        },
+        "type": "object",
+        "required": [
+          "match_terms"
+        ],
+        "title": "IssuerMatchPreviewRequest"
+      },
+      "IssuerMatchPreviewRow": {
+        "properties": {
+          "statement_id": {
+            "type": "integer",
+            "title": "Statement Id"
+          },
+          "original_name": {
+            "type": "string",
+            "title": "Original Name"
+          },
+          "status": {
+            "type": "string",
+            "enum": [
+              "pending",
+              "awaiting_extractor",
+              "parsed",
+              "no_text_layer",
+              "unsupported_layout",
+              "error"
+            ],
+            "title": "Status"
+          },
+          "period_start": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Period Start"
+          },
+          "period_end": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Period End"
+          }
+        },
+        "type": "object",
+        "required": [
+          "statement_id",
+          "original_name",
+          "status"
+        ],
+        "title": "IssuerMatchPreviewRow"
+      },
       "IssuerUpdate": {
         "properties": {
           "name": {
@@ -3322,6 +3671,39 @@
               }
             ],
             "title": "Error Detail"
+          },
+          "classify_job_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Classify Job Id"
+          },
+          "classified": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Classified"
+          },
+          "needs_review": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Needs Review"
           }
         },
         "type": "object",
@@ -3433,6 +3815,98 @@
           "spec_yaml"
         ],
         "title": "LayoutSpecCreate"
+      },
+      "LayoutSpecDryRunRequest": {
+        "properties": {
+          "statement_id": {
+            "type": "integer",
+            "title": "Statement Id"
+          },
+          "spec_yaml": {
+            "type": "string",
+            "title": "Spec Yaml"
+          }
+        },
+        "type": "object",
+        "required": [
+          "statement_id",
+          "spec_yaml"
+        ],
+        "title": "LayoutSpecDryRunRequest"
+      },
+      "LayoutSpecDryRunResponse": {
+        "properties": {
+          "txn_count": {
+            "type": "integer",
+            "title": "Txn Count"
+          },
+          "total_minor": {
+            "type": "integer",
+            "title": "Total Minor"
+          },
+          "currency": {
+            "type": "string",
+            "title": "Currency"
+          },
+          "sample_rows": {
+            "items": {
+              "$ref": "#/components/schemas/LayoutSpecDryRunRow"
+            },
+            "type": "array",
+            "title": "Sample Rows"
+          },
+          "warnings": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Warnings"
+          },
+          "reconciliation_delta_minor": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Reconciliation Delta Minor"
+          }
+        },
+        "type": "object",
+        "required": [
+          "txn_count",
+          "total_minor",
+          "currency",
+          "sample_rows",
+          "warnings"
+        ],
+        "title": "LayoutSpecDryRunResponse"
+      },
+      "LayoutSpecDryRunRow": {
+        "properties": {
+          "description_clean": {
+            "type": "string",
+            "title": "Description Clean"
+          },
+          "posted_date": {
+            "type": "string",
+            "format": "date",
+            "title": "Posted Date"
+          },
+          "amount_minor": {
+            "type": "integer",
+            "title": "Amount Minor"
+          }
+        },
+        "type": "object",
+        "required": [
+          "description_clean",
+          "posted_date",
+          "amount_minor"
+        ],
+        "title": "LayoutSpecDryRunRow"
       },
       "LlmRun": {
         "properties": {
@@ -3799,6 +4273,39 @@
             ],
             "title": "Account Id"
           },
+          "issuer_id": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Issuer Id"
+          },
+          "parser_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Parser Id"
+          },
+          "layout_spec_id": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Layout Spec Id"
+          },
           "status": {
             "type": "string",
             "enum": [
@@ -3939,6 +4446,70 @@
         "type": "object",
         "title": "StatementPatch"
       },
+      "StatementPreviewPage": {
+        "properties": {
+          "page_number": {
+            "type": "integer",
+            "title": "Page Number"
+          },
+          "width": {
+            "type": "number",
+            "title": "Width"
+          },
+          "height": {
+            "type": "number",
+            "title": "Height"
+          },
+          "words": {
+            "items": {
+              "$ref": "#/components/schemas/StatementPreviewWord"
+            },
+            "type": "array",
+            "title": "Words"
+          }
+        },
+        "type": "object",
+        "required": [
+          "page_number",
+          "width",
+          "height",
+          "words"
+        ],
+        "title": "StatementPreviewPage"
+      },
+      "StatementPreviewWord": {
+        "properties": {
+          "text": {
+            "type": "string",
+            "title": "Text"
+          },
+          "x0": {
+            "type": "number",
+            "title": "X0"
+          },
+          "x1": {
+            "type": "number",
+            "title": "X1"
+          },
+          "top": {
+            "type": "number",
+            "title": "Top"
+          },
+          "bottom": {
+            "type": "number",
+            "title": "Bottom"
+          }
+        },
+        "type": "object",
+        "required": [
+          "text",
+          "x0",
+          "x1",
+          "top",
+          "bottom"
+        ],
+        "title": "StatementPreviewWord"
+      },
       "StatementUploadResponse": {
         "properties": {
           "statement": {
@@ -3957,6 +4528,10 @@
       },
       "Subcategory": {
         "properties": {
+          "id": {
+            "type": "integer",
+            "title": "Id"
+          },
           "key": {
             "type": "string",
             "title": "Key"
@@ -3983,6 +4558,7 @@
         },
         "type": "object",
         "required": [
+          "id",
           "key",
           "name",
           "pending"
@@ -4067,6 +4643,10 @@
             ],
             "title": "Transaction Date"
           },
+          "description_raw": {
+            "type": "string",
+            "title": "Description Raw"
+          },
           "description_clean": {
             "type": "string",
             "title": "Description Clean"
@@ -4138,6 +4718,7 @@
           "account_id",
           "posted_date",
           "transaction_date",
+          "description_raw",
           "description_clean",
           "amount_minor",
           "currency",
