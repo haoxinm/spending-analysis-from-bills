@@ -12,18 +12,18 @@ npm run build        # emits to ../src/spend_analyzer/web/ (served by FastAPI in
 npm run typecheck
 npm run lint
 npm run test
-npm run gen:api-types # regenerate src/lib/api/schema.d.ts from src/lib/api/openapi.json
+npm run gen:api-types # regenerate src/api/schema.d.ts from src/api/openapi.json
 ```
 
 ## Layout
 
-- `src/lib/api/openapi.json` — a hand-written stand-in for the FastAPI-generated schema
+- `src/api/openapi.json` — a hand-written stand-in for the FastAPI-generated schema
   (plan §3.12), committed because Phase 1 has no backend yet. **P2-C replaces this file**
   with the real generated schema, at which point `gen:api-types` becomes a CI step instead
   of a manual one.
-- `src/lib/api/client.ts` — the typed client (`openapi-fetch`, generated types), plus
+- `src/api/client.ts` — the typed client (`openapi-fetch`, generated types), plus
   `throwIfError` for TanStack Query hooks.
-- `src/lib/api/hooks.ts` — a small set of example query/mutation hooks; Phase 3 screens add
+- `src/api/hooks.ts` — a small set of example query/mutation hooks; Phase 3 screens add
   their own directly against `apiClient` rather than growing this file per endpoint.
 - `src/components/ui/` — shadcn-style primitives (Button, Badge, Card, Input, Skeleton,
   Toast).

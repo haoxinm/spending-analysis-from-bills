@@ -1,6 +1,6 @@
 import * as React from "react";
 
-import { cn } from "@/lib/utils";
+import { cn } from "@/utils";
 
 export interface MoneyProps extends React.HTMLAttributes<HTMLSpanElement> {
   /** Signed integer minor units (cents). Positive = money leaving the user (I5). */

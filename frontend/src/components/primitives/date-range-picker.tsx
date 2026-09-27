@@ -2,7 +2,7 @@ import * as React from "react";
 
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { cn } from "@/lib/utils";
+import { cn } from "@/utils";
 
 export interface DateRange {
   from: string | null; // ISO date (yyyy-mm-dd), inclusive

@@ -4,7 +4,7 @@ import { NavLink, Route, Routes } from "react-router-dom";
 import { Toaster } from "@/components/ui/toaster";
 import { ToastContextProvider } from "@/components/ui/toast-provider";
 import { ErrorBoundary } from "@/components/primitives/error-boundary";
-import { cn } from "@/lib/utils";
+import { cn } from "@/utils";
 import { ComponentGallery } from "@/routes/gallery";
 
 /**

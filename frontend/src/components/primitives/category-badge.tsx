@@ -1,7 +1,7 @@
 import * as React from "react";
 
 import { Badge } from "@/components/ui/badge";
-import { cn } from "@/lib/utils";
+import { cn } from "@/utils";
 
 export interface CategoryBadgeProps extends React.HTMLAttributes<HTMLSpanElement> {
   /** The taxonomy category key, e.g. "groceries" (§3.3). Drives the colour deterministically. */
