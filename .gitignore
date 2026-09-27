@@ -216,3 +216,15 @@ __marimo__/
 
 # Streamlit
 .streamlit/secrets.toml
+
+# Spend Analyzer project-specific
+# Never commit a real statement, a database, or a secret (see IMPLEMENTATION_PLAN.md §0.4, §6.4).
+*.pdf
+!tests/fixtures/generated/**/*.pdf
+*.db
+*.db-wal
+*.db-shm
+/data/
+.env
+src/spend_analyzer/web/
+
