@@ -9,6 +9,7 @@ from __future__ import annotations
 
 import json
 import uuid
+from collections import Counter
 from collections.abc import Sequence
 from datetime import date
 from pathlib import Path
@@ -343,6 +344,50 @@ def update_transaction_fields(
     transaction.updated_at = utcnow_iso()
     session.flush()
     return transaction
+
+
+def merchant_display_names(session: Session, merchant_keys: Sequence[str]) -> dict[str, str]:
+    """A friendlier label for each `merchant_key` in `merchant_keys`, for
+    `GET /api/analytics/top-merchants` (never egressed — `description_clean` is egress-eligible
+    in general, but this never leaves the response): the most common non-null
+    `merchant_canonical` recorded for that key across every transaction, tie-broken
+    lexicographically; or, when a key has none, the A5 representative `description_clean`
+    (the modal value, tie-broken shortest then lexicographic — mirrors
+    `classify.cascade._select_representative`'s own tie-break exactly, without importing that
+    module's private helper across a package boundary)."""
+    if not merchant_keys:
+        return {}
+
+    rows = session.execute(
+        select(
+            Transaction.merchant_key, Transaction.merchant_canonical, Transaction.description_clean
+        ).where(Transaction.merchant_key.in_(merchant_keys))
+    ).all()
+
+    canonical_counts: dict[str, Counter[str]] = {}
+    description_counts: dict[str, Counter[str]] = {}
+    for merchant_key, merchant_canonical, description_clean in rows:
+        if merchant_canonical:
+            canonical_counts.setdefault(merchant_key, Counter())[merchant_canonical] += 1
+        description_counts.setdefault(merchant_key, Counter())[description_clean] += 1
+
+    display_names: dict[str, str] = {}
+    for merchant_key in merchant_keys:
+        canonical = canonical_counts.get(merchant_key)
+        if canonical:
+            top_count = max(canonical.values())
+            display_names[merchant_key] = sorted(
+                name for name, count in canonical.items() if count == top_count
+            )[0]
+            continue
+        descriptions = description_counts.get(merchant_key)
+        if descriptions:
+            top_count = max(descriptions.values())
+            display_names[merchant_key] = sorted(
+                (d for d, count in descriptions.items() if count == top_count),
+                key=lambda d: (len(d), d),
+            )[0]
+    return display_names
 
 
 # --- Issuers ---------------------------------------------------------------------------------------

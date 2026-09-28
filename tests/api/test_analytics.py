@@ -67,3 +67,22 @@ def test_top_merchants(client: TestClient, session: Session) -> None:
     rows = response.json()
     assert rows[0]["merchant"] == "shell"
     assert rows[0]["total_minor"] == 5000
+    # No `merchant_canonical` was ever recorded for either merchant, so `display_name` falls
+    # back to the A5 representative `description_clean` (§ "Add a `display_name`" polish item).
+    assert rows[0]["display_name"] == "Shell"
+    assert rows[1]["display_name"] == "Trader Joes"
+
+
+def test_top_merchants_display_name_prefers_the_most_common_merchant_canonical(
+    client: TestClient, session: Session
+) -> None:
+    _seed(session)
+    for txn in session.query(Transaction).filter(Transaction.merchant_key == "shell").all():
+        txn.merchant_canonical = "Shell Oil Co."
+    session.commit()
+
+    response = client.get("/api/analytics/top-merchants")
+    assert response.status_code == 200
+    rows = response.json()
+    shell_row = next(r for r in rows if r["merchant"] == "shell")
+    assert shell_row["display_name"] == "Shell Oil Co."

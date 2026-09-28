@@ -328,7 +328,19 @@ def classify(
             typer.echo("Nothing to classify.")
             return
 
+        # classify.cascade's `progress_cb` (P2-B) fires once per cascade stage, which often
+        # reports the same (done, total, cost_usd) two or three times in a row when the
+        # deterministic stages alone classify everything — print a line only when something
+        # about it actually changed, so the run reads as one line per real change rather than
+        # the same line repeated.
+        last_progress: tuple[int, int, float] | None = None
+
         def progress_cb(done: int, total: int, cost_usd: float) -> None:
+            nonlocal last_progress
+            current = (done, total, cost_usd)
+            if current == last_progress:
+                return
+            last_progress = current
             typer.echo(f"  {done}/{total} classified (${cost_usd:.4f})", err=True)
 
         result = gateway.classify_transactions(
