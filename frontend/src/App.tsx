@@ -34,8 +34,10 @@ const SCREENS = [
  * screen's own `screenMeta` (§ Phase 3 screen contract) plus the `/gallery` route P1-F's
  * Accepts criteria requires. The Layout mapper is reachable only as a deep link from Import's
  * `unsupported_layout` failure (and from Rules' Extractors tab), so it stays out of the primary
- * nav to avoid suggesting it is a everyday destination; `/gallery` stays last for the same
- * reason — a developer tool, not a user-facing screen.
+ * nav to avoid suggesting it is a everyday destination. `/gallery` (a developer tool, not a
+ * user-facing screen) is left off the nav entirely — the route itself still works as a direct
+ * link — rather than appended to it, so it never reads as an eighth "screen" alongside the app's
+ * real ones.
  */
 export function App() {
   return (
@@ -49,7 +51,6 @@ export function App() {
                 {s.meta.title}
               </NavItem>
             ))}
-            <NavItem to="/gallery">Component gallery</NavItem>
           </nav>
         </header>
         <main className="mx-auto flex w-full max-w-6xl flex-1 flex-col px-4 py-6">

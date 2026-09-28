@@ -2,7 +2,7 @@ import * as React from "react";
 import { useSearchParams } from "react-router-dom";
 
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { EmptyState, ErrorState, LoadingState } from "@/components/primitives/states";
+import { ErrorState, LoadingState } from "@/components/primitives/states";
 
 import { useStatement, useStatementsForDrift } from "./api";
 import { computeDrift, findPreviousStatement } from "./drift";
@@ -13,6 +13,7 @@ import { type PasteSpecResult, PasteSpecPanel } from "./paste-spec-panel";
 import { SavePanel } from "./save-panel";
 import { emptySpec, type LayoutSpecObject } from "./spec-types";
 import { validateSpec } from "./spec-validate";
+import { StatementPicker } from "./statement-picker";
 import { StatementPreview } from "./statement-preview";
 import { TestExtractPanel } from "./test-extract-panel";
 import { stringifySpec } from "./yaml";
@@ -27,6 +28,11 @@ type MapperTab = "manual" | "paste";
  *
  * Click-to-map (`StatementPreview`, `GET /statements/{id}/preview`) and the live "N transactions
  * totalling X" feedback (`DryRunPanel`, `POST /layout-specs/dry-run`) both come from §3.12.
+ *
+ * Opened with no `?statement_id=` (a direct visit, not the usual deep link), this screen shows
+ * `StatementPicker` — a list of the user's statements, `unsupported_layout` /
+ * `awaiting_extractor` ones called out first — rather than telling the person to hand-edit the
+ * URL.
  */
 export default function LayoutMapperScreen() {
   const [searchParams] = useSearchParams();
@@ -60,12 +66,7 @@ export default function LayoutMapperScreen() {
     return (
       <div className="flex flex-col gap-4 py-2">
         <h1 className="text-xl font-semibold tracking-tight">Layout mapper</h1>
-        <EmptyState
-          title="No statement selected"
-          description={
-            'Open this screen from Import\'s "unsupported layout" action, or add ?statement_id=<id> to the URL.'
-          }
-        />
+        <StatementPicker />
       </div>
     );
   }

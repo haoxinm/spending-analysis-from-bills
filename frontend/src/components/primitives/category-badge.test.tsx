@@ -14,9 +14,12 @@ describe("CategoryBadge", () => {
     expect(screen.getByText(/restaurants/)).toBeInTheDocument();
   });
 
-  it("shows a needs-review badge when flagged", () => {
+  it("shows a compact, single-line review badge when flagged", () => {
     render(<CategoryBadge categoryKey="transport" needsReview />);
-    expect(screen.getByText("Needs review")).toBeInTheDocument();
+    const reviewBadge = screen.getByText("Review");
+    expect(reviewBadge).toBeInTheDocument();
+    expect(reviewBadge).toHaveAttribute("title", "Needs review");
+    expect(reviewBadge.className).toContain("whitespace-nowrap");
   });
 
   it("assigns the same colour class to the same key every render", () => {

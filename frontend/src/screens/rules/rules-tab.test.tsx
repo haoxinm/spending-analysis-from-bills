@@ -155,4 +155,84 @@ describe("RulesTab", () => {
     await user.selectOptions(screen.getByLabelText("Category / subcategory"), "food::groceries");
     expect(screen.getByRole("button", { name: "Add rule" })).toBeEnabled();
   });
+
+  it("filters the rule list by a search term matching the pattern or the category", async () => {
+    const user = userEvent.setup();
+    render(<RulesTab />, { wrapper: TestProviders });
+    await screen.findByText("starbucks");
+    expect(screen.getByText("trader joe")).toBeInTheDocument();
+
+    await user.type(screen.getByLabelText("Search rules"), "starbucks");
+
+    expect(screen.getByText("starbucks")).toBeInTheDocument();
+    expect(screen.queryByText("trader joe")).not.toBeInTheDocument();
+    expect(screen.getByText("Rules (1 of 2)")).toBeInTheDocument();
+  });
+
+  it("shows a no-match message and no rows for a search with no hits", async () => {
+    const user = userEvent.setup();
+    render(<RulesTab />, { wrapper: TestProviders });
+    await screen.findByText("starbucks");
+
+    await user.type(screen.getByLabelText("Search rules"), "zzz-nomatch");
+
+    expect(screen.getByText(/No rules match/)).toBeInTheDocument();
+    expect(screen.queryByText("starbucks")).not.toBeInTheDocument();
+  });
+});
+
+/** With ~120 built-in rules (§ the corpus) plus any the user adds, this list needs its own
+ * paging so it never dumps every row onto one enormous page (a real usability bug — the whole
+ * screen used to render as one ~8600px-tall page). */
+describe("RulesTab pagination", () => {
+  function manyRules(count: number): Rule[] {
+    return Array.from({ length: count }, (_, i) => ({
+      id: i + 1,
+      pattern: `merchant-${String(i + 1).padStart(3, "0")}`,
+      category_key: "food",
+      subcategory_key: "groceries",
+      kind: null,
+      source: "builtin" as const,
+    }));
+  }
+
+  beforeEach(() => {
+    setUpHandlers({ "GET /rules": () => manyRules(60) });
+  });
+
+  it("shows only the first page's worth of rules, with page controls", async () => {
+    render(<RulesTab />, { wrapper: TestProviders });
+
+    await screen.findByText("merchant-001");
+    expect(screen.getByText("merchant-025")).toBeInTheDocument();
+    expect(screen.queryByText("merchant-026")).not.toBeInTheDocument();
+    expect(screen.getByText("Page 1 of 3")).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Previous" })).toBeDisabled();
+  });
+
+  it("advances to the next page", async () => {
+    const user = userEvent.setup();
+    render(<RulesTab />, { wrapper: TestProviders });
+
+    await screen.findByText("merchant-001");
+    await user.click(screen.getByRole("button", { name: "Next" }));
+
+    expect(screen.getByText("merchant-026")).toBeInTheDocument();
+    expect(screen.queryByText("merchant-001")).not.toBeInTheDocument();
+    expect(screen.getByText("Page 2 of 3")).toBeInTheDocument();
+  });
+
+  it("resets to page 1 when the search term changes", async () => {
+    const user = userEvent.setup();
+    render(<RulesTab />, { wrapper: TestProviders });
+
+    await screen.findByText("merchant-001");
+    await user.click(screen.getByRole("button", { name: "Next" }));
+    expect(screen.getByText("Page 2 of 3")).toBeInTheDocument();
+
+    await user.type(screen.getByLabelText("Search rules"), "merchant-05");
+
+    expect(screen.getByText("merchant-050")).toBeInTheDocument();
+    expect(screen.queryByText("Page 2")).not.toBeInTheDocument();
+  });
 });

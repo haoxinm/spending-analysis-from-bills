@@ -1,4 +1,4 @@
-import { getCoreRowModel, useReactTable, flexRender } from "@tanstack/react-table";
+import { getCoreRowModel, useReactTable, flexRender, type Column } from "@tanstack/react-table";
 import * as React from "react";
 
 import { cn } from "@/utils";
@@ -11,6 +11,20 @@ const ROW_HEIGHT = 44;
 /** The grid's fixed viewport height (px). A fixed height is what makes windowing possible
  *  without measuring layout on every render. */
 const VIEWPORT_HEIGHT = 560;
+
+/**
+ * `column.getSize()` always returns a number — `@tanstack/react-table` merges its own
+ * `defaultColumn.size` (150) into *every* column's `columnDef` once the table processes it, even
+ * one whose own def never set a `size` — so checking either `getSize()` or `columnDef.size` (as
+ * this table used to) can never tell "explicitly sized" apart from "let it flex", and every
+ * column ends up fixed-width: Description got clipped to that default 150px while unused space
+ * sat blank past Notes. `columns.tsx` instead marks the one column that should absorb whatever
+ * width the fixed-size columns leave behind with `meta: { flexible: true }` — `meta` is never
+ * touched by `defaultColumn`, so it is the one place immune to this default-merging trap.
+ */
+function columnFlex(column: Column<Transaction, unknown>): string {
+  return column.columnDef.meta?.flexible ? "1 1 0%" : `0 0 ${column.getSize()}px`;
+}
 
 export interface TransactionsTableProps {
   rows: Transaction[];
@@ -68,8 +82,8 @@ export function TransactionsTable({ rows, context, onRowClick, onNearEnd }: Tran
         {table.getFlatHeaders().map((header) => (
           <div
             key={header.id}
-            className="flex items-center px-3 py-2"
-            style={{ flex: header.column.getSize() ? `0 0 ${header.column.getSize()}px` : "1 1 auto" }}
+            className="flex items-center overflow-hidden whitespace-nowrap px-3 py-2"
+            style={{ flex: columnFlex(header.column) }}
           >
             {flexRender(header.column.columnDef.header, header.getContext())}
           </div>
@@ -100,9 +114,7 @@ export function TransactionsTable({ rows, context, onRowClick, onNearEnd }: Tran
                 <div
                   key={cell.id}
                   className="flex items-center overflow-hidden px-3"
-                  style={{
-                    flex: cell.column.getSize() ? `0 0 ${cell.column.getSize()}px` : "1 1 auto",
-                  }}
+                  style={{ flex: columnFlex(cell.column) }}
                 >
                   {flexRender(cell.column.columnDef.cell, cell.getContext())}
                 </div>

@@ -41,6 +41,16 @@ export default tseslint.config(
     },
   },
   {
+    // Test-support modules (`render(<X/>, { wrapper: TestProviders })` helpers, mock fetch
+    // plumbing) mix a component export with plain helper exports on purpose, and are never
+    // subject to Vite's Fast Refresh in the first place (only Vitest imports them) — so
+    // `react-refresh/only-export-components` has nothing real to warn about here.
+    files: ["**/test-utils.tsx", "**/test-support.ts"],
+    rules: {
+      "react-refresh/only-export-components": "off",
+    },
+  },
+  {
     files: ["*.config.{js,ts}", "vite.config.ts"],
     languageOptions: {
       globals: globals.node,

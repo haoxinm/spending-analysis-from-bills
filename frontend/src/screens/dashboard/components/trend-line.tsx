@@ -20,7 +20,12 @@ export interface TrendLineProps {
 }
 
 /** The overall spend trend across periods — one line, net of refunds per the query's own
- * `net_refunds` default (A7), so this reads as "money that actually left" per period. */
+ * `net_refunds` default (A7), so this reads as "money that actually left" per period.
+ *
+ * `isAnimationActive={false}` on the `Line`: Recharts' default line-draw animation reveals the
+ * path via `stroke-dasharray` over ~1.5s, so right after mounting (e.g. a same-session SPA route
+ * change) the line reads as a short stub rather than the full Jan-to-Feb trend until that
+ * settles — see `category-stacked-bar.tsx`'s matching note. */
 export function TrendLine({ rows, currency }: TrendLineProps) {
   const points = React.useMemo(() => toTrendPoints(rows), [rows]);
   const format = React.useMemo(() => {
@@ -51,6 +56,7 @@ export function TrendLine({ rows, currency }: TrendLineProps) {
             stroke={CHART_OUTFLOW}
             strokeWidth={2}
             dot={{ r: 3 }}
+            isAnimationActive={false}
           />
         </LineChart>
       </ResponsiveContainer>

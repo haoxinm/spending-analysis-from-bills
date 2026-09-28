@@ -8,7 +8,8 @@ import { EmptyState, ErrorState, LoadingState } from "@/components/primitives/st
 import { CategoryBadge } from "@/components/primitives/category-badge";
 import { Money } from "@/components/primitives/money";
 
-import { buildCategoryChoices, CategoryPicker } from "./components/category-picker";
+import { buildCategoryChoices } from "./components/category-choices";
+import { CategoryPicker } from "./components/category-picker";
 import { PendingStores } from "./components/pending-stores";
 import { usePendingSubcategories } from "./use-pending-subcategories";
 import { useReviewQueue } from "./use-review-queue";

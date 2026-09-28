@@ -116,6 +116,22 @@ export function totalsByUser(rows: readonly AnalyticsRow[]): UserTotal[] {
 }
 
 /**
+ * `TopMerchantRow.merchant` is the raw `merchant_key` (§3.3): lowercase, and the analytics
+ * rollup has no join back to a human display name (no `merchant_canonical`, no representative
+ * `description_clean` — see this function's call site for why that would be the better fix).
+ * Until the API surfaces one, title-case the key as a legible display label; the caller keeps
+ * the untouched key as a `title` tooltip so the full value is never actually lost, just no
+ * longer the *only* thing shown.
+ */
+export function humanizeMerchantKey(merchantKey: string): string {
+  return merchantKey
+    .split(/\s+/)
+    .filter(Boolean)
+    .map((word) => (word[0]?.toUpperCase() ?? "") + word.slice(1))
+    .join(" ");
+}
+
+/**
  * D5: aggregations always filter to a single posted currency; this tells the UI whether any
  * *other* currency exists among the accounts in scope, so it can banner "these totals exclude
  * N accounts in EUR" rather than silently under-counting. Never converts — only detects.
