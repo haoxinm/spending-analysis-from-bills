@@ -192,6 +192,10 @@ class Transaction(Base):
             "kind IN ('purchase','refund','payment','transfer','fee','interest','adjustment')",
             name="ck_txn_kind",
         ),
+        CheckConstraint(
+            "(category_id IS NULL) = (subcategory_id IS NULL)",
+            name="ck_txn_category_subcategory_both_or_neither",
+        ),  # I4
     )
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True)
