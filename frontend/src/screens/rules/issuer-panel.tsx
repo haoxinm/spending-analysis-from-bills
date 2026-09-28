@@ -8,9 +8,11 @@ import { Input } from "@/components/ui/input";
 import { useToast } from "@/components/ui/use-toast";
 import { EmptyState, ErrorState, LoadingState } from "@/components/primitives/states";
 
-import { useAccounts, useAllStatements, useCreateIssuer, useDeleteIssuer, useIssuers, useUpdateIssuer } from "./hooks";
+import { useCreateIssuer, useDeleteIssuer, useIssuers, usePreviewIssuerMatch, useUpdateIssuer } from "./hooks";
 
 type Issuer = components["schemas"]["Issuer"];
+
+const DEBOUNCE_MS = 300;
 
 function parseTerms(text: string): string[] {
   return text
@@ -20,30 +22,22 @@ function parseTerms(text: string): string[] {
 }
 
 /**
- * Counts statements whose account currently belongs to `issuerId` (§2f.4).
- *
- * This is an approximation, not a live re-run of template matching: the API never returns the
- * page-1 text `issuers.match_terms` is matched against (only extracted server-side, kept local
- * per I1b's "all extracted page text"), so a Phase 3 screen has no way to simulate "would these
- * edited terms match" against a statement's actual letterhead. What this *can* show honestly is
- * how many past statements are attributed to the issuer today. See this WP's final report for
- * the corresponding contract change request (a dedicated match-preview endpoint).
+ * Live "this would match these N past statements" check (§P3-F) for a set of `match_terms`,
+ * debounced, via `POST /issuers/preview-match` (§3.12) — a real re-run of template matching
+ * against each statement's actual text, not an approximation from today's account assignment.
  */
-function useStatementCountForIssuer(issuerId: number): { count: number; loading: boolean } {
-  const accountsQuery = useAccounts();
-  const statementsQuery = useAllStatements();
+function useMatchPreviewCount(matchTerms: string[]): { count: number; loading: boolean } {
+  const [debounced, setDebounced] = React.useState(matchTerms);
 
-  const count = React.useMemo(() => {
-    const accountIds = new Set(
-      (accountsQuery.data ?? []).filter((a) => a.issuer_id === issuerId).map((a) => a.id),
-    );
-    if (accountIds.size === 0) return 0;
-    return (statementsQuery.data ?? []).filter(
-      (s) => s.account_id !== null && accountIds.has(s.account_id),
-    ).length;
-  }, [accountsQuery.data, statementsQuery.data, issuerId]);
+  React.useEffect(() => {
+    const handle = setTimeout(() => setDebounced(matchTerms), DEBOUNCE_MS);
+    return () => clearTimeout(handle);
+    // `matchTerms` is a fresh array each render; compare by content, not identity.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [matchTerms.join("\u0000")]);
 
-  return { count, loading: accountsQuery.isLoading || statementsQuery.isLoading };
+  const previewQuery = usePreviewIssuerMatch(debounced);
+  return { count: previewQuery.data?.length ?? 0, loading: previewQuery.isFetching };
 }
 
 function IssuerRow({ issuer }: { issuer: Issuer }) {
@@ -53,7 +47,8 @@ function IssuerRow({ issuer }: { issuer: Issuer }) {
   const updateIssuer = useUpdateIssuer();
   const deleteIssuer = useDeleteIssuer();
   const { toast } = useToast();
-  const { count, loading: countLoading } = useStatementCountForIssuer(issuer.id);
+  const liveTerms = editing ? parseTerms(termsText) : issuer.match_terms;
+  const { count, loading: countLoading } = useMatchPreviewCount(liveTerms);
 
   function startEdit() {
     setName(issuer.name);
@@ -110,6 +105,11 @@ function IssuerRow({ issuer }: { issuer: Issuer }) {
           placeholder="Comma-separated match terms"
           aria-label="Match terms"
         />
+        <span className="text-xs text-muted-foreground">
+          {countLoading
+            ? "Checking…"
+            : `Would match ${count} past statement${count === 1 ? "" : "s"}.`}
+        </span>
         <div className="flex gap-2">
           <Button size="sm" onClick={save} disabled={updateIssuer.isPending}>
             Save
@@ -137,7 +137,9 @@ function IssuerRow({ issuer }: { issuer: Issuer }) {
           ))}
         </div>
         <span className="text-xs text-muted-foreground">
-          {countLoading ? "Checking statements…" : `${count} past statement${count === 1 ? "" : "s"} currently attributed to this issuer.`}
+          {countLoading
+            ? "Checking statements…"
+            : `Matches ${count} past statement${count === 1 ? "" : "s"}.`}
         </span>
       </div>
       <div className="flex gap-2">

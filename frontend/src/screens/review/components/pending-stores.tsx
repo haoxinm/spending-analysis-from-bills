@@ -2,7 +2,7 @@ import * as React from "react";
 
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Card, CardHeader, CardTitle } from "@/components/ui/card";
 import { EmptyState, LoadingState } from "@/components/primitives/states";
 
 import type { MergeTarget, UsePendingSubcategoriesResult } from "../use-pending-subcategories";
@@ -10,8 +10,7 @@ import type { MergeTarget, UsePendingSubcategoriesResult } from "../use-pending-
 /**
  * "Pending stores": dynamically-proposed subcategories awaiting approval, each rendered with the
  * "approve / merge into ▾" picker the plan calls for (§P3-B, e.g. "Yami — approve /
- * merge into ▾"). Approve and merge are disabled, with an inline explanation, for any row
- * without a numeric id — see the contract-gap doc on `usePendingSubcategories`.
+ * merge into ▾"), keyed by `Subcategory.id`.
  */
 export function PendingStores({ pending, mergeTargets, approve, merge, isBusy, isLoading, isError }: UsePendingSubcategoriesResult) {
   const [openMergeFor, setOpenMergeFor] = React.useState<string | null>(null);
@@ -29,7 +28,6 @@ export function PendingStores({ pending, mergeTargets, approve, merge, isBusy, i
   return (
     <ul className="flex flex-col gap-2">
       {pending.map((row) => {
-        const hasId = typeof row.id === "number";
         const busy = isBusy(row.key);
         return (
           <li key={row.key}>
@@ -46,7 +44,7 @@ export function PendingStores({ pending, mergeTargets, approve, merge, isBusy, i
                     type="button"
                     size="sm"
                     variant="outline"
-                    disabled={!hasId || busy}
+                    disabled={busy}
                     onClick={() => approve(row)}
                   >
                     Approve
@@ -56,7 +54,7 @@ export function PendingStores({ pending, mergeTargets, approve, merge, isBusy, i
                       type="button"
                       size="sm"
                       variant="ghost"
-                      disabled={!hasId || busy || mergeTargets.length === 0}
+                      disabled={busy || mergeTargets.length === 0}
                       onClick={() => setOpenMergeFor((k) => (k === row.key ? null : row.key))}
                     >
                       Merge into ▾
@@ -74,12 +72,6 @@ export function PendingStores({ pending, mergeTargets, approve, merge, isBusy, i
                   </div>
                 </div>
               </CardHeader>
-              {!hasId ? (
-                <CardContent className="pt-0 text-xs text-muted-foreground">
-                  Waiting on a backend change (the API does not yet expose this store&rsquo;s id) —
-                  see the contract change request in <code>use-pending-subcategories.ts</code>.
-                </CardContent>
-              ) : null}
             </Card>
           </li>
         );

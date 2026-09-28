@@ -1,3 +1,4 @@
+import { useVirtualizer, type VirtualItem } from "@tanstack/react-virtual";
 import * as React from "react";
 
 export interface WindowRange {
@@ -21,70 +22,43 @@ export interface UseVirtualRowsOptions {
   overscan?: number;
 }
 
-/**
- * Given a scroll position and viewport height, returns the slice of row indices that should
- * actually be mounted, padded with spacer heights so the scrollbar's size and position stay
- * correct for the *full* `rowCount` even though only a window of rows exists in the DOM.
- *
- * Pure and framework-free on purpose: `useVirtualRows` below is the only thing that touches
- * the DOM, so this function is trivial to unit-test and to swap for `@tanstack/react-virtual`
- * (see the P3-C report: that package is not yet in `package.json`) without touching call sites.
- */
-export function computeRange(
-  scrollTop: number,
-  viewportHeight: number,
-  rowCount: number,
-  rowHeight: number,
-  overscan: number,
-): WindowRange {
-  if (rowCount <= 0 || rowHeight <= 0) {
+/** Turns `@tanstack/react-virtual`'s `getVirtualItems()`/`getTotalSize()` into this screen's own
+ * `{ startIndex, endIndex, paddingTop, paddingBottom }` shape — the row-slice-plus-spacers
+ * contract `table.tsx` renders off, unchanged since before this hook was backed by the real
+ * package. */
+function toWindowRange(items: VirtualItem[], totalSize: number, rowCount: number): WindowRange {
+  if (rowCount <= 0 || items.length === 0) {
     return { startIndex: 0, endIndex: 0, paddingTop: 0, paddingBottom: 0 };
   }
-  const firstVisible = Math.floor(scrollTop / rowHeight);
-  const visibleCount = Math.ceil(Math.max(viewportHeight, 0) / rowHeight) + 1;
-  const startIndex = Math.max(0, Math.min(rowCount, firstVisible) - overscan);
-  const endIndex = Math.max(startIndex, Math.min(rowCount, firstVisible + visibleCount + overscan));
+  const first = items[0]!;
+  const last = items[items.length - 1]!;
   return {
-    startIndex,
-    endIndex,
-    paddingTop: startIndex * rowHeight,
-    paddingBottom: (rowCount - endIndex) * rowHeight,
+    startIndex: first.index,
+    endIndex: last.index + 1,
+    paddingTop: first.start,
+    paddingBottom: Math.max(0, totalSize - (last.start + last.size)),
   };
 }
 
 /**
- * A minimal, dependency-free row-windowing fallback for the transactions grid. `@tanstack/
- * react-virtual` is not in `frontend/package.json` (a P3_BRIEF-flagged dependency this screen
- * needs but may not add itself — see the report), so this hook implements the same idea by
- * hand: track the scroll container's `scrollTop`/`clientHeight`, and mount only the rows in
- * `computeRange`'s window. Swapping in the real package later means replacing this hook's
- * internals only; every caller (`table.tsx`) already renders off `{ containerRef, range,
- * onScroll }`, which lines up with `useVirtualizer`'s own shape.
+ * Row windowing for the transactions grid, backed by `@tanstack/react-virtual` (MIT): only the
+ * rows in the visible window (plus `overscan`) are ever mounted, so the grid stays smooth at
+ * 10k+ rows (§6.6's TTI budget). `table.tsx` renders off `{ containerRef, range, onScroll }`;
+ * `onScroll` is a no-op here (the virtualizer subscribes to the scroll container itself) and is
+ * kept only so `table.tsx`'s `onScroll={handleScroll}` composition (which also drives
+ * `onNearEnd` pagination) needs no change.
  */
 export function useVirtualRows({ rowCount, rowHeight, overscan = 8 }: UseVirtualRowsOptions) {
   const containerRef = React.useRef<HTMLDivElement | null>(null);
-  const [range, setRange] = React.useState<WindowRange>(() =>
-    computeRange(0, 0, rowCount, rowHeight, overscan),
-  );
 
-  const recompute = React.useCallback(() => {
-    const el = containerRef.current;
-    const scrollTop = el?.scrollTop ?? 0;
-    const viewportHeight = el?.clientHeight ?? 0;
-    setRange(computeRange(scrollTop, viewportHeight, rowCount, rowHeight, overscan));
-  }, [rowCount, rowHeight, overscan]);
+  const virtualizer = useVirtualizer({
+    count: rowCount,
+    getScrollElement: () => containerRef.current,
+    estimateSize: () => rowHeight,
+    overscan,
+  });
 
-  React.useEffect(() => {
-    recompute();
-  }, [recompute]);
+  const range = toWindowRange(virtualizer.getVirtualItems(), virtualizer.getTotalSize(), rowCount);
 
-  React.useEffect(() => {
-    const el = containerRef.current;
-    if (!el || typeof ResizeObserver === "undefined") return undefined;
-    const observer = new ResizeObserver(() => recompute());
-    observer.observe(el);
-    return () => observer.disconnect();
-  }, [recompute]);
-
-  return { containerRef, range, onScroll: recompute };
+  return { containerRef, range, onScroll: () => {} };
 }

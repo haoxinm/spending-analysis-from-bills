@@ -10,7 +10,7 @@ const CATEGORIES: Category[] = [
   {
     key: "groceries",
     name: "Groceries",
-    subcategories: [{ key: "supermarket", name: "Supermarket", pending: false }],
+    subcategories: [{ id: 1, key: "supermarket", name: "Supermarket", pending: false }],
   },
 ];
 

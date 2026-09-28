@@ -4,22 +4,16 @@ import type { components } from "@/api/client";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { useToast } from "@/components/ui/use-toast";
 import { EmptyState, ErrorState, LoadingState } from "@/components/primitives/states";
 
-import { useTaxonomy } from "./hooks";
+import { useApproveSubcategory, useMergeSubcategory, useTaxonomy } from "./hooks";
 
 type Category = components["schemas"]["Category"];
 type Subcategory = components["schemas"]["Subcategory"];
 
-/**
- * A pending subcategory row. Approve/merge are wired up to `useApproveSubcategory` /
- * `useMergeSubcategory` (`hooks.ts`) exactly against the frozen `/taxonomy/subcategories/{id}`
- * contract, but that `{id}` is a numeric database id the `GET /taxonomy` response never
- * includes — `Subcategory` (§3.12) carries only `key`, `name`, `pending`, `merged_into`. There
- * is no client-side way to recover the id from the key, so the actions below are disabled with
- * an explanation rather than silently sent against a guessed id. See this WP's final report for
- * the corresponding contract change request (add `id: int` to `schemas.Subcategory`).
- */
+/** A pending subcategory row, with approve/merge (`/taxonomy/subcategories/{id}/...`, §3.12)
+ * wired against `Subcategory.id`. */
 function SubcategoryRow({
   categoryKey,
   subcategory,
@@ -27,10 +21,46 @@ function SubcategoryRow({
 }: {
   categoryKey: string;
   subcategory: Subcategory;
-  mergeTargets: Array<{ key: string; name: string }>;
+  mergeTargets: Array<{ id: number; key: string; name: string }>;
 }) {
   const [mergeTarget, setMergeTarget] = React.useState("");
-  const blockedReason = "Needs the subcategory's numeric id, not returned by GET /taxonomy yet.";
+  const approveSubcategory = useApproveSubcategory();
+  const mergeSubcategory = useMergeSubcategory();
+  const { toast } = useToast();
+
+  function approve() {
+    approveSubcategory.mutate(subcategory.id, {
+      onSuccess: () => toast({ title: `Approved "${subcategory.name}"`, variant: "success" }),
+      onError: (err) =>
+        toast({
+          title: `Could not approve "${subcategory.name}"`,
+          description: err instanceof Error ? err.message : String(err),
+          variant: "destructive",
+        }),
+    });
+  }
+
+  function merge() {
+    const into = mergeTargets.find((t) => t.key === mergeTarget);
+    if (!into) return;
+    mergeSubcategory.mutate(
+      { subcategoryId: subcategory.id, body: { into_id: into.id } },
+      {
+        onSuccess: () => {
+          toast({ title: `Merged "${subcategory.name}" into "${into.name}"`, variant: "success" });
+          setMergeTarget("");
+        },
+        onError: (err) =>
+          toast({
+            title: `Could not merge "${subcategory.name}"`,
+            description: err instanceof Error ? err.message : String(err),
+            variant: "destructive",
+          }),
+      },
+    );
+  }
+
+  const busy = approveSubcategory.isPending || mergeSubcategory.isPending;
 
   return (
     <div className="flex flex-col gap-2 border-b border-border py-2 last:border-b-0">
@@ -44,7 +74,7 @@ function SubcategoryRow({
       </div>
       {subcategory.pending && !subcategory.merged_into ? (
         <div className="flex flex-wrap items-center gap-2">
-          <Button size="sm" variant="outline" disabled title={blockedReason}>
+          <Button size="sm" variant="outline" onClick={approve} disabled={busy}>
             Approve
           </Button>
           <select
@@ -52,7 +82,7 @@ function SubcategoryRow({
             aria-label={`Merge ${subcategory.name} into`}
             value={mergeTarget}
             onChange={(e) => setMergeTarget(e.target.value)}
-            disabled
+            disabled={busy}
           >
             <option value="">Merge into…</option>
             {mergeTargets
@@ -63,10 +93,9 @@ function SubcategoryRow({
                 </option>
               ))}
           </select>
-          <Button size="sm" variant="outline" disabled title={blockedReason}>
+          <Button size="sm" variant="outline" onClick={merge} disabled={busy || mergeTarget === ""}>
             Merge
           </Button>
-          <span className="text-xs text-muted-foreground">{blockedReason}</span>
         </div>
       ) : null}
     </div>
@@ -74,7 +103,7 @@ function SubcategoryRow({
 }
 
 function CategoryCard({ category }: { category: Category }) {
-  const mergeTargets = category.subcategories.map((s) => ({ key: s.key, name: s.name }));
+  const mergeTargets = category.subcategories.map((s) => ({ id: s.id, key: s.key, name: s.name }));
   return (
     <Card>
       <CardHeader>

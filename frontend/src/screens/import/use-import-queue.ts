@@ -1,8 +1,9 @@
+import type { QueryClient } from "@tanstack/react-query";
 import * as React from "react";
 
 import type { JobEvent } from "@/hooks/use-job-progress";
 
-import { fetchNeedsReviewCount, fetchStatement } from "./api";
+import { fetchNeedsReviewCount, fetchStatement, pollClassifyJobNeedsReview } from "./api";
 import { isSkipConfirmForIssuer } from "./storage";
 import type { ExtractorChoice, ImportItem, ImportItemStatus, LayoutSpec, Statement } from "./types";
 
@@ -196,25 +197,32 @@ export function shouldAutoConfirm(item: ImportItem): boolean {
 }
 
 /** Refreshes a statement after its extract job reaches a terminal state, then — once parsed —
- * makes a best-effort attempt at its needs-review count (`fetchNeedsReviewCount`, see that
- * function's docstring for the known limitation). Takes only the ids it needs (not the full
- * `ImportItem`) so it never closes over a stale item from before the job finished. */
+ * gets its exact needs-review count: first by waiting on the chained classify job's own count
+ * (`pollClassifyJobNeedsReview`), falling back to `fetchNeedsReviewCount`'s `statement_id` query
+ * if the import job never chained one. Takes only the ids it needs (not the full `ImportItem`)
+ * so it never closes over a stale item from before the job finished.
+ *
+ * Also invalidates every other screen's cached queries (`invalidateQueries()` with no key
+ * filter — screens each own their own query-key namespace, so there is no single shared key to
+ * target). Without this, a screen visited earlier in the same session — the Dashboard, most
+ * visibly — keeps showing the "before this import" snapshot it cached, for as long as TanStack
+ * Query's 30 s `staleTime` (§4) has not yet elapsed, even though new transactions now exist.
+ */
 export async function refreshAfterJob(
   clientId: string,
   statementId: number,
+  jobId: string,
   dispatch: React.Dispatch<Action>,
+  queryClient: QueryClient,
 ): Promise<void> {
   const statement = await fetchStatement(statementId);
   if (statement === null) return;
   dispatch({ type: "statement_refreshed", clientId, statement });
 
-  if (statement.status === "parsed" && statement.account_id !== null) {
-    const count = await fetchNeedsReviewCount({
-      accountId: statement.account_id,
-      periodStart: statement.period_start,
-      periodEnd: statement.period_end,
-      atLeast: statement.txn_count ?? 1,
-    });
+  if (statement.status === "parsed") {
+    const count =
+      (await pollClassifyJobNeedsReview(jobId)) ?? (await fetchNeedsReviewCount({ statementId }));
     dispatch({ type: "needs_review_counted", clientId, count });
+    void queryClient.invalidateQueries();
   }
 }

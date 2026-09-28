@@ -104,38 +104,53 @@ export async function fetchJob(jobId: string): Promise<components["schemas"]["Jo
 }
 
 /**
- * Best-effort count of this statement's transactions still flagged `needs_review` (§3.12's
- * `Transaction.needs_review`), for the summary line's "N need review" clause.
- *
- * Known limitation: `GET /api/transactions` has no `statement_id` filter and `GET /api/jobs/{id}`
- * never surfaces the chained classify job's id or its `needs_review` count (§3.12a
- * `ClassifyResult`, discarded by `_job_response`) — the import job's own SSE stream only covers
- * parsing, not the classify job it enqueues afterwards. This scopes by `account_id` and the
- * statement's own period instead, which is exact for a statement imported into an otherwise-idle
- * account and only ever over-counts when another import's rows share the same account and dates.
- * A cleaner fix needs a backend change (a `statement_id` filter, or the classify job's id and
- * count surfaced through the API) — flagged in this WP's report rather than filed as a blocking
- * contract change request, since this workaround needs no owned-elsewhere file to change.
+ * Exact count of this statement's transactions still flagged `needs_review` (§3.12's
+ * `Transaction.needs_review`), for the summary line's "N need review" clause, via
+ * `GET /transactions?statement_id=&needs_review=true` (`page_size: 1`, reading `total`).
  */
 export async function fetchNeedsReviewCount(params: {
-  accountId: number;
-  periodStart: string | null;
-  periodEnd: string | null;
-  atLeast: number;
+  statementId: number;
 }): Promise<number | undefined> {
-  if (!params.periodStart || !params.periodEnd) return undefined;
   const { data, error } = await apiClient.GET("/transactions", {
     params: {
       query: {
-        account_ids: [params.accountId],
-        date_from: params.periodStart,
-        date_to: params.periodEnd,
+        statement_id: params.statementId,
+        needs_review: true,
         page: 1,
-        page_size: Math.max(params.atLeast, 1),
+        page_size: 1,
         include_non_spend: true,
       },
     },
   });
   if (error || !data) return undefined;
-  return data.items.filter((t) => t.needs_review).length;
+  return data.total;
+}
+
+/**
+ * Polls the classify job chained after an import job (`Job.classify_job_id`, §3.12a) until it
+ * reaches a terminal state, then returns its own `needs_review` count (§3.12 `/jobs/{id}`) —
+ * exact, and cheaper than scanning `/transactions` once the cascade has already computed it.
+ * Returns `undefined` if the import job never chained a classify job, or a job fetch fails, so
+ * the caller can fall back to `fetchNeedsReviewCount`.
+ */
+export async function pollClassifyJobNeedsReview(
+  importJobId: string,
+  options: { intervalMs?: number; maxAttempts?: number } = {},
+): Promise<number | undefined> {
+  const importJob = await fetchJob(importJobId);
+  const classifyJobId = importJob?.classify_job_id;
+  if (!classifyJobId) return undefined;
+
+  const intervalMs = options.intervalMs ?? 200;
+  const maxAttempts = options.maxAttempts ?? 50; // ~10s ceiling
+
+  for (let attempt = 0; attempt < maxAttempts; attempt += 1) {
+    const job = await fetchJob(classifyJobId);
+    if (!job) return undefined;
+    if (job.status === "done" || job.status === "error" || job.status === "cancelled") {
+      return job.needs_review ?? undefined;
+    }
+    await new Promise((resolve) => setTimeout(resolve, intervalMs));
+  }
+  return undefined;
 }

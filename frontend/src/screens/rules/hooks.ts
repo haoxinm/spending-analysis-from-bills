@@ -190,18 +190,25 @@ export function useDeleteIssuer() {
   });
 }
 
-// --- Accounts (read-only, to attribute statements to issuers for the issuer match check) -------
-
-export function useAccounts() {
+/**
+ * `POST /issuers/preview-match` (§3.12): the past statements a set of `match_terms` would match,
+ * live, without saving anything — the "this would match these N past statements" check (§P3-F).
+ */
+export function usePreviewIssuerMatch(matchTerms: string[]) {
   return useQuery({
-    queryKey: ["accounts"],
+    queryKey: ["issuers", "preview-match", matchTerms],
+    enabled: matchTerms.length > 0,
     queryFn: async () => {
-      const { data, error } = await apiClient.GET("/accounts");
+      const { data, error } = await apiClient.POST("/issuers/preview-match", {
+        body: { match_terms: matchTerms },
+      });
       throwIfError(error);
       return data ?? [];
     },
   });
 }
+
+// --- Statements (read-only, for spec/parser usage counts and the issuer match check) -----------
 
 export function useAllStatements() {
   return useQuery({
@@ -312,13 +319,7 @@ export function useTaxonomy() {
   });
 }
 
-/**
- * Wired against the frozen contract exactly: `/taxonomy/subcategories/{subcategory_id}` takes a
- * numeric database id. `GET /taxonomy` (`useTaxonomy` above) never returns that id — only `key`
- * — so no caller in this screen can currently supply one; see `taxonomy-tab.tsx`'s header
- * comment and this WP's final report (contract change request: add `id: int` to
- * `schemas.Subcategory`).
- */
+/** `POST /taxonomy/subcategories/{subcategory_id}/approve` (§3.12), keyed by `Subcategory.id`. */
 export function useApproveSubcategory() {
   const queryClient = useQueryClient();
   return useMutation({

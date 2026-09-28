@@ -1,3 +1,4 @@
+import { useQueryClient } from "@tanstack/react-query";
 import * as React from "react";
 
 import { useUsers } from "@/api/hooks";
@@ -23,6 +24,7 @@ import {
  * show live progress and outcomes through to reconciliation. */
 function ImportScreen() {
   const usersQuery = useUsers();
+  const queryClient = useQueryClient();
   const { items, queueFiles, dispatch } = useImportQueue();
   const uploadStatement = useUploadStatement();
   const extractStatement = useExtractStatement();
@@ -132,13 +134,13 @@ function ImportScreen() {
       dispatch({ type: "job_event", clientId, event });
       if (event.status !== "done" && event.status !== "error") return;
       const item = items.find((candidate) => candidate.clientId === clientId);
-      if (!item || item.statementId === undefined) return;
-      const dedupeKey = `${clientId}:${item.jobId ?? ""}`;
+      if (!item || item.statementId === undefined || item.jobId === undefined) return;
+      const dedupeKey = `${clientId}:${item.jobId}`;
       if (refreshedJobIds.current.has(dedupeKey)) return;
       refreshedJobIds.current.add(dedupeKey);
-      void refreshAfterJob(clientId, item.statementId, dispatch);
+      void refreshAfterJob(clientId, item.statementId, item.jobId, dispatch, queryClient);
     },
-    [items, dispatch],
+    [items, dispatch, queryClient],
   );
 
   if (usersQuery.isLoading) return <LoadingState rows={3} />;

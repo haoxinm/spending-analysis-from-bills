@@ -4,7 +4,15 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { useToast } from "@/components/ui/use-toast";
 
-import { useApproveLayoutSpec, useCreateLayoutSpec, useIssuers, useLayoutSpecs, useReviseLayoutSpec, exportLayoutSpec } from "./api";
+import {
+  exportLayoutSpec,
+  SpecValidationError,
+  useApproveLayoutSpec,
+  useCreateLayoutSpec,
+  useIssuers,
+  useLayoutSpecs,
+  useReviseLayoutSpec,
+} from "./api";
 import { generateSyntheticFixture } from "./fixture";
 import type { LayoutSpecObject, SpecFieldError } from "./spec-types";
 
@@ -42,6 +50,7 @@ export function SavePanel({
   const { toast } = useToast();
   const [name, setName] = React.useState("");
   const [revisingId, setRevisingId] = React.useState<string>("");
+  const [serverErrors, setServerErrors] = React.useState<SpecFieldError[]>([]);
 
   const issuers = useIssuers();
   const layoutSpecs = useLayoutSpecs();
@@ -49,10 +58,12 @@ export function SavePanel({
   const reviseSpec = useReviseLayoutSpec();
   const approveSpec = useApproveLayoutSpec();
 
-  const canSave = spec !== null && specErrors.length === 0 && name.trim() !== "";
+  const allErrors = [...specErrors, ...serverErrors];
+  const canSave = spec !== null && allErrors.length === 0 && name.trim() !== "";
 
   async function handleSave(): Promise<void> {
     if (!canSave) return;
+    setServerErrors([]);
     try {
       const body = {
         name: name.trim(),
@@ -68,6 +79,15 @@ export function SavePanel({
       });
       if (saved?.id != null) onSaved?.(saved.id);
     } catch (exc) {
+      if (exc instanceof SpecValidationError) {
+        setServerErrors(exc.fieldErrors);
+        toast({
+          title: "The server rejected this spec",
+          description: `${exc.fieldErrors.length} field problem(s) — see below.`,
+          variant: "destructive",
+        });
+        return;
+      }
       toast({ title: "Could not save", description: String(exc), variant: "destructive" });
     }
   }
@@ -143,6 +163,15 @@ export function SavePanel({
       </div>
       {specErrors.length > 0 ? (
         <p className="text-xs text-destructive">Fix the {specErrors.length} problem(s) above before saving.</p>
+      ) : null}
+      {serverErrors.length > 0 ? (
+        <ul className="flex flex-col gap-1 rounded-md border border-destructive/50 bg-destructive/5 p-2">
+          {serverErrors.map((e) => (
+            <li key={e.field + e.message} className="text-xs text-destructive">
+              {e.field}: {e.message}
+            </li>
+          ))}
+        </ul>
       ) : null}
 
       <div className="flex flex-col gap-1">

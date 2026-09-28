@@ -8,7 +8,15 @@ import { Input } from "@/components/ui/input";
 import { useToast } from "@/components/ui/use-toast";
 import { EmptyState, ErrorState, LoadingState } from "@/components/primitives/states";
 
-import { exportLayoutSpec, useApproveLayoutSpec, useCreateLayoutSpec, useIssuers, useLayoutSpecs, useReviseLayoutSpec } from "./hooks";
+import {
+  exportLayoutSpec,
+  useAllStatements,
+  useApproveLayoutSpec,
+  useCreateLayoutSpec,
+  useIssuers,
+  useLayoutSpecs,
+  useReviseLayoutSpec,
+} from "./hooks";
 
 type LayoutSpec = components["schemas"]["LayoutSpec"];
 
@@ -162,7 +170,15 @@ function ReviseSpecForm({ spec, onDone }: { spec: LayoutSpec; onDone: () => void
   );
 }
 
-function SpecRow({ spec, issuerName }: { spec: LayoutSpec; issuerName: string | undefined }) {
+function SpecRow({
+  spec,
+  issuerName,
+  statementCount,
+}: {
+  spec: LayoutSpec;
+  issuerName: string | undefined;
+  statementCount: number;
+}) {
   const [revising, setRevising] = React.useState(false);
   const approveSpec = useApproveLayoutSpec();
   const { toast } = useToast();
@@ -206,6 +222,8 @@ function SpecRow({ spec, issuerName }: { spec: LayoutSpec; issuerName: string | 
           </div>
           <span className="text-xs text-muted-foreground">
             Issuer: {issuerName ?? (spec.issuer_id != null ? `#${spec.issuer_id}` : "generic (no issuer)")}
+            {" · "}
+            {statementCount} statement{statementCount === 1 ? "" : "s"} parsed with this version
           </span>
         </div>
         <div className="flex gap-2">
@@ -227,9 +245,43 @@ function SpecRow({ spec, issuerName }: { spec: LayoutSpec; issuerName: string | 
   );
 }
 
+/** How many statements each built-in parser (`Statement.parser_id`, §3.12) has handled — the
+ * layout specs above cover the hand-mapped/pasted case; this covers the layouts (A–D) that
+ * need no spec at all. */
+export function BuiltinParserUsage() {
+  const statementsQuery = useAllStatements();
+
+  const countByParserId = React.useMemo(() => {
+    const map = new Map<string, number>();
+    for (const statement of statementsQuery.data ?? []) {
+      if (statement.parser_id == null) continue;
+      map.set(statement.parser_id, (map.get(statement.parser_id) ?? 0) + 1);
+    }
+    return map;
+  }, [statementsQuery.data]);
+
+  if (statementsQuery.isLoading || countByParserId.size === 0) return null;
+
+  return (
+    <Card>
+      <CardHeader>
+        <CardTitle>Built-in parsers</CardTitle>
+      </CardHeader>
+      <CardContent className="flex flex-wrap gap-2">
+        {[...countByParserId.entries()].map(([parserId, count]) => (
+          <Badge key={parserId} variant="outline">
+            {parserId} · {count} statement{count === 1 ? "" : "s"}
+          </Badge>
+        ))}
+      </CardContent>
+    </Card>
+  );
+}
+
 export function SpecPanel() {
   const specsQuery = useLayoutSpecs();
   const issuersQuery = useIssuers();
+  const statementsQuery = useAllStatements();
   const [pasting, setPasting] = React.useState(false);
 
   const issuerNameById = React.useMemo(() => {
@@ -237,6 +289,16 @@ export function SpecPanel() {
     for (const issuer of issuersQuery.data ?? []) map.set(issuer.id, issuer.name);
     return map;
   }, [issuersQuery.data]);
+
+  /** How many statements were parsed with each layout spec (`Statement.layout_spec_id`, §3.12). */
+  const statementCountBySpecId = React.useMemo(() => {
+    const map = new Map<number, number>();
+    for (const statement of statementsQuery.data ?? []) {
+      if (statement.layout_spec_id == null) continue;
+      map.set(statement.layout_spec_id, (map.get(statement.layout_spec_id) ?? 0) + 1);
+    }
+    return map;
+  }, [statementsQuery.data]);
 
   return (
     <Card>
@@ -247,10 +309,6 @@ export function SpecPanel() {
         </Button>
       </CardHeader>
       <CardContent className="flex flex-col gap-4">
-        <p className="text-xs text-muted-foreground">
-          Which statements used each spec is not shown here: the statement list does not currently
-          report the extractor it was parsed with (see this screen&apos;s contract notes).
-        </p>
         {pasting ? <PasteSpecForm onDone={() => setPasting(false)} /> : null}
         {specsQuery.isLoading ? <LoadingState rows={3} /> : null}
         {specsQuery.isError ? (
@@ -268,7 +326,12 @@ export function SpecPanel() {
         {specsQuery.data && specsQuery.data.length > 0 ? (
           <div>
             {specsQuery.data.map((spec) => (
-              <SpecRow key={spec.id} spec={spec} issuerName={spec.issuer_id != null ? issuerNameById.get(spec.issuer_id) : undefined} />
+              <SpecRow
+                key={spec.id}
+                spec={spec}
+                issuerName={spec.issuer_id != null ? issuerNameById.get(spec.issuer_id) : undefined}
+                statementCount={statementCountBySpecId.get(spec.id) ?? 0}
+              />
             ))}
           </div>
         ) : null}

@@ -11,19 +11,16 @@ export type TransactionPatchBody = components["schemas"]["TransactionPatch"];
 const PAGE_SIZE = 500;
 
 /**
- * A hard ceiling on how many pages this screen will scan looking for `needs_review` rows.
- * `GET /transactions` has no `needs_review` filter (a contract gap — see `index.tsx`'s module
- * doc), so building the review queue means paging through every transaction and filtering
- * client-side. 50 pages * 500 rows = 25,000 transactions scanned, comfortably past what a
- * single-user local install accumulates before the backend grows a real filter.
+ * A hard ceiling on how many pages this screen will fetch when building the review queue.
+ * 50 pages * 500 rows = 25,000 transactions, comfortably past what a single-user local install
+ * accumulates before this stops being "the whole queue".
  */
 const MAX_PAGES = 50;
 
 /**
- * Fetches every `needs_review` transaction, oldest first, by paging `GET /transactions` (with
- * `include_non_spend: true` so a low-confidence payment or transfer is never silently skipped)
- * and keeping only the rows still flagged for review. See `PAGE_SIZE`/`MAX_PAGES` for why this
- * is a scan rather than a server-side filter.
+ * Fetches every `needs_review` transaction, oldest first, via `GET /transactions?needs_review=true`
+ * (with `include_non_spend: true` so a low-confidence payment or transfer is never silently
+ * skipped), paging server-side until a short page signals the last one.
  */
 export async function fetchNeedsReviewQueue(): Promise<Transaction[]> {
   const collected: Transaction[] = [];
@@ -35,12 +32,13 @@ export async function fetchNeedsReviewQueue(): Promise<Transaction[]> {
           page_size: PAGE_SIZE,
           sort: "posted_date",
           include_non_spend: true,
+          needs_review: true,
         },
       },
     });
     throwIfError(error);
     if (!data) break;
-    collected.push(...data.items.filter((txn) => txn.needs_review));
+    collected.push(...data.items);
     if (data.items.length < PAGE_SIZE) break; // last page
   }
   return collected;
