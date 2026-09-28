@@ -116,7 +116,9 @@ normalized, redacted merchant description of a transaction your local rules coul
 classify — never a raw statement line, a date, an amount, an account number, an issuer name, or
 anything else. See the running app's Settings screen for a live preview of exactly what a call
 would send before any data is sent. Set `[llm] mode = "none"` (the default) to never call an LLM
-at all; the local rules engine still classifies most transactions.
+at all; the local rules engine still classifies most transactions. See the
+[README's privacy model](../README.md#privacy-model) for the full picture and
+[docs/SECURITY_REVIEW.md](SECURITY_REVIEW.md) for the code-verified checklist behind it.
 
 ## Upgrading
 
