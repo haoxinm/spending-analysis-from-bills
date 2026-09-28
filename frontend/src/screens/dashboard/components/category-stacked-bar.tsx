@@ -33,6 +33,12 @@ function currencyFormatter(currency: string) {
  * A stacked bar per period, one segment per category — spend composition over time. Money is
  * signed minor units (I5); a category with net-negative spend in a period (more refunds than
  * purchases) renders below the axis, which Recharts handles natively for a stacked bar.
+ *
+ * `isAnimationActive={false}`: Recharts' default entrance animation grows each bar from zero
+ * over ~1.5s. On a same-session SPA route change (e.g. arriving here right after an import) the
+ * final, correct bar heights only appear once that animation settles — anything read from the
+ * screen before then (a screenshot, a scripted test, a person glancing over) sees a transient,
+ * *wrong* total. Numbers this load-bearing should be right the instant the chart mounts.
  */
 export function CategoryStackedBar({ rows, currency }: CategoryStackedBarProps) {
   const points = React.useMemo(() => pivotByCategory(rows), [rows]);
@@ -63,7 +69,13 @@ export function CategoryStackedBar({ rows, currency }: CategoryStackedBarProps) 
           />
           <Legend wrapperStyle={{ fontSize: 12 }} />
           {categories.map((category) => (
-            <Bar key={category} dataKey={category} stackId="spend" fill={colorForKey(category)} />
+            <Bar
+              key={category}
+              dataKey={category}
+              stackId="spend"
+              fill={colorForKey(category)}
+              isAnimationActive={false}
+            />
           ))}
         </BarChart>
       </ResponsiveContainer>

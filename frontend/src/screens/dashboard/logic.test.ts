@@ -4,6 +4,7 @@ import {
   computeMonthOverMonthDelta,
   detectOtherCurrencies,
   distinctCategories,
+  humanizeMerchantKey,
   pivotByCategory,
   toTrendPoints,
   totalsByUser,
@@ -154,6 +155,24 @@ describe("totalsByUser", () => {
   it("drops rows with no user", () => {
     const rows = [row({ user: null, total_minor: 100 }), row({ user: 1, total_minor: 50 })];
     expect(totalsByUser(rows)).toEqual([{ userId: 1, totalMinor: 50 }]);
+  });
+});
+
+describe("humanizeMerchantKey", () => {
+  it("title-cases a lowercase, multi-word merchant key", () => {
+    expect(humanizeMerchantKey("hardware supply co")).toBe("Hardware Supply Co");
+  });
+
+  it("leaves a single word capitalized", () => {
+    expect(humanizeMerchantKey("netflix")).toBe("Netflix");
+  });
+
+  it("collapses repeated whitespace", () => {
+    expect(humanizeMerchantKey("garden   center")).toBe("Garden Center");
+  });
+
+  it("handles an empty string", () => {
+    expect(humanizeMerchantKey("")).toBe("");
   });
 });
 

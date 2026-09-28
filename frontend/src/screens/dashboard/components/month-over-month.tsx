@@ -10,7 +10,17 @@ export interface MonthOverMonthProps {
 
 /** The change between the two most recent periods in the current trend series. The label says
  * "period" rather than "month" because `granularity` may be day/week/quarter/year — this panel
- * follows whatever bucket the rest of the dashboard is using. */
+ * follows whatever bucket the rest of the dashboard is using.
+ *
+ * A lower spend reads as good news throughout: the arrow, its colour and the delta amount's
+ * sign all agree, in both directions. `deltaMinor` is `current - previous`, where both totals
+ * are already positive (outflow) sums — so a *negative* `deltaMinor` means spend fell. Passing
+ * it straight to `<Money>` (with no `showPlusForInflow` override) gets this right for free: `I5`
+ * already treats a negative amount as "inflow" (a good-news green, and a plain `-` sign, not a
+ * `+`) and a positive one as "outflow" (red, no sign) — which is exactly "spend fell" / "spend
+ * rose" here, so the arrow's own `increased` check can reuse the same two classes. The previous
+ * version passed `showPlusForInflow`, which put a `+` in front of a *decrease* while the arrow
+ * and percentage both read as "less" — a direct contradiction (e.g. "▼ +$98.05 (-65.4%)"). */
 export function MonthOverMonth({ delta, currency }: MonthOverMonthProps) {
   if (!delta) {
     return (
@@ -37,12 +47,7 @@ export function MonthOverMonth({ delta, currency }: MonthOverMonthProps) {
         >
           {unchanged ? "→" : increased ? "▲" : "▼"}
         </span>
-        <Money
-          minorUnits={delta.deltaMinor}
-          currency={currency}
-          showPlusForInflow
-          className="font-medium"
-        />
+        <Money minorUnits={delta.deltaMinor} currency={currency} className="font-medium" />
         <span className="text-muted-foreground">
           {delta.deltaPct === null
             ? `vs. ${delta.previousPeriod} (no prior spend)`

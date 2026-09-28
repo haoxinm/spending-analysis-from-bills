@@ -58,21 +58,27 @@ export function CategoryBadge({
   ...props
 }: CategoryBadgeProps) {
   const text = label ?? titleCase(categoryKey);
+  const fullText = subcategoryLabel ? `${text} / ${subcategoryLabel}` : text;
 
   return (
-    <span className={cn("inline-flex items-center gap-1.5", className)} {...props}>
+    <span className={cn("flex w-full min-w-0 items-center gap-1.5", className)} {...props}>
       <Badge
         variant="outline"
-        className={cn("border font-medium", paletteClassFor(categoryKey))}
+        title={fullText}
+        className={cn("min-w-0 flex-1 border font-medium", paletteClassFor(categoryKey))}
       >
-        {text}
-        {subcategoryLabel ? (
-          <span className="opacity-70"> / {subcategoryLabel}</span>
-        ) : null}
+        <span className="block truncate">
+          {text}
+          {subcategoryLabel ? <span className="opacity-70"> / {subcategoryLabel}</span> : null}
+        </span>
       </Badge>
       {needsReview ? (
-        <Badge variant="secondary" className="text-[10px] uppercase tracking-wide">
-          Needs review
+        <Badge
+          variant="secondary"
+          title="Needs review"
+          className="flex-shrink-0 whitespace-nowrap text-[10px] uppercase tracking-wide"
+        >
+          Review
         </Badge>
       ) : null}
     </span>

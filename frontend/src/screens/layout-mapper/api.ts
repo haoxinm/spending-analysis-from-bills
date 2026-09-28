@@ -92,6 +92,21 @@ export function useDryRunLayoutSpec() {
   });
 }
 
+/** Every statement, across every user — feeds the picker this screen shows when it is opened
+ * with no `?statement_id=` (§2d.2's entry point is normally a deep link, but a person can land
+ * here directly too, and should get a list to choose from rather than an instruction to hand-edit
+ * the URL). */
+export function useAllStatements() {
+  return useQuery({
+    queryKey: ["layout-mapper", "all-statements"],
+    queryFn: async () => {
+      const { data, error } = await apiClient.GET("/statements", { params: { query: {} } });
+      throwIfError(error);
+      return data ?? [];
+    },
+  });
+}
+
 /** All statements for `userId`, used to find the account's previous statement for the drift diff
  * (§2d.1) — there is no per-account endpoint, so this is filtered client-side (`drift.ts`). */
 export function useStatementsForDrift(userId: number | null) {

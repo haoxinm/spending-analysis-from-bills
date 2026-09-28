@@ -5,6 +5,19 @@ import { Money } from "@/components/primitives/money";
 
 import type { Category, Transaction } from "./types";
 
+declare module "@tanstack/react-table" {
+  // Merging into `ColumnMeta` requires matching its own type parameter names exactly (TS2428),
+  // so `TData`/`TValue` can't be renamed `_TData`/`_TValue` to quiet the unused-vars rule the
+  // normal way; neither is actually used in this interface's body.
+  // eslint-disable-next-line @typescript-eslint/no-unused-vars
+  interface ColumnMeta<TData, TValue> {
+    /** Marks the one column (Description) that should absorb whatever width the table's
+     *  fixed-size columns leave behind, rather than getting a fixed width of its own
+     *  (`table.tsx`'s `columnFlex` reads this — see its doc comment for why). */
+    flexible?: boolean;
+  }
+}
+
 export interface ColumnsContext {
   categories: Category[];
   selectedIds: Set<number>;
@@ -54,17 +67,25 @@ export function createColumns(context: ColumnsContext): ColumnDef<Transaction>[]
       id: "date",
       header: "Date",
       accessorFn: (row) => row.posted_date,
-      size: 100,
+      cell: ({ row }) => (
+        <span className="whitespace-nowrap">{row.original.posted_date}</span>
+      ),
+      size: 104,
     },
     {
       id: "description",
       header: "Description",
       accessorFn: (row) => row.description_clean,
       cell: ({ row }) => (
-        <span className="truncate" title={row.original.description_clean}>
+        <span className="block truncate" title={row.original.description_clean}>
           {row.original.description_clean}
         </span>
       ),
+      // `column.getSize()` (and even `column.columnDef.size` once `@tanstack/react-table` has
+      // merged its own `defaultColumn.size` into every column) is never `undefined` — so
+      // `meta.flexible` is the only reliable way to mark "the one column that should absorb
+      // whatever width the fixed-size columns leave behind" (`table.tsx` reads this flag).
+      meta: { flexible: true },
     },
     {
       id: "category",
@@ -75,7 +96,7 @@ export function createColumns(context: ColumnsContext): ColumnDef<Transaction>[]
           return (
             <button
               type="button"
-              className="text-xs text-muted-foreground underline-offset-2 hover:underline"
+              className="whitespace-nowrap text-xs text-muted-foreground underline-offset-2 hover:underline"
               onClick={(e) => {
                 e.stopPropagation();
                 context.onEdit(txn);
@@ -88,6 +109,7 @@ export function createColumns(context: ColumnsContext): ColumnDef<Transaction>[]
         return (
           <button
             type="button"
+            className="block w-full min-w-0 text-left"
             onClick={(e) => {
               e.stopPropagation();
               context.onEdit(txn);
@@ -106,12 +128,13 @@ export function createColumns(context: ColumnsContext): ColumnDef<Transaction>[]
           </button>
         );
       },
-      size: 220,
+      size: 240,
     },
     {
       id: "kind",
       header: "Kind",
       accessorFn: (row) => row.kind,
+      cell: ({ row }) => <span className="whitespace-nowrap">{row.original.kind}</span>,
       size: 90,
     },
     {
@@ -125,7 +148,12 @@ export function createColumns(context: ColumnsContext): ColumnDef<Transaction>[]
     {
       id: "notes",
       header: "Notes",
-      cell: ({ row }) => <span className="truncate text-muted-foreground">{row.original.notes}</span>,
+      cell: ({ row }) => (
+        <span className="block truncate text-muted-foreground" title={row.original.notes ?? undefined}>
+          {row.original.notes}
+        </span>
+      ),
+      size: 140,
     },
   ];
 }

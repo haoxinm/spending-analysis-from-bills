@@ -59,7 +59,7 @@ describe("LayoutMapperScreen", () => {
       vi.fn<typeof fetch>((input: Request | URL | string) => {
         const url = input instanceof Request ? input.url : input.toString();
         if (url.includes("/statements/42")) return Promise.resolve(jsonResponse(statement()));
-        if (url.includes("/statements?")) return Promise.resolve(jsonResponse([statement()]));
+        if (url.includes("/statements")) return Promise.resolve(jsonResponse([statement()]));
         if (url.includes("/issuers")) {
           return Promise.resolve(
             jsonResponse([{ id: 1, name: "Example Bank", slug: "example-bank", match_terms: [] }]),
@@ -75,9 +75,11 @@ describe("LayoutMapperScreen", () => {
     vi.unstubAllGlobals();
   });
 
-  it("shows an empty state when no statement_id is given", async () => {
+  it("shows a picker of statements when no statement_id is given", async () => {
     await renderScreen("/layout-mapper");
-    expect(screen.getByText("No statement selected")).toBeInTheDocument();
+    const picker = await screen.findByTestId("statement-picker");
+    expect(picker).toHaveTextContent("Statement #42");
+    expect(picker).toHaveTextContent("Awaiting extractor");
   });
 
   it("loads the statement and renders the mapper once given a statement_id", async () => {

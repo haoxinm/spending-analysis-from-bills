@@ -306,9 +306,34 @@ function RuleRow({ rule, options }: { rule: Rule; options: CategoryOption[] }) {
   );
 }
 
+const PAGE_SIZE = 25;
+
+/** Rules whose pattern, category or subcategory matches `search` (case-insensitive substring on
+ * any of the three) — with ~120 built-in rules (§ the corpus) plus whatever the user adds, a
+ * search box is the fast way to find one without scrolling past a hundred you don't care about. */
+function filterRules(rules: readonly Rule[], search: string): Rule[] {
+  const needle = search.trim().toLowerCase();
+  if (needle === "") return [...rules];
+  return rules.filter(
+    (rule) =>
+      rule.pattern.toLowerCase().includes(needle) ||
+      rule.category_key.toLowerCase().includes(needle) ||
+      rule.subcategory_key.toLowerCase().includes(needle),
+  );
+}
+
 export function RulesTab() {
   const rulesQuery = useRules();
   const options = useCategoryOptions();
+  const [search, setSearch] = React.useState("");
+  const [page, setPage] = React.useState(1);
+
+  const allRules = React.useMemo(() => rulesQuery.data ?? [], [rulesQuery.data]);
+  const filtered = React.useMemo(() => filterRules(allRules, search), [allRules, search]);
+  const pageCount = Math.max(1, Math.ceil(filtered.length / PAGE_SIZE));
+  const clampedPage = Math.min(page, pageCount);
+  const start = (clampedPage - 1) * PAGE_SIZE;
+  const pageRules = filtered.slice(start, start + PAGE_SIZE);
 
   return (
     <div className="flex flex-col gap-4">
@@ -323,7 +348,7 @@ export function RulesTab() {
 
       <Card>
         <CardHeader>
-          <CardTitle>Rules ({rulesQuery.data?.length ?? 0})</CardTitle>
+          <CardTitle>Rules ({filtered.length}{filtered.length !== allRules.length ? ` of ${allRules.length}` : ""})</CardTitle>
         </CardHeader>
         <CardContent className={cn(rulesQuery.data && rulesQuery.data.length > 0 ? "" : undefined)}>
           {rulesQuery.isLoading ? <LoadingState rows={4} /> : null}
@@ -337,10 +362,55 @@ export function RulesTab() {
             <EmptyState title="No rules yet" description="Add a rule above to auto-classify matching transactions." />
           ) : null}
           {rulesQuery.data && rulesQuery.data.length > 0 ? (
-            <div>
-              {rulesQuery.data.map((rule) => (
-                <RuleRow key={rule.id} rule={rule} options={options} />
-              ))}
+            <div className="flex flex-col gap-3">
+              <Input
+                placeholder="Search by pattern, category or subcategory…"
+                value={search}
+                onChange={(e) => {
+                  setSearch(e.target.value);
+                  setPage(1);
+                }}
+                aria-label="Search rules"
+              />
+              {filtered.length === 0 ? (
+                <p className="py-6 text-center text-sm text-muted-foreground">No rules match “{search}”.</p>
+              ) : (
+                <div>
+                  {pageRules.map((rule) => (
+                    <RuleRow key={rule.id} rule={rule} options={options} />
+                  ))}
+                </div>
+              )}
+              {pageCount > 1 ? (
+                <div className="flex items-center justify-between gap-2 pt-1">
+                  <span className="text-xs text-muted-foreground">
+                    Showing {start + 1}–{Math.min(start + PAGE_SIZE, filtered.length)} of {filtered.length}
+                  </span>
+                  <div className="flex gap-2">
+                    <Button
+                      type="button"
+                      size="sm"
+                      variant="outline"
+                      disabled={clampedPage <= 1}
+                      onClick={() => setPage((p) => Math.max(1, p - 1))}
+                    >
+                      Previous
+                    </Button>
+                    <span className="self-center text-xs text-muted-foreground">
+                      Page {clampedPage} of {pageCount}
+                    </span>
+                    <Button
+                      type="button"
+                      size="sm"
+                      variant="outline"
+                      disabled={clampedPage >= pageCount}
+                      onClick={() => setPage((p) => Math.min(pageCount, p + 1))}
+                    >
+                      Next
+                    </Button>
+                  </div>
+                </div>
+              ) : null}
             </div>
           ) : null}
         </CardContent>

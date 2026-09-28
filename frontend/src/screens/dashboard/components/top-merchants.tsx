@@ -1,7 +1,7 @@
 import { EmptyState } from "@/components/primitives/states";
 import { Money } from "@/components/primitives/money";
 
-import type { TopMerchantRow } from "../logic";
+import { humanizeMerchantKey, type TopMerchantRow } from "../logic";
 
 export interface TopMerchantsProps {
   rows: readonly TopMerchantRow[];
@@ -9,7 +9,12 @@ export interface TopMerchantsProps {
 }
 
 /** A ranked list, widest-spend first (already ranked server-side, §3.12), with a proportional
- * bar so relative size reads at a glance without another chart library primitive. */
+ * bar so relative size reads at a glance without another chart library primitive.
+ *
+ * `row.merchant` is the raw `merchant_key` — lowercase and, once truncated to fit, sometimes
+ * unrecognisable (e.g. "hardware sup…"). `humanizeMerchantKey` title-cases it for display; the
+ * full raw key is still there as this label's `title`, so hovering (or a screen reader's
+ * description) recovers exactly what's on the statement. */
 export function TopMerchants({ rows, currency }: TopMerchantsProps) {
   if (rows.length === 0) {
     return (
@@ -27,7 +32,7 @@ export function TopMerchants({ rows, currency }: TopMerchantsProps) {
       {rows.map((row) => (
         <li key={row.merchant} className="flex items-center gap-3">
           <div className="w-28 flex-shrink-0 truncate text-sm font-medium" title={row.merchant}>
-            {row.merchant}
+            {humanizeMerchantKey(row.merchant)}
           </div>
           <div className="relative h-5 flex-1 overflow-hidden rounded bg-muted">
             <div
