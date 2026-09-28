@@ -1,0 +1,145 @@
+name: Release
+
+# Builds the wheel + sdist and attaches them to a GitHub Release whenever a `v*` tag is pushed
+# (Gate 4: "clean-machine install -> import -> classify -> chart; tag v1.0.0"). The wheel bundles
+# the built frontend via `hatch_build.py` (a wheel-only build hook, P4-D), so `pip install` /
+# `pipx install` of the artifact this job produces is a complete, working install with no
+# separate frontend build step (docs/INSTALL.md).
+on:
+  push:
+    tags: ["v*"]
+
+# Least privilege by default; elevated only for the job that creates the release.
+permissions:
+  contents: read
+
+concurrency:
+  group: release-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v3
+        with:
+          enable-cache: true
+
+      - name: Install Python
+        run: uv python install 3.12
+
+      - name: Install Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: "npm"
+          cache-dependency-path: frontend/package-lock.json
+
+      # `uv sync` alone would only prepare an editable install (no frontend build, see
+      # `hatch_build.py`); the dev extra is still needed so the smoke-test steps below can run
+      # this repo's own `spend-analyzer` for a quick sanity check ahead of the real install test.
+      - name: Sync dependencies
+        run: uv sync --extra dev
+
+      - name: Build wheel + sdist
+        run: uv build
+
+      - name: Verify the wheel bundles the web UI
+        run: |
+          set -euo pipefail
+          wheel="$(ls dist/*.whl)"
+          echo "built: $wheel"
+          if ! unzip -l "$wheel" | grep -q "spend_analyzer/web/index.html"; then
+            echo "::error::wheel is missing the built frontend (spend_analyzer/web/index.html)"
+            exit 1
+          fi
+          for f in taxonomy.yaml issuer_category_map.yaml builtin_rules.yaml; do
+            if ! unzip -l "$wheel" | grep -q "spend_analyzer/classify/$f"; then
+              echo "::error::wheel is missing spend_analyzer/classify/$f"
+              exit 1
+            fi
+          done
+          if ! unzip -l "$wheel" | grep -q "spend_analyzer/data/store_aliases.yaml"; then
+            echo "::error::wheel is missing spend_analyzer/data/store_aliases.yaml"
+            exit 1
+          fi
+          if ! unzip -l "$wheel" | grep -q "spend_analyzer/ingest/layout_spec.schema.json"; then
+            echo "::error::wheel is missing spend_analyzer/ingest/layout_spec.schema.json"
+            exit 1
+          fi
+          if ! unzip -l "$wheel" | grep -q "spend_analyzer/db/migrations/versions/"; then
+            echo "::error::wheel is missing the alembic migrations"
+            exit 1
+          fi
+
+      # Installs the built wheel into a throwaway venv, outside the repo checkout, and exercises
+      # `migrate`/`doctor`/`serve` against a temp SPEND_ANALYZER_HOME — the same clean-install
+      # check as docs/INSTALL.md and tests/bench/test_clean_install.py, run once more here against
+      # the artifact this job is about to publish.
+      - name: Clean-install smoke test
+        run: |
+          set -euo pipefail
+          python3 -m venv /tmp/release-smoke-venv
+          /tmp/release-smoke-venv/bin/pip install --quiet --upgrade pip
+          /tmp/release-smoke-venv/bin/pip install --quiet dist/*.whl
+
+          export SPEND_ANALYZER_HOME=/tmp/release-smoke-home
+          mkdir -p "$SPEND_ANALYZER_HOME"
+          /tmp/release-smoke-venv/bin/spend-analyzer migrate
+
+          /tmp/release-smoke-venv/bin/spend-analyzer serve --no-open-browser > /tmp/serve.log 2>&1 &
+          server_pid=$!
+          trap 'kill "$server_pid" 2>/dev/null || true' EXIT
+
+          token=""
+          for _ in $(seq 1 30); do
+            token="$(grep -oE 'Per-launch API token: .*' /tmp/serve.log | cut -d' ' -f4 || true)"
+            [ -n "$token" ] && break
+            sleep 0.5
+          done
+          if [ -z "$token" ]; then
+            echo "::error::server never printed a token"; cat /tmp/serve.log; exit 1
+          fi
+
+          index_status="$(curl -sS -o /tmp/index.html -w '%{http_code}' \
+            -H "X-Spend-Token: $token" "http://127.0.0.1:8756/")"
+          [ "$index_status" = "200" ] || { echo "::error::index.html returned $index_status"; exit 1; }
+          grep -q 'spend-token' /tmp/index.html || { echo "::error::index.html missing token meta tag"; exit 1; }
+
+          api_status="$(curl -sS -o /dev/null -w '%{http_code}' \
+            -H "X-Spend-Token: $token" "http://127.0.0.1:8756/api/settings")"
+          [ "$api_status" = "200" ] || { echo "::error::/api/settings returned $api_status"; exit 1; }
+
+          unauth_status="$(curl -sS -o /dev/null -w '%{http_code}' "http://127.0.0.1:8756/api/settings")"
+          [ "$unauth_status" = "403" ] || { echo "::error::unauthenticated request got $unauth_status, expected 403"; exit 1; }
+
+          kill "$server_pid" 2>/dev/null || true
+          trap - EXIT
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: dist
+          path: dist/*
+          if-no-files-found: error
+
+  publish:
+    needs: build
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          name: dist
+          path: dist
+
+      - name: Create GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          files: dist/*
+          generate_release_notes: true
+          draft: false
+          prerelease: ${{ contains(github.ref_name, '-') }}
