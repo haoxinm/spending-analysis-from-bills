@@ -263,6 +263,11 @@ class AnalyticsRow(_Model):
 
 class TopMerchantRow(_Model):
     merchant: str
+    #: A friendlier label for `merchant` (a lowercase `merchant_key`): the most common
+    #: `merchant_canonical` recorded for it, or else the A5 representative `description_clean`.
+    #: Local UI only — never egressed (`description_clean` is egress-eligible in general, but
+    #: this endpoint never sends it anywhere else).
+    display_name: str
     total_minor: int
     txn_count: int
 

@@ -4595,6 +4595,10 @@
             "type": "string",
             "title": "Merchant"
           },
+          "display_name": {
+            "type": "string",
+            "title": "Display Name"
+          },
           "total_minor": {
             "type": "integer",
             "title": "Total Minor"
@@ -4607,6 +4611,7 @@
         "type": "object",
         "required": [
           "merchant",
+          "display_name",
           "total_minor",
           "txn_count"
         ],

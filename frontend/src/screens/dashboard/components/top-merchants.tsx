@@ -12,9 +12,12 @@ export interface TopMerchantsProps {
  * bar so relative size reads at a glance without another chart library primitive.
  *
  * `row.merchant` is the raw `merchant_key` — lowercase and, once truncated to fit, sometimes
- * unrecognisable (e.g. "hardware sup…"). `humanizeMerchantKey` title-cases it for display; the
- * full raw key is still there as this label's `title`, so hovering (or a screen reader's
- * description) recovers exactly what's on the statement. */
+ * unrecognisable (e.g. "hardware sup…"). `row.display_name` (the most common `merchant_canonical`
+ * for that key, or else the A5 representative `description_clean`) is preferred for the label
+ * when the server sent one; `humanizeMerchantKey` is only the fallback for an older server or a
+ * key with no transactions of its own to derive a name from. The full raw key is still there as
+ * this label's `title`, so hovering (or a screen reader's description) recovers exactly what's
+ * on the statement. */
 export function TopMerchants({ rows, currency }: TopMerchantsProps) {
   if (rows.length === 0) {
     return (
@@ -32,7 +35,7 @@ export function TopMerchants({ rows, currency }: TopMerchantsProps) {
       {rows.map((row) => (
         <li key={row.merchant} className="flex items-center gap-3">
           <div className="w-28 flex-shrink-0 truncate text-sm font-medium" title={row.merchant}>
-            {humanizeMerchantKey(row.merchant)}
+            {row.display_name || humanizeMerchantKey(row.merchant)}
           </div>
           <div className="relative h-5 flex-1 overflow-hidden rounded bg-muted">
             <div

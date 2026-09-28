@@ -11,6 +11,7 @@ from fastapi import APIRouter, HTTPException, Query
 from spend_analyzer.analytics.query import Granularity, GroupKey, SpendQuery, run_query
 from spend_analyzer.api import schemas
 from spend_analyzer.api.deps import SessionDep
+from spend_analyzer.api.services import crud
 
 router = APIRouter(tags=["analytics"])
 
@@ -179,12 +180,14 @@ def analytics_top_merchants(
     except ValueError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from None
     ranked = sorted(rows, key=lambda r: int(r["total_minor"]), reverse=True)  # type: ignore[call-overload]
+    top_rows = [row for row in ranked[: max(min(limit, 100), 1)] if row["merchant"]]
+    display_names = crud.merchant_display_names(session, [str(row["merchant"]) for row in top_rows])
     return [
         schemas.TopMerchantRow(
             merchant=row["merchant"],
+            display_name=display_names.get(str(row["merchant"]), str(row["merchant"])),
             total_minor=row["total_minor"],
             txn_count=row["txn_count"],
         )
-        for row in ranked[: max(min(limit, 100), 1)]
-        if row["merchant"]
+        for row in top_rows
     ]

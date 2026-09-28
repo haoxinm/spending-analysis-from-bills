@@ -1237,6 +1237,8 @@ export interface components {
         TopMerchantRow: {
             /** Merchant */
             merchant: string;
+            /** Display Name */
+            display_name: string;
             /** Total Minor */
             total_minor: number;
             /** Txn Count */
