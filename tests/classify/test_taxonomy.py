@@ -65,6 +65,12 @@ def test_sync_taxonomy_raises_when_referenced_category_removed(
     session.flush()
 
     others = session.execute(select(Category).where(Category.key == "others")).scalar_one()
+    others_sub = (
+        session.execute(select(Subcategory).where(Subcategory.category_id == others.id))
+        .scalars()
+        .first()
+    )
+    assert others_sub is not None
     txn = Transaction(
         statement_id=statement.id,
         account_id=account.id,
@@ -79,6 +85,7 @@ def test_sync_taxonomy_raises_when_referenced_category_removed(
         is_spend=True,
         dedupe_hash="h",
         category_id=others.id,
+        subcategory_id=others_sub.id,
     )
     session.add(txn)
     session.commit()
