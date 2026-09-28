@@ -15,10 +15,15 @@ export function ColumnsEditor({
   columns,
   onChange,
   errors,
+  activeColumnIndex = null,
+  onSetActiveColumn,
 }: {
   columns: ColumnSpec[];
   onChange: (columns: ColumnSpec[]) => void;
   errors: SpecFieldError[];
+  /** Which row is the current click-to-map target (`StatementPreview`), or `null`. */
+  activeColumnIndex?: number | null;
+  onSetActiveColumn?: (index: number | null) => void;
 }) {
   function update(index: number, patch: Partial<ColumnSpec>): void {
     onChange(columns.map((c, i) => (i === index ? { ...c, ...patch } : c)));
@@ -127,6 +132,15 @@ export function ColumnsEditor({
                 />
                 optional
               </label>
+              {onSetActiveColumn ? (
+                <Button
+                  variant={activeColumnIndex === i ? "secondary" : "ghost"}
+                  size="sm"
+                  onClick={() => onSetActiveColumn(activeColumnIndex === i ? null : i)}
+                >
+                  {activeColumnIndex === i ? "Click a word above…" : "Map from preview"}
+                </Button>
+              ) : null}
               <Button variant="ghost" size="sm" onClick={() => remove(i)} aria-label={`Remove column ${col.name || i}`}>
                 Remove
               </Button>

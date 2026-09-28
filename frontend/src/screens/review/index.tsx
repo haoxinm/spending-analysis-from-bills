@@ -29,19 +29,11 @@ import type { Transaction } from "./types";
  *   - `r`           accept, and also promote it into a rule (`TransactionPatch.create_rule`)
  *   - `u`           undo the single most recent accept
  *
- * Two contract gaps block part of what §P3-B asks for, and are the subject of contract change
- * requests against `src/spend_analyzer/api/schemas.py` / `routers/` (outside this WP's
- * `Owns: frontend/src/screens/review/**`, so this screen cannot fix them itself):
- *
- *   1. `Transaction` (§3.12) has no `description_raw` field, only `description_clean`, so this
- *      screen cannot literally show them "alongside" each other as the plan asks. It renders
- *      `description_clean` and, defensively, an optional `description_raw` if a future backend
- *      response includes one (see `RawDescription` below) — today it shows a note instead.
- *   2. `GET /transactions` has no `needs_review` filter, so the queue is built by paging through
- *      every transaction and filtering client-side (`api.ts`'s `fetchNeedsReviewQueue`), and
- *      `Subcategory` (§3.12) has no numeric `id`, so the pending-stores approve/merge actions
- *      have no id to call `/taxonomy/subcategories/{id}/...` with (see
- *      `use-pending-subcategories.ts`) and stay disabled until the backend adds one.
+ * The queue is built via `GET /transactions?needs_review=true` (`api.ts`'s
+ * `fetchNeedsReviewQueue`); `description_raw` renders alongside `description_clean` (see
+ * `RawDescription` below) so the user can see exactly what was inferred from what; and the
+ * pending-stores panel's approve/merge actions call `/taxonomy/subcategories/{id}/...` using
+ * `Subcategory.id` (see `use-pending-subcategories.ts`).
  */
 export default function ReviewScreen() {
   const queue = useReviewQueue();
@@ -221,25 +213,12 @@ function TransactionCard({
   );
 }
 
-/**
- * Renders `description_raw` next to `description_clean`, as the plan asks (§P3-B) — when
- * the API response has one. `Transaction` (§3.12) does not define this field today (contract
- * gap #1, see this module's doc comment), so most responses will not have it; this reads it
- * defensively rather than asserting the type, so the day the backend adds it, it appears with no
- * frontend change.
- */
+/** Renders `description_raw` next to `description_clean`, as the plan asks (§P3-B). */
 function RawDescription({ transaction }: { transaction: Transaction }) {
-  const withOptionalRaw = transaction as Transaction & { description_raw?: string };
-  if (typeof withOptionalRaw.description_raw !== "string") {
-    return (
-      <p className="text-xs text-muted-foreground italic">
-        Raw description unavailable (backend does not expose it yet)
-      </p>
-    );
-  }
+  if (transaction.description_raw === transaction.description_clean) return null;
   return (
     <p className="text-xs text-muted-foreground">
-      Raw: <span className="font-mono">{withOptionalRaw.description_raw}</span>
+      Raw: <span className="font-mono">{transaction.description_raw}</span>
     </p>
   );
 }

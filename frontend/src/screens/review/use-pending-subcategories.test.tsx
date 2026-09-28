@@ -50,9 +50,9 @@ describe("usePendingSubcategories", () => {
         key: "dining",
         name: "Dining",
         subcategories: [
-          { key: "yami", name: "Yami", pending: true, merged_into: null },
-          { key: "restaurants", name: "Restaurants", pending: false, merged_into: null },
-          { key: "old-store", name: "Old store", pending: true, merged_into: "5" },
+          { id: 1, key: "yami", name: "Yami", pending: true, merged_into: null },
+          { id: 2, key: "restaurants", name: "Restaurants", pending: false, merged_into: null },
+          { id: 3, key: "old-store", name: "Old store", pending: true, merged_into: "5" },
         ],
       }),
     ];
@@ -64,11 +64,11 @@ describe("usePendingSubcategories", () => {
     expect(result.current.pending.map((row) => row.key)).toEqual(["yami"]);
   });
 
-  it("disables approve/merge for a row with no numeric id (today's backend contract)", async () => {
+  it("exposes each pending row's numeric id for the approve/merge endpoints", async () => {
     const categories = [
       makeCategory({
         key: "dining",
-        subcategories: [{ key: "yami", name: "Yami", pending: true, merged_into: null }],
+        subcategories: [{ id: 42, key: "yami", name: "Yami", pending: true, merged_into: null }],
       }),
     ];
     const { usePendingSubcategories, wrapper } = await setup({ categories });
@@ -76,16 +76,14 @@ describe("usePendingSubcategories", () => {
     const { result } = renderHook(() => usePendingSubcategories(), { wrapper });
     await waitFor(() => expect(result.current.pending).toHaveLength(1));
 
-    expect(result.current.pending[0]?.id).toBeUndefined();
+    expect(result.current.pending[0]?.id).toBe(42);
   });
 
-  it("approve, when a numeric id is present, optimistically removes the row and calls the API", async () => {
+  it("approve optimistically removes the row and calls the API", async () => {
     const categories = [
       makeCategory({
         key: "dining",
-        subcategories: [
-          { key: "yami", name: "Yami", pending: true, merged_into: null, id: 42 } as never,
-        ],
+        subcategories: [{ id: 42, key: "yami", name: "Yami", pending: true, merged_into: null }],
       }),
     ];
     const { usePendingSubcategories, wrapper, fetchMock } = await setup({ categories });
@@ -112,9 +110,7 @@ describe("usePendingSubcategories", () => {
     const categories = [
       makeCategory({
         key: "dining",
-        subcategories: [
-          { key: "yami", name: "Yami", pending: true, merged_into: null, id: 42 } as never,
-        ],
+        subcategories: [{ id: 42, key: "yami", name: "Yami", pending: true, merged_into: null }],
       }),
     ];
     const { usePendingSubcategories, wrapper } = await setup({
@@ -134,14 +130,14 @@ describe("usePendingSubcategories", () => {
     await waitFor(() => expect(result.current.pending.map((r) => r.key)).toEqual(["yami"]));
   });
 
-  it("merge targets only list active subcategories that have a numeric id", async () => {
+  it("merge targets only list active, not-yet-merged subcategories", async () => {
     const categories = [
       makeCategory({
         key: "dining",
         subcategories: [
-          { key: "yami", name: "Yami", pending: true, merged_into: null },
-          { key: "restaurants", name: "Restaurants", pending: false, merged_into: null, id: 7 } as never,
-          { key: "no-id-active", name: "No id", pending: false, merged_into: null },
+          { id: 1, key: "yami", name: "Yami", pending: true, merged_into: null },
+          { id: 2, key: "restaurants", name: "Restaurants", pending: false, merged_into: null },
+          { id: 3, key: "old-store", name: "Old store", pending: false, merged_into: "1" },
         ],
       }),
     ];

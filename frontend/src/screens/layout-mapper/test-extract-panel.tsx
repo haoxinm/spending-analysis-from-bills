@@ -11,14 +11,11 @@ type Statement = components["schemas"]["Statement"];
 
 /**
  * Runs a saved (not-yet-approved is fine — neither `/extract` nor `/reparse` require it) spec
- * against the real statement, for a live result.
- *
- * §2d.2 asks for "live 'this yields N transactions totalling X' feedback" while mapping, without
- * touching the database. That needs a dry-run/preview endpoint this API does not have — see
- * this WP's report. The closest honest substitute available today is this panel: it actually
- * runs `POST /statements/{id}/extract` (statement not yet parsed) or `/reparse` (already parsed
- * — "rebuilds that statement's rows", §3.12), which **persists** real transactions rather than
- * previewing them. The button and copy say so plainly rather than presenting it as a preview.
+ * against the real statement, actually parsing and persisting it — unlike `DryRunPanel`'s
+ * side-effect-free `/layout-specs/dry-run`, this is the real thing: `POST
+ * /statements/{id}/extract` (statement not yet parsed) or `/reparse` (already parsed — "rebuilds
+ * that statement's rows", §3.12). Use `DryRunPanel` while iterating; use this once the spec is
+ * saved and ready to actually import.
  */
 export function TestExtractPanel({
   statement,

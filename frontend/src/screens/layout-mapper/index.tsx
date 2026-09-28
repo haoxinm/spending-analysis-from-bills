@@ -7,11 +7,13 @@ import { EmptyState, ErrorState, LoadingState } from "@/components/primitives/st
 import { useStatement, useStatementsForDrift } from "./api";
 import { computeDrift, findPreviousStatement } from "./drift";
 import { DriftBanner } from "./drift-banner";
+import { DryRunPanel } from "./dry-run-panel";
 import { ManualMapperForm } from "./manual-mapper-form";
 import { type PasteSpecResult, PasteSpecPanel } from "./paste-spec-panel";
 import { SavePanel } from "./save-panel";
 import { emptySpec, type LayoutSpecObject } from "./spec-types";
 import { validateSpec } from "./spec-validate";
+import { StatementPreview } from "./statement-preview";
 import { TestExtractPanel } from "./test-extract-panel";
 import { stringifySpec } from "./yaml";
 
@@ -23,10 +25,8 @@ type MapperTab = "manual" | "paste";
  * elsewhere, save it as a local layout spec, and optionally contribute it upstream. No AI button
  * (A32/D13 — that is P5-C, a later, optional phase).
  *
- * Known gap, degraded gracefully: there is no API endpoint returning a statement's extracted
- * words/coordinates or a dry-run parse preview, so this screen cannot show a click-to-map
- * rendering of the actual statement or a true "N transactions, no side effects" live preview.
- * See this WP's final report for the exact endpoints that would remove both limitations.
+ * Click-to-map (`StatementPreview`, `GET /statements/{id}/preview`) and the live "N transactions
+ * totalling X" feedback (`DryRunPanel`, `POST /layout-specs/dry-run`) both come from §3.12.
  */
 export default function LayoutMapperScreen() {
   const [searchParams] = useSearchParams();
@@ -44,6 +44,7 @@ export default function LayoutMapperScreen() {
   const [pasteResult, setPasteResult] = React.useState<PasteSpecResult | null>(null);
   const [issuerId, setIssuerId] = React.useState("");
   const [savedSpecId, setSavedSpecId] = React.useState<number | null>(null);
+  const [activeColumnIndex, setActiveColumnIndex] = React.useState<number | null>(null);
 
   const activeSpec: LayoutSpecObject | null =
     tab === "manual"
@@ -98,6 +99,30 @@ export default function LayoutMapperScreen() {
 
       <DriftBanner drift={drift} />
 
+      {tab === "manual" ? (
+        <Card>
+          <CardHeader>
+            <CardTitle>Statement preview</CardTitle>
+          </CardHeader>
+          <CardContent>
+            <StatementPreview
+              statementId={statement.id}
+              activeColumn={activeColumnIndex != null ? (manualSpec.columns[activeColumnIndex] ?? null) : null}
+              onMapColumn={(bounds) => {
+                if (activeColumnIndex == null) return;
+                setManualSpec({
+                  ...manualSpec,
+                  columns: manualSpec.columns.map((c, i) =>
+                    i === activeColumnIndex ? { ...c, ...bounds } : c,
+                  ),
+                });
+                setActiveColumnIndex(null);
+              }}
+            />
+          </CardContent>
+        </Card>
+      ) : null}
+
       <Card>
         <CardHeader className="flex flex-row items-center justify-between">
           <CardTitle>Build a layout spec</CardTitle>
@@ -112,10 +137,28 @@ export default function LayoutMapperScreen() {
         </CardHeader>
         <CardContent>
           {tab === "manual" ? (
-            <ManualMapperForm spec={manualSpec} onChange={setManualSpec} />
+            <ManualMapperForm
+              spec={manualSpec}
+              onChange={setManualSpec}
+              activeColumnIndex={activeColumnIndex}
+              onSetActiveColumn={setActiveColumnIndex}
+            />
           ) : (
             <PasteSpecPanel onResult={setPasteResult} />
           )}
+        </CardContent>
+      </Card>
+
+      <Card>
+        <CardHeader>
+          <CardTitle>Live preview</CardTitle>
+        </CardHeader>
+        <CardContent>
+          <DryRunPanel
+            statementId={statement.id}
+            specYaml={activeYaml}
+            enabled={activeSpec !== null && activeErrors.length === 0}
+          />
         </CardContent>
       </Card>
 

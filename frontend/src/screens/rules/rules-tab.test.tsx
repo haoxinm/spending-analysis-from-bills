@@ -21,8 +21,8 @@ const TAXONOMY: Category[] = [
     key: "food",
     name: "Food",
     subcategories: [
-      { key: "coffee_shops", name: "Coffee shops", pending: false },
-      { key: "groceries", name: "Groceries", pending: false },
+      { id: 1, key: "coffee_shops", name: "Coffee shops", pending: false },
+      { id: 2, key: "groceries", name: "Groceries", pending: false },
     ],
   },
 ];

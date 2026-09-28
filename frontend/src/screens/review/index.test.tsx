@@ -35,14 +35,14 @@ const CATEGORIES: Category[] = [
     key: "dining",
     name: "Dining",
     subcategories: [
-      { key: "dining", name: "Dining (general)", pending: false, merged_into: null },
-      { key: "restaurants", name: "Restaurants", pending: false, merged_into: null },
+      { id: 1, key: "dining", name: "Dining (general)", pending: false, merged_into: null },
+      { id: 2, key: "restaurants", name: "Restaurants", pending: false, merged_into: null },
     ],
   }),
   makeCategory({
     key: "groceries",
     name: "Groceries",
-    subcategories: [{ key: "groceries", name: "Groceries", pending: false, merged_into: null }],
+    subcategories: [{ id: 3, key: "groceries", name: "Groceries", pending: false, merged_into: null }],
   }),
 ];
 

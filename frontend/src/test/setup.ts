@@ -8,3 +8,26 @@ import "@testing-library/jest-dom/vitest";
 afterEach(() => {
   cleanup();
 });
+
+// jsdom has no `ResizeObserver`, but `@tanstack/react-virtual` (the transactions grid's row
+// windowing) constructs one unconditionally to observe the scroll container. A no-op polyfill
+// is enough here: tests drive virtualization by setting `offsetHeight`/`offsetWidth` directly
+// (see below) and firing a `scroll` event, not by resizing the element.
+if (typeof globalThis.ResizeObserver === "undefined") {
+  class NoopResizeObserver implements ResizeObserver {
+    observe(): void {}
+    unobserve(): void {}
+    disconnect(): void {}
+  }
+  globalThis.ResizeObserver = NoopResizeObserver;
+}
+
+// jsdom defines `offsetWidth`/`offsetHeight` as getters that always return 0 (it does no real
+// layout). `@tanstack/react-virtual`'s default rect observer reads exactly those two properties
+// to size its viewport (`getRect` in `virtual-core`), so left at jsdom's default it windows
+// every virtualized grid down to zero visible rows in every test, not just the transactions
+// grid's own. Replacing the getter with a generous fixed default — still overridable per element
+// with its own `Object.defineProperty` where a test cares about the exact size — keeps
+// virtualized grids rendering a normal-looking window under jsdom.
+Object.defineProperty(HTMLElement.prototype, "offsetHeight", { configurable: true, value: 600 });
+Object.defineProperty(HTMLElement.prototype, "offsetWidth", { configurable: true, value: 800 });

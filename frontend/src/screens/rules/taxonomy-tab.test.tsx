@@ -1,4 +1,5 @@
-import { render, screen } from "@testing-library/react";
+import { render, screen, waitFor } from "@testing-library/react";
+import userEvent from "@testing-library/user-event";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 import type { components } from "@/api/client";
@@ -19,14 +20,14 @@ const TAXONOMY: Category[] = [
     key: "food",
     name: "Food",
     subcategories: [
-      { key: "groceries", name: "Groceries", pending: false },
-      { key: "warehouse_club", name: "Warehouse club", pending: true },
+      { id: 1, key: "groceries", name: "Groceries", pending: false },
+      { id: 2, key: "warehouse_club", name: "Warehouse club", pending: true },
     ],
   },
   {
     key: "others",
     name: "Others",
-    subcategories: [{ key: "uncategorized", name: "Uncategorized", pending: false }],
+    subcategories: [{ id: 3, key: "uncategorized", name: "Uncategorized", pending: false }],
   },
 ];
 
@@ -57,12 +58,45 @@ describe("TaxonomyTab", () => {
     expect(screen.getByText("1 subcategory awaiting approval or merge.")).toBeInTheDocument();
   });
 
-  it("disables approve/merge for a pending subcategory pending the missing numeric id", async () => {
+  it("approves a pending subcategory by its numeric id", async () => {
+    const approveCalls: number[] = [];
+    setUpHandlers({
+      "GET /taxonomy": () => TAXONOMY,
+      "POST /approve": (req) => {
+        const id = Number(new URL(req.url).pathname.split("/").at(-2));
+        approveCalls.push(id);
+        return { ...TAXONOMY[0]?.subcategories[1], pending: false };
+      },
+    });
     render(<TaxonomyTab />, { wrapper: TestProviders });
     await screen.findByText("Warehouse club");
 
-    expect(screen.getByRole("button", { name: "Approve" })).toBeDisabled();
-    expect(screen.getByRole("button", { name: "Merge" })).toBeDisabled();
+    await userEvent.click(screen.getByRole("button", { name: "Approve" }));
+
+    await waitFor(() => expect(approveCalls).toEqual([2]));
+  });
+
+  it("merges a pending subcategory into a chosen target by numeric id", async () => {
+    const mergeCalls: Array<{ id: number; into_id: number }> = [];
+    setUpHandlers({
+      "GET /taxonomy": () => TAXONOMY,
+      "POST /merge": async (req) => {
+        const id = Number(new URL(req.url).pathname.split("/").at(-2));
+        const body = (await req.clone().json()) as { into_id: number };
+        mergeCalls.push({ id, into_id: body.into_id });
+        return { ...TAXONOMY[0]?.subcategories[1], merged_into: String(body.into_id) };
+      },
+    });
+    render(<TaxonomyTab />, { wrapper: TestProviders });
+    await screen.findByText("Warehouse club");
+
+    await userEvent.selectOptions(
+      screen.getByLabelText("Merge Warehouse club into"),
+      "food / Groceries",
+    );
+    await userEvent.click(screen.getByRole("button", { name: "Merge" }));
+
+    await waitFor(() => expect(mergeCalls).toEqual([{ id: 2, into_id: 1 }]));
   });
 
   it("shows a merged badge instead of actions for an already-merged subcategory", async () => {
@@ -72,7 +106,7 @@ describe("TaxonomyTab", () => {
           key: "food",
           name: "Food",
           subcategories: [
-            { key: "warehouse_club", name: "Warehouse club", pending: true, merged_into: "groceries" },
+            { id: 2, key: "warehouse_club", name: "Warehouse club", pending: true, merged_into: "groceries" },
           ],
         },
       ],

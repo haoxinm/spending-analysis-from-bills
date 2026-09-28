@@ -19,18 +19,21 @@ export interface ManualMapperFormResult {
 }
 
 /**
- * The manual layout mapper (§2d.2 step 2): builds a `LayoutSpecObject` field by field. There is
- * no click-to-map preview here — see this WP's report on the missing statement word-coordinate
- * endpoint a real click UI needs — so column boundaries are typed in as PDF points, read off the
- * statement by the user's own eye (a PDF viewer's ruler, or trial and error against the "test
- * this spec" result below).
+ * The manual layout mapper (§2d.2 step 2): builds a `LayoutSpecObject` field by field. Column
+ * boundaries can be typed in as PDF points, or set by clicking a word in the `StatementPreview`
+ * click-to-map panel (`activeColumnIndex`/`onSetActiveColumn`, threaded through from `index.tsx`,
+ * which owns the preview alongside this form).
  */
 export function ManualMapperForm({
   spec,
   onChange,
+  activeColumnIndex = null,
+  onSetActiveColumn,
 }: {
   spec: LayoutSpecObject;
   onChange: (spec: LayoutSpecObject) => void;
+  activeColumnIndex?: number | null;
+  onSetActiveColumn?: (index: number | null) => void;
 }) {
   const errors = React.useMemo(() => validateSpec(spec), [spec]);
 
@@ -119,7 +122,13 @@ export function ManualMapperForm({
           Every column's left/right x-band (PDF points). Requires a `posted_date` and a `description` column, plus at
           least one money column.
         </p>
-        <ColumnsEditor columns={spec.columns} onChange={(columns) => onChange({ ...spec, columns })} errors={errors} />
+        <ColumnsEditor
+          columns={spec.columns}
+          onChange={(columns) => onChange({ ...spec, columns })}
+          errors={errors}
+          activeColumnIndex={activeColumnIndex}
+          onSetActiveColumn={onSetActiveColumn}
+        />
       </section>
 
       <section className="flex flex-col gap-2">

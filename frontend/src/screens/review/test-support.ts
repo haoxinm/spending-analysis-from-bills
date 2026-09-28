@@ -6,6 +6,7 @@ export function makeTransaction(overrides: Partial<Transaction> & { id: number }
     account_id: 1,
     posted_date: "2026-01-01",
     transaction_date: null,
+    description_raw: `RAW MERCHANT ${overrides.id}`,
     description_clean: `Merchant ${overrides.id}`,
     amount_minor: 1000,
     currency: "USD",
@@ -57,10 +58,13 @@ export function createApiFetchMock(state: {
     if (request.method === "GET" && url.pathname === "/api/transactions") {
       const page = Number(url.searchParams.get("page") ?? "1");
       const pageSize = Number(url.searchParams.get("page_size") ?? "50");
+      const needsReview = url.searchParams.get("needs_review");
+      const filtered =
+        needsReview === "true" ? transactions.filter((txn) => txn.needs_review) : transactions;
       const start = (page - 1) * pageSize;
       return jsonResponse({
-        items: transactions.slice(start, start + pageSize),
-        total: transactions.length,
+        items: filtered.slice(start, start + pageSize),
+        total: filtered.length,
       });
     }
 
