@@ -200,6 +200,9 @@ def import_cmd(
     remember: bool = typer.Option(
         False, "--remember", help="Remember this extractor for the issuer."
     ),
+    pages: str | None = typer.Option(
+        None, "--pages", help="Only parse these pages, e.g. '1-3,5' (default: all pages)."
+    ),
 ) -> None:
     """Import one or more statement PDFs (A22/A33).
 
@@ -208,6 +211,14 @@ def import_cmd(
     with `--issuer-id`/`--parser-id`, that confirms it.
     """
     settings = load_settings()
+    selected_pages: list[int] | None = None
+    if pages is not None:
+        from spend_analyzer.ingest.pages import parse_page_spec
+
+        try:
+            selected_pages = parse_page_spec(pages)
+        except ValueError as exc:
+            raise typer.BadParameter(str(exc), param_hint="--pages") from None
     with _open_engine() as engine, _open_session(engine) as session:
         resolved_user_id = _require_user_id(session, user_id)
         any_error = False
@@ -245,7 +256,10 @@ def import_cmd(
             # back to `proposal.issuer_id` covers the case where an issuer did match but the
             # score was still below the confidence threshold.
             explicit_extractor_given = (
-                issuer_id is not None or parser_id is not None or layout_spec_id is not None
+                issuer_id is not None
+                or parser_id is not None
+                or layout_spec_id is not None
+                or selected_pages is not None
             )
             resolved_issuer_id = issuer_id if issuer_id is not None else proposal.issuer_id
             should_confirm = explicit_extractor_given or (
@@ -258,6 +272,18 @@ def import_cmd(
                     confirm_cmd += f" --issuer-id {proposal.issuer_id}"
                 if proposal.parser_id is not None:
                     confirm_cmd += f" --parser-id {proposal.parser_id}"
+                if proposal.parser_id == "llm":
+                    # LLM imports are never auto-confirmed: the user chooses the pages (their
+                    # redacted text leaves the machine) before anything is sent.
+                    stmt_row = crud.get_statement(session, proposal.statement_id)
+                    last_page = (stmt_row.page_count if stmt_row else None) or 1
+                    confirm_cmd += f" --pages 1-{last_page}"
+                    typer.echo(
+                        f"{raw_path}: statement #{proposal.statement_id} will be parsed by the "
+                        "LLM; choose the pages to send (edit --pages, e.g. 2-3) and confirm "
+                        f"with:\n  {confirm_cmd}"
+                    )
+                    continue
                 typer.echo(
                     f"{raw_path}: statement #{proposal.statement_id} awaiting_extractor "
                     f"(detect_score={proposal.detect_score}); confirm with:\n  {confirm_cmd}"
@@ -281,6 +307,7 @@ def import_cmd(
                         layout_spec_id if layout_spec_id is not None else proposal.layout_spec_id
                     ),
                     remember=remember or issuer_id is not None,
+                    pages=selected_pages,
                 )
                 session.commit()
             except SpendAnalyzerError as exc:
