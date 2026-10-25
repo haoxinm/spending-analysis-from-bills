@@ -3,6 +3,8 @@ from __future__ import annotations
 import logging
 from pathlib import Path
 
+import pytest
+
 from spend_analyzer.core.logging import configure_logging, get_logger
 
 
@@ -32,3 +34,23 @@ def test_get_logger_returns_child_logger() -> None:
     assert child.name == "spend_analyzer.ingest"
     root = get_logger()
     assert root.name == "spend_analyzer"
+
+
+def test_pdf_libraries_never_log_document_text_at_debug(
+    home: Path, caplog: pytest.LogCaptureFixture
+) -> None:
+    """pdfminer logs extracted text at DEBUG; configure_logging must silence it (SSN safety)."""
+    configure_logging(home=home, console_level=logging.DEBUG)
+    root = logging.getLogger()
+    previous = root.level
+    root.setLevel(logging.DEBUG)
+    try:
+        with caplog.at_level(logging.DEBUG):
+            for name in ("pdfminer", "pdfminer.converter", "pdfplumber.page"):
+                assert not logging.getLogger(name).isEnabledFor(logging.DEBUG)
+                logging.getLogger(name).debug("text object 123-45-6789")
+    finally:
+        root.setLevel(previous)
+    assert "123-45-6789" not in caplog.text
+    # Warnings from these libraries still get through.
+    assert logging.getLogger("pdfminer.converter").isEnabledFor(logging.WARNING)

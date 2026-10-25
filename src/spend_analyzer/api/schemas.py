@@ -641,3 +641,187 @@ class NetWorthSummary(_Model):
     series: list[NetWorthPoint]
     account_series: list[NetWorthAccountSeries]
     snapshot: NetWorthSnapshot | None
+
+
+# --- Income & tax (tax forms) ------------------------------------------------------------------
+#
+# Amounts are integer minor units (USD). Only the last four digits of any taxpayer identifier are
+# ever exposed (`payer_tin_last4`, `account_last4`); `stored_path` and full TINs never appear here
+# (tripwire in `tests/api/test_tax.py`). `payer_name` is local-only data, like `issuers.name`.
+
+
+class TaxFormType(StrEnum):
+    """Mirror of `core.tax_types.FormType` (kept in sync by a test), as a named OpenAPI enum."""
+
+    W2 = "w2"
+    F1099_INT = "1099-int"
+    F1099_DIV = "1099-div"
+    F1099_B = "1099-b"
+    F1099_NEC = "1099-nec"
+    F1099_MISC = "1099-misc"
+    F1099_CONSOLIDATED = "1099-consolidated"
+    F1040 = "1040"
+    STATE_RETURN = "state-return"
+
+
+class IncomeCategoryEnum(StrEnum):
+    """Mirror of `core.tax_types.IncomeCategory`."""
+
+    SALARY_WAGES = "salary_wages"
+    INTEREST = "interest"
+    ORDINARY_DIVIDENDS = "ordinary_dividends"
+    QUALIFIED_DIVIDENDS = "qualified_dividends"
+    SHORT_TERM_CAPITAL_GAIN = "short_term_capital_gain"
+    LONG_TERM_CAPITAL_GAIN = "long_term_capital_gain"
+    SELF_EMPLOYMENT = "self_employment"
+    OTHER = "other"
+
+
+class TaxCategoryEnum(StrEnum):
+    """Mirror of `core.tax_types.TaxCategory`."""
+
+    FEDERAL_INCOME_TAX_WITHHELD = "federal_income_tax_withheld"
+    STATE_INCOME_TAX_WITHHELD = "state_income_tax_withheld"
+    LOCAL_INCOME_TAX_WITHHELD = "local_income_tax_withheld"
+    SOCIAL_SECURITY_TAX = "social_security_tax"
+    MEDICARE_TAX = "medicare_tax"
+    TOTAL_FEDERAL_TAX = "total_federal_tax"
+    FEDERAL_TAX_ORDINARY_EST = "federal_tax_ordinary_est"
+    FEDERAL_TAX_PREFERENTIAL_EST = "federal_tax_preferential_est"
+    NET_INVESTMENT_INCOME_TAX = "net_investment_income_tax"
+    ADDITIONAL_MEDICARE_TAX = "additional_medicare_tax"
+    SELF_EMPLOYMENT_TAX = "self_employment_tax"
+    STATE_INCOME_TAX_LIABILITY = "state_income_tax_liability"
+    ESTIMATED_TAX_PAYMENTS = "estimated_tax_payments"
+    TOTAL_PAYMENTS = "total_payments"
+    REFUND = "refund"
+    AMOUNT_OWED = "amount_owed"
+
+
+TaxFormRole = Literal["source", "return"]
+TaxDocumentStatus = Literal["parsed", "error", "unsupported"]
+TaxImportStatus = Literal["parsed", "duplicate", "error", "unsupported"]
+TaxIncomeBasis = Literal["source_documents", "return", "none", "mixed"]
+
+
+class IncomeItemOut(_Model):
+    id: int
+    category: IncomeCategoryEnum
+    amount_minor: int
+    currency: str
+    source_form: str
+    box: str | None
+    label: str | None
+    is_memo: bool
+
+
+class TaxItemOut(_Model):
+    id: int
+    category: TaxCategoryEnum
+    amount_minor: int
+    currency: str
+    source_form: str
+    box: str | None
+    label: str | None
+    jurisdiction: str | None
+    is_estimate: bool
+
+
+class TaxFormOut(_Model):
+    id: int
+    form_type: TaxFormType
+    role: TaxFormRole
+    tax_year: int
+    payer_name: str | None
+    payer_tin_last4: str | None
+    account_last4: str | None
+    filing_status: str | None
+    agi_minor: int | None
+    taxable_income_minor: int | None
+    is_corrected: bool
+
+
+class TaxFormDetail(TaxFormOut):
+    income_items: list[IncomeItemOut]
+    tax_items: list[TaxItemOut]
+
+
+class TaxDocument(_Model):
+    id: int
+    user_id: int
+    original_name: str
+    tax_year: int | None
+    status: TaxDocumentStatus
+    form_types: list[TaxFormType]
+    page_count: int | None
+    warnings: list[str]
+    error_detail: str | None
+    created_at: str
+
+
+class TaxDocumentDetail(TaxDocument):
+    forms: list[TaxFormDetail]
+
+
+class TaxImportResponse(_Model):
+    document: TaxDocument
+    status: TaxImportStatus
+    inserted_forms: int
+    skipped_duplicate_forms: int
+    income_item_count: int
+    tax_item_count: int
+    warnings: list[str]
+    error: str | None
+
+
+class IncomeCategoryAmount(_Model):
+    category: IncomeCategoryEnum
+    label: str
+    amount_minor: int
+    is_memo: bool
+
+
+class TaxCategoryAmount(_Model):
+    category: TaxCategoryEnum
+    label: str
+    amount_minor: int
+
+
+class TaxMemoAmount(_Model):
+    """A memo line (not part of total income): `qualified_dividends` or `tax_exempt`."""
+
+    category: str
+    label: str
+    amount_minor: int
+
+
+class TaxYearSummary(_Model):
+    tax_year: int
+    user_id: int | None
+    income_basis: TaxIncomeBasis
+    income_by_category: list[IncomeCategoryAmount]
+    memo_by_category: list[TaxMemoAmount]
+    total_income_minor: int
+    withheld: list[TaxCategoryAmount]
+    fica: list[TaxCategoryAmount]
+    liability: list[TaxCategoryAmount]
+    payments_minor: int | None
+    refund_minor: int | None
+    amount_owed_minor: int | None
+    refund_or_owed_derived: bool
+    federal_effective_rate: float | None
+    all_in_rate: float | None
+    withholding_rate: float | None
+    document_count: int
+    form_count: int
+    warnings: list[str]
+
+
+class TaxIncomePayer(_Model):
+    tax_year: int
+    user_id: int
+    payer_name: str | None
+    form_type: TaxFormType
+    category: IncomeCategoryEnum
+    label: str
+    amount_minor: int

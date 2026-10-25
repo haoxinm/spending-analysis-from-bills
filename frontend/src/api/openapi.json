@@ -3488,6 +3488,428 @@
           }
         }
       }
+    },
+    "/tax/documents": {
+      "post": {
+        "tags": [
+          "tax"
+        ],
+        "summary": "Upload Tax Document",
+        "description": "Multipart upload of one tax-form PDF; parsed synchronously. A non-tax or unreadable\nPDF still returns 201 with `status` `unsupported` / `error` and a generic message.",
+        "operationId": "upload_tax_document_api_tax_documents_post",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "multipart/form-data": {
+              "schema": {
+                "$ref": "#/components/schemas/Body_upload_tax_document_api_tax_documents_post"
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/TaxImportResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      },
+      "get": {
+        "tags": [
+          "tax"
+        ],
+        "summary": "List Documents",
+        "operationId": "list_documents_api_tax_documents_get",
+        "parameters": [
+          {
+            "name": "user_id",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "integer"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "User Id"
+            }
+          },
+          {
+            "name": "tax_year",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "integer"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Tax Year"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/TaxDocument"
+                  },
+                  "title": "Response List Documents Api Tax Documents Get"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/tax/documents/{document_id}": {
+      "get": {
+        "tags": [
+          "tax"
+        ],
+        "summary": "Get Document",
+        "operationId": "get_document_api_tax_documents__document_id__get",
+        "parameters": [
+          {
+            "name": "document_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "title": "Document Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/TaxDocumentDetail"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      },
+      "delete": {
+        "tags": [
+          "tax"
+        ],
+        "summary": "Delete Document",
+        "operationId": "delete_document_api_tax_documents__document_id__delete",
+        "parameters": [
+          {
+            "name": "document_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "title": "Document Id"
+            }
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "Successful Response"
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/tax/years": {
+      "get": {
+        "tags": [
+          "tax"
+        ],
+        "summary": "List Years",
+        "operationId": "list_years_api_tax_years_get",
+        "parameters": [
+          {
+            "name": "user_ids",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "array",
+                  "items": {
+                    "type": "integer"
+                  }
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "User Ids"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "type": "integer"
+                  },
+                  "title": "Response List Years Api Tax Years Get"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/tax/summary": {
+      "get": {
+        "tags": [
+          "tax"
+        ],
+        "summary": "Tax Summary",
+        "description": "One summary per tax year (newest first); with `per_user`, one per (year, user).",
+        "operationId": "tax_summary_api_tax_summary_get",
+        "parameters": [
+          {
+            "name": "user_ids",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "array",
+                  "items": {
+                    "type": "integer"
+                  }
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "User Ids"
+            }
+          },
+          {
+            "name": "tax_years",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "array",
+                  "items": {
+                    "type": "integer"
+                  }
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Tax Years"
+            }
+          },
+          {
+            "name": "currency",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "default": "USD",
+              "title": "Currency"
+            }
+          },
+          {
+            "name": "per_user",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "boolean",
+              "default": false,
+              "title": "Per User"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/TaxYearSummary"
+                  },
+                  "title": "Response Tax Summary Api Tax Summary Get"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/tax/income-by-payer": {
+      "get": {
+        "tags": [
+          "tax"
+        ],
+        "summary": "Income By Payer",
+        "description": "Non-memo income on source forms (W-2 / 1099) per payer; newest year, largest first.",
+        "operationId": "income_by_payer_api_tax_income_by_payer_get",
+        "parameters": [
+          {
+            "name": "user_ids",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "array",
+                  "items": {
+                    "type": "integer"
+                  }
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "User Ids"
+            }
+          },
+          {
+            "name": "tax_years",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "array",
+                  "items": {
+                    "type": "integer"
+                  }
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Tax Years"
+            }
+          },
+          {
+            "name": "currency",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "default": "USD",
+              "title": "Currency"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/TaxIncomePayer"
+                  },
+                  "title": "Response Income By Payer Api Tax Income By Payer Get"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
     }
   },
   "components": {
@@ -3942,6 +4364,36 @@
         ],
         "title": "Body_upload_statement_api_statements_post"
       },
+      "Body_upload_tax_document_api_tax_documents_post": {
+        "properties": {
+          "file": {
+            "type": "string",
+            "contentMediaType": "application/octet-stream",
+            "title": "File"
+          },
+          "user_id": {
+            "type": "integer",
+            "title": "User Id"
+          },
+          "tax_year": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Tax Year"
+          }
+        },
+        "type": "object",
+        "required": [
+          "file",
+          "user_id"
+        ],
+        "title": "Body_upload_tax_document_api_tax_documents_post"
+      },
       "BulkUpdateRequest": {
         "properties": {
           "transaction_ids": {
@@ -4231,6 +4683,109 @@
         },
         "type": "object",
         "title": "HTTPValidationError"
+      },
+      "IncomeCategoryAmount": {
+        "properties": {
+          "category": {
+            "$ref": "#/components/schemas/IncomeCategoryEnum"
+          },
+          "label": {
+            "type": "string",
+            "title": "Label"
+          },
+          "amount_minor": {
+            "type": "integer",
+            "title": "Amount Minor"
+          },
+          "is_memo": {
+            "type": "boolean",
+            "title": "Is Memo"
+          }
+        },
+        "type": "object",
+        "required": [
+          "category",
+          "label",
+          "amount_minor",
+          "is_memo"
+        ],
+        "title": "IncomeCategoryAmount"
+      },
+      "IncomeCategoryEnum": {
+        "type": "string",
+        "enum": [
+          "salary_wages",
+          "interest",
+          "ordinary_dividends",
+          "qualified_dividends",
+          "short_term_capital_gain",
+          "long_term_capital_gain",
+          "self_employment",
+          "other"
+        ],
+        "title": "IncomeCategoryEnum",
+        "description": "Mirror of `core.tax_types.IncomeCategory`."
+      },
+      "IncomeItemOut": {
+        "properties": {
+          "id": {
+            "type": "integer",
+            "title": "Id"
+          },
+          "category": {
+            "$ref": "#/components/schemas/IncomeCategoryEnum"
+          },
+          "amount_minor": {
+            "type": "integer",
+            "title": "Amount Minor"
+          },
+          "currency": {
+            "type": "string",
+            "title": "Currency"
+          },
+          "source_form": {
+            "type": "string",
+            "title": "Source Form"
+          },
+          "box": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Box"
+          },
+          "label": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Label"
+          },
+          "is_memo": {
+            "type": "boolean",
+            "title": "Is Memo"
+          }
+        },
+        "type": "object",
+        "required": [
+          "id",
+          "category",
+          "amount_minor",
+          "currency",
+          "source_form",
+          "box",
+          "label",
+          "is_memo"
+        ],
+        "title": "IncomeItemOut"
       },
       "IngestSettings": {
         "properties": {
@@ -5956,6 +6511,763 @@
           "pending"
         ],
         "title": "Subcategory"
+      },
+      "TaxCategoryAmount": {
+        "properties": {
+          "category": {
+            "$ref": "#/components/schemas/TaxCategoryEnum"
+          },
+          "label": {
+            "type": "string",
+            "title": "Label"
+          },
+          "amount_minor": {
+            "type": "integer",
+            "title": "Amount Minor"
+          }
+        },
+        "type": "object",
+        "required": [
+          "category",
+          "label",
+          "amount_minor"
+        ],
+        "title": "TaxCategoryAmount"
+      },
+      "TaxCategoryEnum": {
+        "type": "string",
+        "enum": [
+          "federal_income_tax_withheld",
+          "state_income_tax_withheld",
+          "local_income_tax_withheld",
+          "social_security_tax",
+          "medicare_tax",
+          "total_federal_tax",
+          "federal_tax_ordinary_est",
+          "federal_tax_preferential_est",
+          "net_investment_income_tax",
+          "additional_medicare_tax",
+          "self_employment_tax",
+          "state_income_tax_liability",
+          "estimated_tax_payments",
+          "total_payments",
+          "refund",
+          "amount_owed"
+        ],
+        "title": "TaxCategoryEnum",
+        "description": "Mirror of `core.tax_types.TaxCategory`."
+      },
+      "TaxDocument": {
+        "properties": {
+          "id": {
+            "type": "integer",
+            "title": "Id"
+          },
+          "user_id": {
+            "type": "integer",
+            "title": "User Id"
+          },
+          "original_name": {
+            "type": "string",
+            "title": "Original Name"
+          },
+          "tax_year": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Tax Year"
+          },
+          "status": {
+            "type": "string",
+            "enum": [
+              "parsed",
+              "error",
+              "unsupported"
+            ],
+            "title": "Status"
+          },
+          "form_types": {
+            "items": {
+              "$ref": "#/components/schemas/TaxFormType"
+            },
+            "type": "array",
+            "title": "Form Types"
+          },
+          "page_count": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Page Count"
+          },
+          "warnings": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Warnings"
+          },
+          "error_detail": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Error Detail"
+          },
+          "created_at": {
+            "type": "string",
+            "title": "Created At"
+          }
+        },
+        "type": "object",
+        "required": [
+          "id",
+          "user_id",
+          "original_name",
+          "tax_year",
+          "status",
+          "form_types",
+          "page_count",
+          "warnings",
+          "error_detail",
+          "created_at"
+        ],
+        "title": "TaxDocument"
+      },
+      "TaxDocumentDetail": {
+        "properties": {
+          "id": {
+            "type": "integer",
+            "title": "Id"
+          },
+          "user_id": {
+            "type": "integer",
+            "title": "User Id"
+          },
+          "original_name": {
+            "type": "string",
+            "title": "Original Name"
+          },
+          "tax_year": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Tax Year"
+          },
+          "status": {
+            "type": "string",
+            "enum": [
+              "parsed",
+              "error",
+              "unsupported"
+            ],
+            "title": "Status"
+          },
+          "form_types": {
+            "items": {
+              "$ref": "#/components/schemas/TaxFormType"
+            },
+            "type": "array",
+            "title": "Form Types"
+          },
+          "page_count": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Page Count"
+          },
+          "warnings": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Warnings"
+          },
+          "error_detail": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Error Detail"
+          },
+          "created_at": {
+            "type": "string",
+            "title": "Created At"
+          },
+          "forms": {
+            "items": {
+              "$ref": "#/components/schemas/TaxFormDetail"
+            },
+            "type": "array",
+            "title": "Forms"
+          }
+        },
+        "type": "object",
+        "required": [
+          "id",
+          "user_id",
+          "original_name",
+          "tax_year",
+          "status",
+          "form_types",
+          "page_count",
+          "warnings",
+          "error_detail",
+          "created_at",
+          "forms"
+        ],
+        "title": "TaxDocumentDetail"
+      },
+      "TaxFormDetail": {
+        "properties": {
+          "id": {
+            "type": "integer",
+            "title": "Id"
+          },
+          "form_type": {
+            "$ref": "#/components/schemas/TaxFormType"
+          },
+          "role": {
+            "type": "string",
+            "enum": [
+              "source",
+              "return"
+            ],
+            "title": "Role"
+          },
+          "tax_year": {
+            "type": "integer",
+            "title": "Tax Year"
+          },
+          "payer_name": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Payer Name"
+          },
+          "payer_tin_last4": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Payer Tin Last4"
+          },
+          "account_last4": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Account Last4"
+          },
+          "filing_status": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Filing Status"
+          },
+          "agi_minor": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Agi Minor"
+          },
+          "taxable_income_minor": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Taxable Income Minor"
+          },
+          "is_corrected": {
+            "type": "boolean",
+            "title": "Is Corrected"
+          },
+          "income_items": {
+            "items": {
+              "$ref": "#/components/schemas/IncomeItemOut"
+            },
+            "type": "array",
+            "title": "Income Items"
+          },
+          "tax_items": {
+            "items": {
+              "$ref": "#/components/schemas/TaxItemOut"
+            },
+            "type": "array",
+            "title": "Tax Items"
+          }
+        },
+        "type": "object",
+        "required": [
+          "id",
+          "form_type",
+          "role",
+          "tax_year",
+          "payer_name",
+          "payer_tin_last4",
+          "account_last4",
+          "filing_status",
+          "agi_minor",
+          "taxable_income_minor",
+          "is_corrected",
+          "income_items",
+          "tax_items"
+        ],
+        "title": "TaxFormDetail"
+      },
+      "TaxFormType": {
+        "type": "string",
+        "enum": [
+          "w2",
+          "1099-int",
+          "1099-div",
+          "1099-b",
+          "1099-nec",
+          "1099-misc",
+          "1099-consolidated",
+          "1040",
+          "state-return"
+        ],
+        "title": "TaxFormType",
+        "description": "Mirror of `core.tax_types.FormType` (kept in sync by a test), as a named OpenAPI enum."
+      },
+      "TaxImportResponse": {
+        "properties": {
+          "document": {
+            "$ref": "#/components/schemas/TaxDocument"
+          },
+          "status": {
+            "type": "string",
+            "enum": [
+              "parsed",
+              "duplicate",
+              "error",
+              "unsupported"
+            ],
+            "title": "Status"
+          },
+          "inserted_forms": {
+            "type": "integer",
+            "title": "Inserted Forms"
+          },
+          "skipped_duplicate_forms": {
+            "type": "integer",
+            "title": "Skipped Duplicate Forms"
+          },
+          "income_item_count": {
+            "type": "integer",
+            "title": "Income Item Count"
+          },
+          "tax_item_count": {
+            "type": "integer",
+            "title": "Tax Item Count"
+          },
+          "warnings": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Warnings"
+          },
+          "error": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Error"
+          }
+        },
+        "type": "object",
+        "required": [
+          "document",
+          "status",
+          "inserted_forms",
+          "skipped_duplicate_forms",
+          "income_item_count",
+          "tax_item_count",
+          "warnings",
+          "error"
+        ],
+        "title": "TaxImportResponse"
+      },
+      "TaxIncomePayer": {
+        "properties": {
+          "tax_year": {
+            "type": "integer",
+            "title": "Tax Year"
+          },
+          "user_id": {
+            "type": "integer",
+            "title": "User Id"
+          },
+          "payer_name": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Payer Name"
+          },
+          "form_type": {
+            "$ref": "#/components/schemas/TaxFormType"
+          },
+          "category": {
+            "$ref": "#/components/schemas/IncomeCategoryEnum"
+          },
+          "label": {
+            "type": "string",
+            "title": "Label"
+          },
+          "amount_minor": {
+            "type": "integer",
+            "title": "Amount Minor"
+          }
+        },
+        "type": "object",
+        "required": [
+          "tax_year",
+          "user_id",
+          "payer_name",
+          "form_type",
+          "category",
+          "label",
+          "amount_minor"
+        ],
+        "title": "TaxIncomePayer"
+      },
+      "TaxItemOut": {
+        "properties": {
+          "id": {
+            "type": "integer",
+            "title": "Id"
+          },
+          "category": {
+            "$ref": "#/components/schemas/TaxCategoryEnum"
+          },
+          "amount_minor": {
+            "type": "integer",
+            "title": "Amount Minor"
+          },
+          "currency": {
+            "type": "string",
+            "title": "Currency"
+          },
+          "source_form": {
+            "type": "string",
+            "title": "Source Form"
+          },
+          "box": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Box"
+          },
+          "label": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Label"
+          },
+          "jurisdiction": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Jurisdiction"
+          },
+          "is_estimate": {
+            "type": "boolean",
+            "title": "Is Estimate"
+          }
+        },
+        "type": "object",
+        "required": [
+          "id",
+          "category",
+          "amount_minor",
+          "currency",
+          "source_form",
+          "box",
+          "label",
+          "jurisdiction",
+          "is_estimate"
+        ],
+        "title": "TaxItemOut"
+      },
+      "TaxMemoAmount": {
+        "properties": {
+          "category": {
+            "type": "string",
+            "title": "Category"
+          },
+          "label": {
+            "type": "string",
+            "title": "Label"
+          },
+          "amount_minor": {
+            "type": "integer",
+            "title": "Amount Minor"
+          }
+        },
+        "type": "object",
+        "required": [
+          "category",
+          "label",
+          "amount_minor"
+        ],
+        "title": "TaxMemoAmount",
+        "description": "A memo line (not part of total income): `qualified_dividends` or `tax_exempt`."
+      },
+      "TaxYearSummary": {
+        "properties": {
+          "tax_year": {
+            "type": "integer",
+            "title": "Tax Year"
+          },
+          "user_id": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "User Id"
+          },
+          "income_basis": {
+            "type": "string",
+            "enum": [
+              "source_documents",
+              "return",
+              "none",
+              "mixed"
+            ],
+            "title": "Income Basis"
+          },
+          "income_by_category": {
+            "items": {
+              "$ref": "#/components/schemas/IncomeCategoryAmount"
+            },
+            "type": "array",
+            "title": "Income By Category"
+          },
+          "memo_by_category": {
+            "items": {
+              "$ref": "#/components/schemas/TaxMemoAmount"
+            },
+            "type": "array",
+            "title": "Memo By Category"
+          },
+          "total_income_minor": {
+            "type": "integer",
+            "title": "Total Income Minor"
+          },
+          "withheld": {
+            "items": {
+              "$ref": "#/components/schemas/TaxCategoryAmount"
+            },
+            "type": "array",
+            "title": "Withheld"
+          },
+          "fica": {
+            "items": {
+              "$ref": "#/components/schemas/TaxCategoryAmount"
+            },
+            "type": "array",
+            "title": "Fica"
+          },
+          "liability": {
+            "items": {
+              "$ref": "#/components/schemas/TaxCategoryAmount"
+            },
+            "type": "array",
+            "title": "Liability"
+          },
+          "payments_minor": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Payments Minor"
+          },
+          "refund_minor": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Refund Minor"
+          },
+          "amount_owed_minor": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Amount Owed Minor"
+          },
+          "refund_or_owed_derived": {
+            "type": "boolean",
+            "title": "Refund Or Owed Derived"
+          },
+          "federal_effective_rate": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Federal Effective Rate"
+          },
+          "all_in_rate": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "All In Rate"
+          },
+          "withholding_rate": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Withholding Rate"
+          },
+          "document_count": {
+            "type": "integer",
+            "title": "Document Count"
+          },
+          "form_count": {
+            "type": "integer",
+            "title": "Form Count"
+          },
+          "warnings": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Warnings"
+          }
+        },
+        "type": "object",
+        "required": [
+          "tax_year",
+          "user_id",
+          "income_basis",
+          "income_by_category",
+          "memo_by_category",
+          "total_income_minor",
+          "withheld",
+          "fica",
+          "liability",
+          "payments_minor",
+          "refund_minor",
+          "amount_owed_minor",
+          "refund_or_owed_derived",
+          "federal_effective_rate",
+          "all_in_rate",
+          "withholding_rate",
+          "document_count",
+          "form_count",
+          "warnings"
+        ],
+        "title": "TaxYearSummary"
       },
       "TestLlmRequest": {
         "properties": {
