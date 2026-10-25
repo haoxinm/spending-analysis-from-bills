@@ -29,8 +29,9 @@ export function useAccounts() {
 }
 
 /** `GET /api/analytics/summary` grouped by `["period", "category"]` — feeds the stacked bar. */
-export function useCategoryBreakdown(filters: DashboardFilters, granularity: Granularity) {
+export function useCategoryBreakdown(filters: DashboardFilters, granularity: Granularity, enabled = true) {
   return useQuery({
+    enabled,
     queryKey: ["dashboard", "category-breakdown", filters, granularity],
     queryFn: async () => {
       const { data, error } = await apiClient.GET("/analytics/summary", {
@@ -78,8 +79,9 @@ export function useUserBreakdown(filters: DashboardFilters, enabled: boolean) {
 
 /** `GET /api/analytics/timeseries` grouped by `["period"]` — feeds the trend line and the
  * month-over-month delta. */
-export function useTrend(filters: DashboardFilters, granularity: Granularity) {
+export function useTrend(filters: DashboardFilters, granularity: Granularity, enabled = true) {
   return useQuery({
+    enabled,
     queryKey: ["dashboard", "trend", filters, granularity],
     queryFn: async () => {
       const { data, error } = await apiClient.GET("/analytics/timeseries", {
@@ -101,8 +103,9 @@ export function useTrend(filters: DashboardFilters, granularity: Granularity) {
 }
 
 /** `GET /api/analytics/top-merchants`, ranked server-side (§3.12). */
-export function useTopMerchants(filters: DashboardFilters, limit = 8) {
+export function useTopMerchants(filters: DashboardFilters, limit = 8, enabled = true) {
   return useQuery({
+    enabled,
     queryKey: ["dashboard", "top-merchants", filters, limit],
     queryFn: async () => {
       const { data, error } = await apiClient.GET("/analytics/top-merchants", {

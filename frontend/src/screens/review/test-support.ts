@@ -47,6 +47,7 @@ export function createApiFetchMock(state: {
   patchTransactionBehavior?: (id: number, body: unknown) => Response;
   approveBehavior?: (subcategoryId: number) => Response;
   mergeBehavior?: (subcategoryId: number, intoId: number) => Response;
+  users?: Array<{ id: number; name: string; is_default: boolean }>;
 }) {
   const transactions = state.transactions ?? [];
   let categories = state.categories ?? [];
@@ -54,6 +55,10 @@ export function createApiFetchMock(state: {
   return async (input: Request | string | URL): Promise<Response> => {
     const request = input instanceof Request ? input : new Request(input);
     const url = new URL(request.url);
+
+    if (request.method === "GET" && url.pathname === "/api/users") {
+      return jsonResponse(state.users ?? [{ id: 1, name: "Alex", is_default: true }]);
+    }
 
     if (request.method === "GET" && url.pathname === "/api/transactions") {
       const page = Number(url.searchParams.get("page") ?? "1");

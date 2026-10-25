@@ -55,7 +55,7 @@ export interface UseReviewQueueResult {
  * cursor position survive a rollback exactly, which a query-cache `setQueryData` dance over a
  * paginated, client-filtered list would not do cleanly.
  */
-export function useReviewQueue(): UseReviewQueueResult {
+export function useReviewQueue(userIds?: number[], enabled = true): UseReviewQueueResult {
   const { toast } = useToast();
   const [queue, setQueue] = React.useState<Transaction[]>([]);
   const [status, setStatus] = React.useState<"loading" | "error" | "ready">("loading");
@@ -66,10 +66,13 @@ export function useReviewQueue(): UseReviewQueueResult {
   const [canUndo, setCanUndo] = React.useState(false);
   const undoStack = React.useRef<UndoEntry[]>([]);
 
+  // Stable dependency: callers pass a fresh array each render.
+  const userKey = userIds?.join(",");
+
   const load = React.useCallback(() => {
     setStatus("loading");
     setError(null);
-    fetchNeedsReviewQueue()
+    fetchNeedsReviewQueue(userKey === undefined ? undefined : userKey.split(",").map(Number))
       .then((items) => {
         setQueue(items);
         setIndex(0);
@@ -82,11 +85,11 @@ export function useReviewQueue(): UseReviewQueueResult {
         setError(caught);
         setStatus("error");
       });
-  }, []);
+  }, [userKey]);
 
   React.useEffect(() => {
-    load();
-  }, [load]);
+    if (enabled) load();
+  }, [load, enabled]);
 
   // Keep the cursor in range as the queue shrinks (an accept removes its row).
   React.useEffect(() => {

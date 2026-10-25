@@ -1,9 +1,10 @@
 import * as React from "react";
 
-import { useUsers } from "@/api/hooks";
 import type { DateRange } from "@/components/primitives/date-range-picker";
 import { EmptyState, ErrorState, LoadingState } from "@/components/primitives/states";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { UserSwitcher } from "@/components/primitives/user-switcher";
+import { useSelectedUser } from "@/hooks/use-selected-user";
 import { useSpendQueryParams } from "@/hooks/use-spend-query-params";
 
 import { CategoryStackedBar } from "./components/category-stacked-bar";
@@ -31,7 +32,7 @@ import { computeMonthOverMonthDelta, detectOtherCurrencies, toTrendPoints, total
  */
 export default function DashboardScreen() {
   const [params, setParams] = useSpendQueryParams();
-  const usersQuery = useUsers();
+  const sel = useSelectedUser();
   const accountsQuery = useAccounts();
 
   const granularity = params.granularity ?? "month";
@@ -39,21 +40,23 @@ export default function DashboardScreen() {
 
   const filters: DashboardFilters = React.useMemo(
     () => ({
-      userIds: params.userIds,
+      userIds: sel.userIds ?? params.userIds,
       dateFrom: params.dateFrom,
       dateTo: params.dateTo,
       currency,
     }),
-    [params.userIds, params.dateFrom, params.dateTo, currency],
+    [sel.userIds, params.userIds, params.dateFrom, params.dateTo, currency],
   );
 
-  const users = usersQuery.data ?? [];
-  const showUserComparison = users.length > 1;
+  const users = sel.users;
+  // The by-user comparison only makes sense across everyone; one selected user is a single bar.
+  const showUserComparison = users.length > 1 && sel.selectedUserId === null;
+  const ready = !sel.isLoading;
 
-  const categoryQuery = useCategoryBreakdown(filters, granularity);
-  const trendQuery = useTrend(filters, granularity);
-  const topMerchantsQuery = useTopMerchants(filters);
-  const userBreakdownQuery = useUserBreakdown(filters, showUserComparison);
+  const categoryQuery = useCategoryBreakdown(filters, granularity, ready);
+  const trendQuery = useTrend(filters, granularity, ready);
+  const topMerchantsQuery = useTopMerchants(filters, 8, ready);
+  const userBreakdownQuery = useUserBreakdown(filters, showUserComparison && ready);
 
   const dateRange: DateRange = { from: params.dateFrom ?? null, to: params.dateTo ?? null };
 
@@ -74,7 +77,7 @@ export default function DashboardScreen() {
 
   const anyError = categoryQuery.error ?? trendQuery.error ?? topMerchantsQuery.error;
   const anyLoading =
-    categoryQuery.isLoading || trendQuery.isLoading || topMerchantsQuery.isLoading || usersQuery.isLoading;
+    categoryQuery.isLoading || trendQuery.isLoading || topMerchantsQuery.isLoading || sel.isLoading;
 
   const hasAnyData =
     (categoryQuery.data?.length ?? 0) > 0 ||
@@ -83,11 +86,15 @@ export default function DashboardScreen() {
 
   return (
     <div className="flex flex-col gap-6 py-2">
-      <div>
-        <h1 className="text-xl font-semibold tracking-tight">Dashboard</h1>
-        <p className="text-sm text-muted-foreground">
-          Spending by category over time, top merchants, and how this period compares to the last.
-        </p>
+      <div className="flex flex-wrap items-start justify-between gap-3">
+        <div>
+          <h1 className="text-xl font-semibold tracking-tight">Dashboard</h1>
+          <p className="text-sm text-muted-foreground">
+            Spending by category over time, top merchants, and how this period compares to the last.
+            {users.length > 1 && sel.selectedUser ? ` Showing ${sel.selectedUser.name}.` : ""}
+          </p>
+        </div>
+        <UserSwitcher users={users} value={sel.selectedUserId} onChange={sel.setSelectedUserId} />
       </div>
 
       <FiltersBar
@@ -95,9 +102,6 @@ export default function DashboardScreen() {
         onDateRangeChange={(range) => setParams({ dateFrom: range.from ?? undefined, dateTo: range.to ?? undefined })}
         granularity={granularity}
         onGranularityChange={(g) => setParams({ granularity: g })}
-        users={users}
-        selectedUserIds={params.userIds}
-        onSelectedUserIdsChange={(userIds) => setParams({ userIds })}
         currency={currency}
         currencyOptions={currencyOptions}
         onCurrencyChange={(c) => setParams({ currency: c })}

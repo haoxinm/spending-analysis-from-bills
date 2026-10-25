@@ -41,9 +41,10 @@ export function transactionsQueryKey(filters: SpendQueryParams) {
  * far; `fetchNextPage` (wired to a "Load more" affordance and to scrolling near the bottom)
  * appends the next `GRID_PAGE_SIZE` rows without re-fetching what is already shown.
  */
-export function useTransactionsGrid(filters: SpendQueryParams) {
+export function useTransactionsGrid(filters: SpendQueryParams, enabled = true) {
   const query = toTransactionsQuery(filters);
   return useInfiniteQuery({
+    enabled,
     queryKey: transactionsQueryKey(filters),
     initialPageParam: 1,
     queryFn: async ({ pageParam }) => {

@@ -206,4 +206,43 @@ describe("useReviewQueue", () => {
       kind: "purchase",
     });
   });
+
+  it("passes user_ids to the query and refetches when they change", async () => {
+    const { fetchMock, useReviewQueue, wrapper } = await setup({
+      transactions: [makeTransaction({ id: 1 })],
+    });
+
+    const initialIds: { ids: number[] | undefined } = { ids: [2] };
+    const { result, rerender } = renderHook(({ ids }: { ids: number[] | undefined }) => useReviewQueue(ids), {
+      wrapper,
+      initialProps: initialIds,
+    });
+    await waitFor(() => expect(result.current.status).toBe("ready"));
+
+    const idsOf = () =>
+      fetchMock.mock.calls
+        .map((c) => new URL((c[0] as Request).url))
+        .filter((u) => u.pathname === "/api/transactions")
+        .map((u) => u.searchParams.getAll("user_ids").join());
+    expect(idsOf()).toEqual(["2"]);
+
+    rerender({ ids: [2] }); // new array, same content: no refetch
+    rerender({ ids: [3] });
+    await waitFor(() => expect(idsOf()).toEqual(["2", "3"]));
+
+    rerender({ ids: undefined });
+    await waitFor(() => expect(idsOf()).toEqual(["2", "3", ""]));
+  });
+
+  it("does not load until enabled", async () => {
+    const { fetchMock, useReviewQueue, wrapper } = await setup({ transactions: [makeTransaction({ id: 1 })] });
+    const { result, rerender } = renderHook(({ on }: { on: boolean }) => useReviewQueue(undefined, on), {
+      wrapper,
+      initialProps: { on: false },
+    });
+    expect(result.current.status).toBe("loading");
+    expect(fetchMock).not.toHaveBeenCalled();
+    rerender({ on: true });
+    await waitFor(() => expect(result.current.status).toBe("ready"));
+  });
 });

@@ -20,9 +20,9 @@ const MAX_PAGES = 50;
 /**
  * Fetches every `needs_review` transaction, oldest first, via `GET /transactions?needs_review=true`
  * (with `include_non_spend: true` so a low-confidence payment or transfer is never silently
- * skipped), paging server-side until a short page signals the last one.
+ * skipped), optionally restricted to `userIds` (the per-user view), paging server-side until a short page signals the last one.
  */
-export async function fetchNeedsReviewQueue(): Promise<Transaction[]> {
+export async function fetchNeedsReviewQueue(userIds?: number[]): Promise<Transaction[]> {
   const collected: Transaction[] = [];
   for (let page = 1; page <= MAX_PAGES; page += 1) {
     const { data, error } = await apiClient.GET("/transactions", {
@@ -33,6 +33,7 @@ export async function fetchNeedsReviewQueue(): Promise<Transaction[]> {
           sort: "posted_date",
           include_non_spend: true,
           needs_review: true,
+          user_ids: userIds,
         },
       },
     });
