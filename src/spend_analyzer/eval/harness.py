@@ -10,7 +10,7 @@ path the real cascade uses, so this harness never re-implements egress or its sa
 This module touches no database: it is an offline batch tool, not part of the transaction
 pipeline. Run it manually against a real provider before changing `classify.llm.prompt.
 PROMPT_VERSION` (§5 P4-C); it is deliberately **not** part of CI in network mode — CI only
-exercises it with the LLM mocked (`mode="rules"`, or `mode="llm"` with `litellm.completion`
+exercises it with the LLM mocked (`mode="rules"`, or `mode="llm"` with `spend_analyzer.llm.client.complete`
 monkeypatched).
 """
 
@@ -224,9 +224,9 @@ def run_eval(cfg: LLMConfig, *, csv_path: Path, mode: EvalMode) -> EvalReport:
     Raises:
         ConfigError: `csv_path` is malformed, or `mode="llm"` but `cfg` names no provider/model.
     """
-    if mode == "llm" and (cfg.mode == "none" or not cfg.provider or not cfg.model):
+    if mode == "llm" and not cfg.is_configured:
         raise ConfigError(
-            "run_eval(mode='llm') requires a configured [llm] provider and model; "
+            "run_eval(mode='llm') requires a configured [llm] endpoint (enabled, base_url, model); "
             "use mode='rules' to evaluate the deterministic cascade only"
         )
 

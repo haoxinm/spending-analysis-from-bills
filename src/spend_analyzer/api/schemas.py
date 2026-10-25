@@ -14,7 +14,7 @@ from __future__ import annotations
 
 from datetime import date, datetime
 from enum import StrEnum
-from typing import Literal
+from typing import Any, Literal
 
 from pydantic import BaseModel, ConfigDict, Field
 
@@ -36,6 +36,7 @@ class Kind(StrEnum):
 
 AccountType = Literal["credit", "checking", "savings"]
 LlmMode = Literal["none", "local", "remote"]
+ApiFormat = Literal["openai_chat", "openai_responses", "anthropic_messages"]
 StatementStatus = Literal[
     "pending",
     "awaiting_extractor",
@@ -116,6 +117,10 @@ class Statement(_Model):
     shape_warnings: str | None
     error_detail: str | None
     created_at: datetime
+    page_count: int | None = None
+    #: 1-based page numbers kept for parsing (and sent to the LLM, for the LLM parser);
+    #: `None` = every page.
+    selected_pages: list[int] | None = None
 
 
 class ExtractorProposal(_Model):
@@ -134,8 +139,33 @@ class StatementUploadResponse(_Model):
 class ExtractRequest(_Model):
     issuer_id: int
     layout_spec_id: int | None = None
+    #: A built-in parser id, or `"llm"` for the LLM statement parser.
     parser_id: str | None = None
     remember: bool = False
+    #: 1-based pages to keep/parse; `None` = the statement's saved selection (default: all).
+    pages: list[int] | None = None
+
+
+class StatementPageInfo(_Model):
+    """`GET /api/statements/{id}/pages` row: enough to choose pages without opening the PDF.
+    A thumbnail is at `GET /api/statements/{id}/pages/{page_number}/image`."""
+
+    page_number: int
+    char_count: int
+    snippet: str  # first ~300 characters of the page's extracted text
+    selected: bool
+
+
+class LlmParsePreview(_Model):
+    """`GET /api/statements/{id}/llm-preview?pages=1,2`: the exact page text (after
+    redaction) that the LLM statement parser would send, one entry per request. No network."""
+
+    mode: LlmMode
+    resolved_url: str
+    model: str
+    pages: list[int]
+    requests: list[str]
+    total_chars: int
 
 
 class StatementPatch(_Model):
@@ -416,13 +446,27 @@ class RuleUpdate(_Model):
 
 
 class LlmSettings(_Model):
-    mode: LlmMode
-    provider: str
-    model: str
-    api_base: str
-    batch_size: int
-    timeout_s: int
-    confidence_threshold: float
+    """`[llm]` (one endpoint for classification and opt-in statement parsing). `mode`,
+    `resolved_url` and `has_key` are derived and read-only: ignored on `PUT`."""
+
+    enabled: bool = False
+    base_url: str = ""
+    api_format: ApiFormat = "openai_chat"
+    path: str = ""
+    model: str = ""
+    temperature: float | None = None
+    max_tokens: int | None = None
+    reasoning_effort: str = ""
+    extra_body: dict[str, Any] = Field(default_factory=dict)
+    extra_headers: dict[str, str] = Field(default_factory=dict)
+    structured_output: bool = True
+    batch_size: int = 50
+    timeout_s: int = 120
+    confidence_threshold: float = 0.7
+    parse_pages_per_request: int = 0
+    # --- derived, read-only ---
+    mode: LlmMode = "none"  # none (disabled/incomplete) | local (localhost) | remote
+    resolved_url: str = ""
     has_key: bool = False
 
 
@@ -434,6 +478,7 @@ class PrivacySettings(_Model):
 
 class IngestSettings(_Model):
     always_confirm_extractor: bool
+    default_extractor: Literal["auto", "llm"] = "auto"
     date_format_hints: list[str]
     default_currency: str
 
@@ -449,14 +494,26 @@ class Settings(_Model):
     server: ServerSettings
 
 
+class TestLlmRequest(_Model):
+    """Optional `POST /api/settings/test-llm` body: test these (unsaved, draft) LLM settings
+    instead of the saved ones. Omit the body to test what is saved."""
+
+    llm: LlmSettings | None = None
+
+
 class TestLlmResponse(_Model):
     ok: bool
     detail: str | None = None
+    mode: LlmMode = "none"
+    resolved_url: str = ""
+    latency_ms: int | None = None
 
 
 class ApiKeyPut(_Model):
     """`PUT /api/settings/api-key` body (I7: the key is written straight to the OS keychain via
-    `config.set_api_key` — never to `config.toml`, the database, a response, or a log line)."""
+    `config.set_api_key` — never to `config.toml`, the database, a response, or a log line).
+    The key is stored for `base_url`'s host (default: the saved `[llm] base_url`), so it is only
+    ever sent to that host."""
 
-    provider: str
     api_key: str
+    base_url: str = ""

@@ -127,6 +127,8 @@ class Statement(Base):
     period_start: Mapped[str | None] = mapped_column(Text, nullable=True)
     period_end: Mapped[str | None] = mapped_column(Text, nullable=True)
     page_count: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    # JSON list of the 1-based pages to parse/send to the LLM; NULL = all pages.
+    selected_pages: Mapped[str | None] = mapped_column(Text, nullable=True)
     issuer_id: Mapped[int | None] = mapped_column(Integer, ForeignKey("issuers.id"), nullable=True)
     layout_spec_id: Mapped[int | None] = mapped_column(
         Integer, ForeignKey("layout_specs.id"), nullable=True

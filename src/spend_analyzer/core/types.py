@@ -14,6 +14,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass, field
 from datetime import date
+from collections.abc import Sequence
 from typing import Literal, Protocol, runtime_checkable
 
 #: Minimum median page character count for a document to be considered to have a text layer.
@@ -56,6 +57,33 @@ class ExtractedDoc:
         """All pages' text joined by a form-feed, matching how a PDF viewer's "select all"
         would present page breaks: ``"\\n\\f\\n"``."""
         return "\n\f\n".join(page.text for page in self.pages)
+
+    def select_pages(self, pages: Sequence[int] | None) -> ExtractedDoc:
+        """A copy of this document keeping only the given 1-based ``pages``.
+
+        Original ``page_number`` values are preserved; ``page_count`` becomes the number of pages
+        kept and ``has_text_layer`` is recomputed over them. Out-of-range pages are ignored, and
+        an empty/``None`` selection (or one matching no page) returns the document unchanged.
+        """
+        if not pages:
+            return self
+        wanted = set(pages)
+        kept = tuple(p for p in self.pages if p.page_number in wanted)
+        if not kept:
+            return self
+        char_counts = sorted(p.char_count for p in kept)
+        mid = len(char_counts) // 2
+        median = (
+            char_counts[mid]
+            if len(char_counts) % 2
+            else (char_counts[mid - 1] + char_counts[mid]) / 2
+        )
+        return ExtractedDoc(
+            file_sha256=self.file_sha256,
+            page_count=len(kept),
+            pages=kept,
+            has_text_layer=median >= TEXT_LAYER_MIN_CHARS,
+        )
 
 
 @dataclass(frozen=True, slots=True)
