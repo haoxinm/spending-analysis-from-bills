@@ -1,0 +1,302 @@
+# Income and tax analysis
+
+Spend Analyzer can read your W-2, 1099 and Form 1040 PDFs and show what you earned, what was
+withheld, what you owed or got back, and your effective tax rate, year by year. It is a second,
+separate import path next to bank and card statements: tax forms are parsed locally by
+deterministic code, never by an LLM, and never leave your machine.
+
+This page covers what is read from each form, how income and tax are aggregated, how the
+federal tax estimate works (and where it is only approximate), and what to do when an import
+doesn't go as expected. For the commands see [CLI.md](CLI.md#tax); for the privacy guarantees see
+the [README's privacy model](../README.md#privacy-model).
+
+## Getting forms in
+
+```console
+$ spend-analyzer tax import w2-2024.pdf 1099-composite-2024.pdf return-2024.pdf
+```
+
+or use the **Income & Tax** screen in the web UI (`spend-analyzer serve`), which uploads the same
+files. Import is a single step: there is no preview-and-confirm phase, because there is nothing to
+choose (no issuer, no layout, no LLM). A file is either recognised and stored, or reported as
+unsupported or unreadable.
+
+Requirements:
+
+- **Native digital PDFs** with a text layer, as with statements. Scans and photos are not read.
+- **Software-generated forms**: the PDF a payroll provider, broker or tax program produces. The
+  parsers key on the printed box and line labels, so a hand-filled form that has been scanned
+  won't work.
+- Each file is imported for one **user** (`--user-id`, defaulting to the default user). In the web
+  UI the Income & Tax screen follows the same user chips as the Dashboard.
+
+A file may hold several forms (two employers' W-2s, a consolidated 1099 with several accounts).
+Each is stored separately.
+
+## Supported forms
+
+| Form | Parser id | Role | Notes |
+|---|---|---|---|
+| W-2 | `tax_w2` | source | Copies B, C and 2 on one page collapse into one form; several employers in one file are fine |
+| 1099-INT | `tax_1099_int` | source | |
+| 1099-DIV | `tax_1099_div` | source | |
+| 1099-B | `tax_1099_b` | source | Net gain or loss per holding term; proceeds and cost basis are not stored |
+| 1099-NEC, 1099-MISC | `tax_1099_nec_misc` | source | One parser, two form types; the heading decides |
+| Consolidated 1099 | `tax_1099_consolidated` | source | A broker's composite statement: 1099-INT, -DIV, -B and optionally -MISC sections, one form per account |
+| Form 1040 | `tax_1040` | return | Tax years 2022-2025, with Schedules D, 1, 2 and C when attached |
+
+Not supported: Form 1040-SR, 1040-NR and 1040-X (amended) returns, state returns, and 1099
+sections other than the above (for example 1099-OID, which a consolidated statement skips with a
+warning). Amounts are USD only.
+
+## What is read, and where it goes
+
+Every amount is stored as an integer count of cents. Each line lands in one **income category**
+or one **tax category**; the category, not the form, is what the totals and the UI group by.
+
+### Income categories
+
+| Category | Label | Counted in total income |
+|---|---|---|
+| `salary_wages` | Wages and salary | yes |
+| `interest` | Interest | yes |
+| `ordinary_dividends` | Ordinary dividends | yes |
+| `qualified_dividends` | Qualified dividends (memo) | **no**, memo |
+| `short_term_capital_gain` | Short-term capital gain | yes (may be negative) |
+| `long_term_capital_gain` | Long-term capital gain | yes (may be negative) |
+| `self_employment` | Self-employment income | yes |
+| `other` | Other income | yes, unless it is a memo item |
+
+Only the two capital-gain categories can be negative (a net loss). Everything else is stored as
+received and must be zero or positive.
+
+### Tax categories
+
+| Group | Categories |
+|---|---|
+| Withholding | `federal_income_tax_withheld`, `state_income_tax_withheld`, `local_income_tax_withheld` |
+| FICA | `social_security_tax`, `medicare_tax` |
+| Liability (from a return) | `total_federal_tax`, `federal_tax_ordinary_est`, `federal_tax_preferential_est`, `net_investment_income_tax`, `additional_medicare_tax`, `self_employment_tax` |
+| Payments | `estimated_tax_payments`, `total_payments` |
+| Result | `refund`, `amount_owed` |
+
+Tax amounts are non-negative magnitudes; for the result group the category carries the direction.
+State withholding keeps the state code it was printed under (box 15 on a W-2), and local
+withholding keeps the locality name.
+
+### Boxes to categories
+
+| Form | Box | Category | Note |
+|---|---|---|---|
+| **W-2** | 1 | `salary_wages` | Emitted even when 0 |
+| | 2 | `federal_income_tax_withheld` | |
+| | 4 | `social_security_tax` | |
+| | 6 | `medicare_tax` | |
+| | 17 | `state_income_tax_withheld` | One item per state line |
+| | 19 | `local_income_tax_withheld` | By locality name |
+| | 3, 5, 12, 14 | not stored | |
+| **1099-INT** | 1 | `interest` | Emitted even when 0 |
+| | 3 | `interest` | Savings bond and Treasury interest, a second item |
+| | 8 | `other` (memo) | Tax-exempt interest; shown as a memo line |
+| | 4 | `federal_income_tax_withheld` | |
+| | 17 | `state_income_tax_withheld` | |
+| **1099-DIV** | 1a | `ordinary_dividends` | Emitted even when 0 |
+| | 1b | `qualified_dividends` (memo) | A subset of 1a |
+| | 2a | `long_term_capital_gain` | Capital-gain distributions are long term |
+| | 12 | `other` (memo) | Exempt-interest dividends |
+| | 4, state box | federal and state withholding | |
+| **1099-B** | net per term | `short_term_capital_gain`, `long_term_capital_gain` | Summary rows win over transaction rows when both exist |
+| | ordinary / undetermined | `other` | Only when positive; adds a warning |
+| | 4, state | federal and state withholding | |
+| **1099-NEC** | 1 | `self_employment` | Emitted even when 0 |
+| | 4, 5 | federal and state withholding | |
+| **1099-MISC** | 1, 2, 3 | `other` | Rents, royalties, other income; one item each |
+| | 7 (pre-2020 layout) | `self_employment` | |
+| | 4, 16 | federal and state withholding | |
+| **Consolidated 1099** | each section | as for the single form | Items keep their own source form; one form per account |
+| **Form 1040** | 1a (2022: 1) | `salary_wages` | Line 1z on 2023 and later |
+| | 2b | `interest` | |
+| | 3b | `ordinary_dividends` | |
+| | 3a | `qualified_dividends` (memo) | |
+| | Schedule D 7 and 15 | `short_term_capital_gain`, `long_term_capital_gain` | Without Schedule D, line 7 is treated as long term, with a warning |
+| | Schedule 1 line 3 (or Schedule C line 31) | `self_employment` | A business loss is not recorded; warning |
+| | 4b, 5b, 6b, 8 | `other` | Retirement, pension, Social Security, other Schedule 1 income |
+| | 24 | `total_federal_tax` | |
+| | 25d | `federal_income_tax_withheld` | |
+| | 26 | `estimated_tax_payments` | |
+| | 33 | `total_payments` | |
+| | 34 (or 35a) | `refund` | |
+| | 37 | `amount_owed` | |
+| | Schedule 2 lines 4, 11, 12 | `self_employment_tax`, `additional_medicare_tax`, `net_investment_income_tax` | |
+| | 16 | `federal_tax_ordinary_est`, `federal_tax_preferential_est` | An [estimate](#the-federal-tax-split-is-an-estimate) |
+
+Names, addresses, and recipient or spouse details are never read. Of a taxpayer identifier, only
+the last four digits are ever kept, and only for the payer or account, never your own number.
+
+## Memo items
+
+A **memo item** is shown but not added to total income, because it is either already inside
+another line or isn't taxable income:
+
+- **Qualified dividends** are a subset of ordinary dividends (1099-DIV box 1b inside 1a; 1040 line
+  3a inside 3b). Counting both would double count them. They appear as "Qualified dividends
+  (memo)".
+- **Tax-exempt interest** (1099-INT box 8) and **exempt-interest dividends** (1099-DIV box 12) are
+  not taxable income. They appear together as "Tax-exempt interest (memo)".
+
+In `tax report --csv` memo rows have `section = memo` and are absent from `total_income`.
+
+## Source forms versus the return
+
+A W-2 or 1099 describes income **as reported to you by a payer**: a *source* form. A Form 1040
+describes the same income **as you filed it**, plus the tax computed on it: a *return*. They
+overlap, so adding them together would count every dollar twice. The rule is:
+
+| Figure | Taken from |
+|---|---|
+| Income by category | Source forms (W-2, 1099) |
+| Withholding and FICA | Source forms |
+| Total tax, Schedule 2 taxes, payments, refund, amount owed, ordinary/preferential split | The return (1040) |
+
+If a year has **no source forms**, income and withholding fall back to the return's own lines and
+the year is labelled "income basis: return" (with a warning); the Income & Tax screen shows a
+banner. If a year has both, the W-2 wages are compared with the return's wages and a warning is
+shown when they differ by more than $1, typically a missing or corrected W-2. Neither side wins
+silently: income stays on the source basis. When the users of an all-users view disagree on
+basis, the year is labelled "mixed".
+
+## Rates
+
+All rates are fractions of **total income** (memo items excluded; a net capital loss lowers it).
+A rate is shown as "n/a" (an em dash in the UI) when total income is zero or negative, or when the
+numerator isn't available, for example no return was imported.
+
+| Rate | Formula |
+|---|---|
+| Federal effective rate | total federal tax (return) / total income |
+| Federal withholding rate | federal income tax withheld (source forms) / total income |
+| All-in rate | (federal tax + state tax + local tax + Social Security + Medicare) / total income |
+
+In the all-in rate, "federal tax" is the return's total federal tax when there is one, otherwise
+the federal tax withheld. "State tax" is the return's state liability when present, otherwise the
+state tax withheld. Local tax is local withholding. The all-in rate therefore mixes final and
+withheld figures when you have only part of the paperwork, so read the warnings under the numbers.
+
+**Refund or owed** comes from the return's printed lines. If the return prints neither but does
+print total payments and total tax, it is derived as their difference and flagged (the CLI notes
+"refund / owed derived from total payments minus total tax").
+
+## The federal tax split is an estimate
+
+The Form 1040 prints one number for income tax (line 16). Spend Analyzer splits it into
+
+- **tax on ordinary income**, and
+- **tax on qualified dividends and long-term gains** (the preferential part),
+
+so you can see how much of your tax comes from investment income taxed at the lower rates. Both
+parts are estimates (`is_estimate`) and are labelled "(est.)". Together they always add up to the
+printed line 16 amount.
+
+**Method.** The split re-runs the IRS *Qualified Dividends and Capital Gain Tax Worksheet* with
+bracket data bundled in the package (`ingest/tax/data/federal_brackets.yaml`):
+
+1. Preferential income is qualified dividends (line 3a) plus net long-term gain (the lesser of
+   Schedule D lines 15 and 16 when Schedule D is attached, otherwise line 7 when positive),
+   clamped to taxable income.
+2. Ordinary tax is the worksheet's tax on taxable income minus that preferential income, using the
+   IRS Tax Table (midpoint of each row) below $100,000 and exact bracket arithmetic above, rounded
+   to whole dollars like the printed form.
+3. Preferential tax is the printed line 16 amount minus the ordinary tax.
+
+**Coverage.** Tax years **2022, 2023, 2024 and 2025**, for single, married filing jointly, married
+filing separately, head of household and qualifying surviving spouse (which uses the joint
+tables). The values were copied from the IRS revenue procedures (the file header lists each one);
+verify them against the IRS publication before relying on them, and do the same when adding a year.
+
+**Limits.** The split is flagged **approximate** (the warning says "federal tax split is
+approximate") when the printed tax is more than $2 away from the worksheet recomputation, or when
+the return reports 28%-rate gain or unrecaptured section 1250 gain. It does not model the
+Schedule D Tax Worksheet, the Form 4952 investment-interest election, Form 8814 or 4972 tax,
+the foreign earned income exclusion, the alternative minimum tax or credits. The split is simply
+not computed (with a warning) when the filing status is missing or more than one box is marked,
+there is no bracket table for the year, or taxable income or tax could not be read. This is a
+reading aid for your own records, not tax advice and not a substitute for your return.
+
+A Form 1040 for a year other than 2022-2025 is still read, using the newest layout table, with the
+warning "form layout for tax year N not verified"; the split is not estimated for it.
+
+## Joint returns
+
+The tool does not split a joint return between spouses. A married-filing-jointly 1040 is one
+return with one total tax, and it is stored under the user you import it for. If you and your
+spouse are separate users and each imported their own W-2s:
+
+- the return's tax is compared with only that user's income, so the per-user **effective rate is
+  not meaningful**, and the wage reconciliation warning will fire for that user;
+- the **All users** view adds income and withholding from every user's source forms and takes the
+  liability from the return, which gives the correct household figures.
+
+Either use All users for a joint-filing household, or import the whole household's forms under one
+user. Your spouse's name and number on a return are never read.
+
+## Corrected forms
+
+A form marked CORRECTED is stored with a flag and a warning. It is **not** automatically matched to
+the original: if both are imported, their amounts are added and the year's warnings say so. After
+importing a corrected form, delete the document it replaces:
+
+```console
+$ spend-analyzer tax list
+$ spend-analyzer tax delete 3
+```
+
+Importing the same file again does nothing, and a form whose content is identical to one already
+stored (the same W-2 delivered as two different PDFs) is skipped and reported as a duplicate form.
+
+## Where the data lives
+
+Imported figures are stored in the local database (`tax_documents`, `tax_forms`, `income_items`,
+`tax_items`), per user. Beyond amounts, the database holds the payer name, the last four digits of
+the payer's identifier and of the account number, the form type and the tax year. Full SSNs,
+ITINs and EINs are never written to the database, the logs or the extract cache. After a tax import
+the uploaded PDF is deleted; to keep a copy (it contains full identifiers, so think before you do),
+set in `config.toml`:
+
+```toml
+[privacy]
+store_tax_pdf_copies = true      # default false; a kept copy is removed by `tax delete`
+```
+
+This key is read from the file only; the Settings screen doesn't show it. Tax data is never sent to
+an LLM. If you hand a tax form to the statement `import` command, it prints a pointer to `tax import` instead of storing anything.
+
+## Troubleshooting
+
+**"Can't read this PDF — it looks like a scan or an image with no text layer."** The file has no
+text to read. Download the form again from the payer or tax software instead of scanning it.
+
+**"This PDF doesn't look like a supported tax form."** The status is `unsupported`. Check the form
+is on the [supported list](#supported-forms): 1040-SR, 1040-NR, 1040-X and state returns are not
+read. A row for the file stays in `tax list`; remove it with `tax delete <id>`.
+
+**"Could not determine the tax year for this form."** The year isn't printed where the parser looks
+for it. Supply it: `spend-analyzer tax import --tax-year 2024 form.pdf` (the web UI has a tax year
+field).
+
+**"This tax form could not be read."** The form was recognised, but a required box (for example W-2
+box 1) is blank or unreadable. Run `tax list` to see the status; try the PDF the issuer provides
+rather than a "print to PDF" copy of a screen.
+
+**Wages differ between W-2s and the return.** Usually a W-2 is missing or a corrected one was
+imported alongside the original. See [Corrected forms](#corrected-forms), and for joint returns
+[Joint returns](#joint-returns).
+
+**"No W-2/1099 source documents were imported for this year."** Income is coming from the return.
+Import the W-2 and 1099 forms to see income by payer.
+
+**"federal tax split not estimated" / "no federal bracket table".** See the
+[limits above](#the-federal-tax-split-is-an-estimate): the filing status wasn't a single clear
+mark, the year is outside 2022-2025, or taxable income or tax was not read.
+
+**`tax report` prints "No tax data matches this report."** There are no documents for that user and
+year. `tax report` defaults to the default user; use `--user-id` or `--all-users`.

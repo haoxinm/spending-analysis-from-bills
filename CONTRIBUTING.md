@@ -65,8 +65,12 @@ pre-commit hook (`scripts/check_no_statements.py`) that rejects any `.pdf` outsi
   matching `.json` golden. Regenerate with:
 
   ```console
-  $ uv run python tests/generate_fixtures.py
+  $ PYTHONPATH=. uv run python tests/generate_fixtures.py
   ```
+
+  The repository root must be on the import path (the script imports `tests.fixtures.gen`), hence
+  `PYTHONPATH=.` (PowerShell: `$env:PYTHONPATH = "."` first). `uv run python -m tests.generate_fixtures`
+  works without it.
 
 - **Generation is deterministic.** A given `LayoutBuilder` variant always produces byte-for-byte
   the same PDF and golden, so a diff in `tests/fixtures/generated/` after a code-only change is a
@@ -75,6 +79,14 @@ pre-commit hook (`scripts/check_no_statements.py`) that rejects any `.pdf` outsi
   fixture, test, or docstring — issuer identity is user data (§2f.4 of the design doc), never a
   hard-coded string in the codebase.
 - **Never hand-edit a generated `.pdf` or `.json`.** Change the `LayoutBuilder` and regenerate.
+- **Tax fixtures use invalid identifiers and invented names.** A tax form carries SSNs and EINs, so
+  every `tests/fixtures/gen/tax_*.py` builder takes its identities from `tax_common.py`: SSNs in
+  the never-issued `9xx` area (for example `912-34-5678`), EINs with the unassigned `99-` prefix,
+  fictional person, employer, bank and broker names, and no real institution (no real bank, broker
+  or employer, and no real address). Never paste identifiers from a real form, even redacted. The
+  tripwire `tests/fixtures/test_tax_fixture_hygiene.py` fails on a valid-looking SSN or EIN or a
+  denylisted institution name in a generator or a generated file, and a tax builder's `layout_id`
+  must equal its module name (`tax_w2.py` -> `tax_w2`).
 
 ## Adding a parser
 
@@ -106,6 +118,49 @@ If a statement's shape doesn't warrant a new built-in parser at all (a one-off b
 account), see [docs/LAYOUTS.md](docs/LAYOUTS.md#anything-else-the-generic-parser-and-layout-specs)
 for the no-code layout-spec path instead — it needs no PR.
 
+## Adding a tax-form parser
+
+Tax forms (W-2, 1099, 1040) have their own parser family, registry and fixtures, deliberately
+separate from statement parsers (see [docs/TAX.md](docs/TAX.md) for what the existing ones read).
+A new form needs:
+
+1. **One parser module** under `src/spend_analyzer/ingest/tax/parsers/` exposing a module-level
+   `PARSER` object that satisfies the `TaxFormParser` protocol (`core/tax_types.py`): `id`,
+   `version`, `form_types`, `detect(doc)` (a structure-based score in [0, 1]; it must never raise)
+   and `parse(doc, *, tax_year=None)` returning a `ParsedTaxDocument`. A module whose name starts
+   with `_` is skipped, and `ingest/tax/registry.py` discovers `PARSER` by module scan, so nothing
+   else needs registering. There is no generic fallback: a document no parser scores above `0.5`
+   is `unsupported`.
+2. **Reuse the shared primitives**: `ingest/tax/fields.py` for labelled-amount lookup (its module
+   docstring is the API), `ingest/tax/common.py` (`require_year`, `sanitize_payer_name`,
+   `build_document`), `ingest/tax/year.py` and `ingest/tax/tin.py`. Money goes through
+   `ingest/layout.parse_money`; never parse amounts ad hoc.
+3. **Map every box to a category**, using only the vocabulary in `core/tax_types.py`
+   (`IncomeCategory`, `TaxCategory`). Amounts are integer cents; only the two capital-gain
+   categories may be negative. Mark items that are inside another line (qualified dividends,
+   tax-exempt interest) `is_memo=True`. Declare whether the form is a *source* or a *return* in
+   `FORM_ROLE`, because that decides how it is aggregated.
+4. **Never let an identifier through.** Read a taxpayer identifier only via `tin.mask_tin` and keep
+   the last four digits; pass anything that could be echoed (payer names, labels, warnings, error
+   messages) through `tin.scrub` / `common.sanitize_payer_name`, and keep warnings free of document
+   text and of digit runs of six or more. Never read the recipient's name, address or number.
+5. **One `LayoutBuilder` under `tests/fixtures/gen/tax_<form>.py`** with a `layout_id` equal to the
+   module name, built from `tax_common.py` (see the fixture rule above) and covering at least a
+   normal form, a zero or missing-box case, a corrected form where the form has one, and a case
+   that must be rejected. `PYTHONPATH=. uv run python tests/generate_fixtures.py` renders them.
+6. **Goldens** are written beside each PDF as `.json`; the parser tests in `tests/ingest/tax/`
+   compare against `tests/ingest/golden/tax/<layout_id>/`. Add a parser test file next to the others
+   and assert both the categories and the amounts, including signs.
+7. **One row in the cross-`detect()` matrix**, `tests/ingest/tax/test_cross_detect.py`: your parser
+   must score its own fixtures above the threshold and every other tax parser's fixtures and every
+   bank fixture at or below it (`test_every_tax_parser_has_fixtures` fails for a parser without
+   fixtures).
+
+If the form changes layout between years (1040 lines are renumbered), keep a per-year field table
+and warn rather than guess for an unlisted year, as `parsers/f1040.py` does. New federal bracket
+data goes in `ingest/tax/data/federal_brackets.yaml`, copied from the IRS revenue procedure named
+in its header and checked against the IRS publication.
+
 ## Adding a layout spec
 
 A layout spec is the declarative (YAML), no-code alternative to a parser file — produced by the
@@ -127,6 +182,11 @@ bare `Exception` in library code, and never swallow `EgressViolation`.
 
 Anything touching `classify/llm/`, `llm/` (the HTTP client and the statement parser), `api/security.py`, the upload path in
 `api/routers/statements.py`, or `analytics/query.py` is security-sensitive by nature of this
-project's privacy model — see [docs/SECURITY_REVIEW.md](docs/SECURITY_REVIEW.md) for the checklist
+project's privacy model. So is the tax feature (`ingest/tax/`, especially `tin.py` and
+`pipeline.py`, plus `analytics/tax_query.py`, `api/routers/tax.py` and `core/tax_types.py`) and the
+net-worth feature (`analytics/net_worth_query.py`, `api/routers/net_worth.py`,
+`api/services/net_worth.py`): they hold taxpayer identifiers and account balances, must not import an
+LLM or HTTP client (`tests/test_architecture_guards.py`), and must keep full identifiers out of the
+database, logs and extract cache — see [docs/SECURITY_REVIEW.md](docs/SECURITY_REVIEW.md) for the checklist
 those areas are held to, and [SECURITY.md](SECURITY.md) to report a vulnerability rather than
 opening a public issue.
