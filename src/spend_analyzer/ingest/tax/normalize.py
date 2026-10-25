@@ -150,6 +150,18 @@ def _join_run(run: Sequence[Word]) -> list[Word]:
     ]
 
 
+def _is_spaced_form_suffix(out: Sequence[Word], run: Sequence[Word]) -> bool:
+    """``1099`` followed by a letter-spaced ``- I N T``: too short for a generic run, but the
+    preceding form number says what it is."""
+    return (
+        bool(out)
+        and out[-1].text.endswith("1099")
+        and len(run) >= 3
+        and run[0].text == "-"
+        and all(len(w.text) == 1 and w.text.isupper() for w in run[1:])
+    )
+
+
 def _despace(words: Sequence[Word]) -> list[Word]:
     out: list[Word] = []
     i = 0
@@ -162,7 +174,18 @@ def _despace(words: Sequence[Word]) -> list[Word]:
         ):
             j += 1
         run = words[i:j]
-        if len(run) >= _MIN_RUN and _looks_letter_spaced(run):
+        if _is_spaced_form_suffix(out, run):
+            out.append(
+                Word(
+                    "".join(w.text for w in run),
+                    run[0].x0,
+                    run[-1].x1,
+                    min(w.top for w in run),
+                    max(w.bottom for w in run),
+                )
+            )
+            i = j
+        elif len(run) >= _MIN_RUN and _looks_letter_spaced(run):
             out.extend(_join_run(run))
             i = j
         else:

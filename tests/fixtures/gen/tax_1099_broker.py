@@ -215,7 +215,7 @@ def _page1(spec: Spec, total: int) -> tuple[_Page, list[ParsedIncomeItem], list[
     page.put(
         _RIGHT - 2.0,
         150.0,
-        "Form " + spaced("1099-INT") + f"  {YEAR}  " + spaced("Interest Income"),
+        "Form 1099 " + spaced("-INT") + f"  {YEAR}  " + spaced("Interest Income"),
     )
     right_rows = [
         ("1 Interest Income", i1),

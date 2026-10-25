@@ -110,3 +110,8 @@ def test_page_after_instructions_with_amounts_is_kept() -> None:
         ]
     )
     assert "25.00" in "\n".join(_rows(normalize_doc(doc)))
+
+
+def test_number_intact_but_suffix_letter_spaced() -> None:
+    doc = doc_from_lines(["Form 1099 - I N T 2024", "Form 1099 - D I V 2024"])
+    assert _rows(normalize_doc(doc)) == ["Form 1099-INT 2024", "Form 1099-DIV 2024"]
