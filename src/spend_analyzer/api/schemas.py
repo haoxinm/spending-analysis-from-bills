@@ -513,6 +513,7 @@ class PiiTestResponse(_Model):
 class IngestSettings(_Model):
     always_confirm_extractor: bool
     default_extractor: Literal["auto", "llm"] = "auto"
+    tax_llm_fallback: bool = False
     date_format_hints: list[str]
     default_currency: str
 
@@ -878,6 +879,10 @@ class TaxImportResponse(_Model):
     tax_item_count: int
     warnings: list[str]
     error: str | None
+    #: True when the opt-in LLM fallback was consulted for this file.
+    llm_used: bool = False
+    #: Newly stored forms that were read entirely by the LLM fallback (they need review).
+    llm_form_count: int = 0
 
 
 class IncomeCategoryAmount(_Model):

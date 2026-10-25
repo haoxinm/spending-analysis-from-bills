@@ -45,11 +45,16 @@ from spend_analyzer.config import load_settings
 from spend_analyzer.core.errors import EgressViolation, ParserError, UnsupportedLayoutError
 from spend_analyzer.core.logging import get_logger
 from spend_analyzer.core.paths import ensure_home, statements_dir
-from spend_analyzer.core.tax_types import FORM_ROLE, ParsedTaxForm
+from spend_analyzer.core.tax_types import (
+    FORM_ROLE,
+    ParsedTaxForm,
+    TaxFallbackExtractor,
+)
 from spend_analyzer.db.models import IncomeItem, TaxDocument, TaxForm, TaxItem
 from spend_analyzer.ingest.extract import extract, sha256_file
 from spend_analyzer.ingest.pipeline import NO_TEXT_LAYER_MESSAGE
-from spend_analyzer.ingest.tax.orchestrator import parse_document
+from spend_analyzer.ingest.tax.fallback import apply_fallback
+from spend_analyzer.ingest.tax.orchestrator import ParseOutcome, parse_document
 from spend_analyzer.ingest.tax.tin import has_long_digit_run, scrub, scrub_display_name
 
 logger = get_logger("ingest.tax.pipeline")
@@ -77,6 +82,10 @@ class TaxImportResult:
     error: str | None  # generic message, never document text
     #: ``(document_id, original_name, form_type)`` of the earlier forms that caused a skip.
     skipped_from: tuple[tuple[int, str, str], ...] = ()
+    #: True when the opt-in LLM fallback sent at least one request for this file.
+    llm_used: bool = False
+    #: Number of newly stored forms that were read entirely by the LLM fallback.
+    llm_form_count: int = 0
 
 
 def _utcnow_iso() -> str:
@@ -246,6 +255,19 @@ def _existing_summary(session: Session, doc: TaxDocument) -> TaxImportResult:
     )
 
 
+def _no_result_hint(*, tried: bool) -> str:
+    """What to do next when a file with a text layer still yielded nothing."""
+    settings = load_settings()
+    if settings.llm.is_configured and not settings.ingest.tax_llm_fallback:
+        return (
+            " You can turn on the LLM fallback for tax forms in Settings (LLM), "
+            "or add the figures manually."
+        )
+    if tried:
+        return " Even the LLM fallback could not read it; you can add the figures manually."
+    return ""
+
+
 def _failure(
     session: Session,
     doc: TaxDocument,
@@ -281,6 +303,7 @@ def import_tax_document(
     user_id: int,
     original_name: str,
     tax_year: int | None = None,
+    fallback: TaxFallbackExtractor | None = None,
 ) -> TaxImportResult:
     """Import one tax PDF for ``user_id``. Commits; never raises for bad documents.
 
@@ -290,6 +313,9 @@ def import_tax_document(
         user_id: owner of the imported figures.
         original_name: display name (LOCAL ONLY; SSN shapes and 6+ digit runs are masked).
         tax_year: optional user override for forms that print no year.
+        fallback: the opt-in LLM fallback (`None` = fully deterministic, nothing leaves the
+            machine). It is consulted only for what the parsers could not read, and before any
+            database write, so no network call happens inside a write transaction.
 
     Returns:
         A `TaxImportResult`. ``status`` is 'parsed', 'duplicate' (same file already parsed for this
@@ -310,6 +336,7 @@ def import_tax_document(
             user_id=user_id,
             original_name=original_name,
             tax_year=tax_year,
+            fallback=fallback,
         )
     except EgressViolation:
         raise
@@ -367,6 +394,7 @@ def _import(
     user_id: int,
     original_name: str,
     tax_year: int | None,
+    fallback: TaxFallbackExtractor | None = None,
 ) -> TaxImportResult:
     doc_row = _find_document(session, user_id, file_sha256)
     if doc_row is not None and doc_row.status == STATUS_PARSED:
@@ -398,6 +426,23 @@ def _import(
         )
 
     stored_path = _keep_or_unstage(pdf_path, file_sha256, keep=keep)
+
+    # Parse (and, when opted in, consult the LLM fallback) BEFORE anything is written: a network
+    # call must never happen while a database write transaction is open.
+    failure: tuple[str, str] | None = None
+    outcome: ParseOutcome | None = None
+    if not extracted.has_text_layer:
+        failure = (STATUS_UNSUPPORTED, NO_TEXT_LAYER_MESSAGE)
+    else:
+        try:
+            outcome = parse_document(extracted, tax_year=tax_year)
+        except UnsupportedLayoutError:
+            failure = (STATUS_UNSUPPORTED, UNSUPPORTED_MESSAGE)
+        except ParserError as exc:
+            failure = (STATUS_ERROR, _safe_message(exc))
+    run = apply_fallback(extracted, outcome, fallback, tax_year=tax_year)
+    parsed = run.document
+
     if doc_row is None:
         doc_row = TaxDocument(
             user_id=user_id,
@@ -412,38 +457,19 @@ def _import(
     doc_row.page_count = extracted.page_count
     session.flush()
 
-    if not extracted.has_text_layer:
-        return _failure(
-            session,
-            doc_row,
-            status=STATUS_UNSUPPORTED,
-            message=NO_TEXT_LAYER_MESSAGE,
-            tax_year=tax_year,
-        )
+    if parsed is None:
+        status, message = failure or (STATUS_ERROR, GENERIC_ERROR_MESSAGE)
+        if extracted.has_text_layer:
+            message += _no_result_hint(tried=run.attempted)
+        return _failure(session, doc_row, status=status, message=message, tax_year=tax_year)
+    if outcome is not None:
+        doc_row.parser_id = outcome.parser_id
+        doc_row.parser_version = outcome.parser_version
+    elif fallback is not None:
+        doc_row.parser_id = fallback.id
+        doc_row.parser_version = fallback.version
 
-    try:
-        outcome = parse_document(extracted, tax_year=tax_year)
-    except UnsupportedLayoutError:
-        return _failure(
-            session,
-            doc_row,
-            status=STATUS_UNSUPPORTED,
-            message=UNSUPPORTED_MESSAGE,
-            tax_year=tax_year,
-        )
-    except ParserError as exc:
-        return _failure(
-            session,
-            doc_row,
-            status=STATUS_ERROR,
-            message=_safe_message(exc),
-            tax_year=tax_year,
-        )
-    parsed = outcome.document
-    doc_row.parser_id = outcome.parser_id
-    doc_row.parser_version = outcome.parser_version
-
-    inserted_forms = skipped = income_n = tax_n = 0
+    inserted_forms = skipped = income_n = tax_n = llm_forms = 0
     inserted_types: list[str] = []
     skipped_from: list[tuple[int, str, str]] = []
     soft_warnings: list[str] = []
@@ -478,7 +504,7 @@ def _import(
                 agi_minor=form.agi_minor,
                 taxable_income_minor=form.taxable_income_minor,
                 fingerprint=fingerprint,
-                extraction_method="parser",
+                extraction_method=form.extraction_method,
                 is_user_edited=False,
                 created_at=_utcnow_iso(),
             )
@@ -501,6 +527,7 @@ def _import(
                 skipped_from.append((earlier[0], earlier[1], form.form_type))
             continue
         inserted_forms += 1
+        llm_forms += form.extraction_method == "llm"
         inserted_types.append(form.form_type)
         if form.income:
             session.execute(
@@ -517,7 +544,7 @@ def _import(
                             "box": i.box,
                             "label": i.label,
                             "is_memo": i.is_memo,
-                            "origin": "parser",
+                            "origin": i.origin,
                         }
                         for i in form.income
                     ]
@@ -540,7 +567,7 @@ def _import(
                             "label": t.label,
                             "jurisdiction": t.jurisdiction,
                             "is_estimate": t.is_estimate,
-                            "origin": "parser",
+                            "origin": t.origin,
                         }
                         for t in form.taxes
                     ]
@@ -576,16 +603,18 @@ def _import(
     session.commit()
     logger.info(
         "tax import parsed: document_id=%s parser=%s@%s forms=%s inserted=%d skipped=%d "
-        "income_items=%d tax_items=%d unparsed_regions=%d",
+        "income_items=%d tax_items=%d unparsed_regions=%d llm_requests=%d llm_forms=%d",
         doc_row.id,
-        outcome.parser_id,
-        outcome.parser_version,
+        doc_row.parser_id,
+        doc_row.parser_version,
         ",".join(f.form_type for f in parsed.forms),
         inserted_forms,
         skipped,
         income_n,
         tax_n,
         len(parsed.unparsed),
+        run.requests_sent,
+        llm_forms,
     )
     return TaxImportResult(
         document_id=doc_row.id,
@@ -599,6 +628,8 @@ def _import(
         warnings=tuple(warnings),
         error=None,
         skipped_from=tuple(skipped_from),
+        llm_used=run.requests_sent > 0,
+        llm_form_count=llm_forms,
     )
 
 

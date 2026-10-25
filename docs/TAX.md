@@ -3,7 +3,8 @@
 Spend Analyzer can read your W-2, 1099 and Form 1040 PDFs and show what you earned, what was
 withheld, what you owed or got back, and your effective tax rate, year by year. It is a second,
 separate import path next to bank and card statements: tax forms are parsed locally by
-deterministic code, never by an LLM, and never leave your machine.
+deterministic code and stay on your machine. An optional, off-by-default LLM fallback for the
+parts the parsers cannot read is described under [LLM fallback](#llm-fallback-optional).
 
 This page covers what is read from each form, how income and tax are aggregated, how the
 federal tax estimate works (and where it is only approximate), and what to do when an import
@@ -18,7 +19,7 @@ $ spend-analyzer tax import w2-2024.pdf 1099-composite-2024.pdf return-2024.pdf
 
 or use the **Income & Tax** screen in the web UI (`spend-analyzer serve`), which uploads the same
 files. Import is a single step: there is no preview-and-confirm phase, because there is nothing to
-choose (no issuer, no layout, no LLM). A file is either recognised and stored, or reported as
+choose (no issuer, no layout; the optional LLM fallback is a setting, not a step). A file is either recognised and stored, or reported as
 unsupported or unreadable.
 
 Requirements:
@@ -343,6 +344,43 @@ and per item (`origin`). Manual forms get a random fingerprint and never collide
 Editing an imported form keeps its fingerprint on purpose: uploading the original file again is
 still recognised as a duplicate and does not bring back the figures you changed.
 
+## LLM fallback (optional)
+
+Off by default. Deterministic parsing always runs first and its results always win. If you have an
+LLM configured (Settings -> LLM) you can additionally tick **Use the LLM for tax forms the built-in
+parsers can't read** (`[ingest] tax_llm_fallback = true`, or `spend-analyzer llm set
+--tax-llm-fallback`). It then applies only to:
+
+- regions the parsers reported as unreadable (an unrecognised section, a form with a blank key
+  box, a consolidated-statement section with no recognisable amounts), and
+- a whole file nothing could be read from, when it has a text layer and a tax year is printed on it
+  (or you pass one).
+
+A parseable file never triggers a request. `spend-analyzer tax import --no-llm` skips it for one run.
+
+**What is sent.** Only the text of the affected pages (at most 2 pages / 12,000 characters per
+request, at most 12 requests per file), after redaction: SSN / EIN shapes become `***-**-1234` /
+`**-***1234`; account numbers and other long digit runs keep only their last 4 digits (amounts are
+left alone); the recipient / employee name, address and SSN rows are removed (best effort, by
+label and position); e-mail addresses are masked; and your **personal-info entries from Settings ->
+Privacy** (names, address, phone and account numbers) are removed with exactly the rules used for
+statements. Recipient identity detection is heuristic, so add your name and address to those
+entries. File names are never sent.
+
+**What is accepted.** The model answers in JSON. Only forms W-2 and 1099-INT/DIV/B/NEC/MISC and
+consolidated 1099 are allowed (never 1040), only boxes from a fixed table (`core/tax_boxes.py`,
+kept in step with the parsers by a test), and the category comes from that table, never from the
+model. Every amount must appear in the text that was sent, be within range and non-negative (except
+capital gains), and the tax year is never taken from the model. Anything else is dropped and counted
+in one warning. A model or network error never fails the import: the deterministic result is kept
+with a warning.
+
+Forms read this way carry `extraction_method = llm` and their items `origin = llm`; they show as
+**AI-extracted - review** until you confirm or edit them, and the document gets the warning "Some
+values were read by your LLM; review them." Items filled into a consolidated statement keep the
+form as `parser` and are marked per item. A file that still yields nothing says so, and suggests
+turning the fallback on when an LLM is configured but it is off, or entering the figures manually.
+
 ## Where the data lives
 
 Imported figures are stored in the local database (`tax_documents`, `tax_forms`, `income_items`,
@@ -358,8 +396,8 @@ set in `config.toml`:
 store_tax_pdf_copies = true      # default false; a kept copy is removed by `tax delete`
 ```
 
-This key is read from the file only; the Settings screen doesn't show it. Tax data is never sent to
-an LLM. If you hand a tax form to the statement `import` command, it prints a pointer to `tax import` instead of storing anything.
+This key is read from the file only; the Settings screen doesn't show it. Tax data is not sent to
+an LLM unless you turn on the fallback below. If you hand a tax form to the statement `import` command, it prints a pointer to `tax import` instead of storing anything.
 
 ## Troubleshooting
 

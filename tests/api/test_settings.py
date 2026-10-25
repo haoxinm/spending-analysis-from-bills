@@ -304,3 +304,16 @@ def test_pii_test_defaults_to_saved_terms(
     assert r.json() == {"redacted_text": "hi [NAME]", "count": 1}
     r = client.post("/api/settings/pii-test", json={"text": "hi ALICE", "terms": []})
     assert r.json() == {"redacted_text": "hi ALICE", "count": 0}
+
+
+def test_tax_llm_fallback_defaults_off_and_round_trips(client: TestClient) -> None:
+    body = client.get("/api/settings").json()
+    assert body["ingest"]["tax_llm_fallback"] is False
+    body["ingest"]["tax_llm_fallback"] = True
+    assert client.put("/api/settings", json=body).json()["ingest"]["tax_llm_fallback"] is True
+    assert client.get("/api/settings").json()["ingest"]["tax_llm_fallback"] is True
+    # an unrelated save must not drop it
+    body = client.get("/api/settings").json()
+    body["llm"]["batch_size"] = 12
+    client.put("/api/settings", json=body)
+    assert client.get("/api/settings").json()["ingest"]["tax_llm_fallback"] is True

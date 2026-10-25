@@ -5450,6 +5450,11 @@
             "title": "Default Extractor",
             "default": "auto"
           },
+          "tax_llm_fallback": {
+            "type": "boolean",
+            "title": "Tax Llm Fallback",
+            "default": false
+          },
           "date_format_hints": {
             "items": {
               "type": "string"
@@ -7856,6 +7861,16 @@
               }
             ],
             "title": "Error"
+          },
+          "llm_used": {
+            "type": "boolean",
+            "title": "Llm Used",
+            "default": false
+          },
+          "llm_form_count": {
+            "type": "integer",
+            "title": "Llm Form Count",
+            "default": 0
           }
         },
         "type": "object",

@@ -95,6 +95,7 @@ def _settings_schema(settings: Settings) -> schemas.Settings:
         ingest=schemas.IngestSettings(
             always_confirm_extractor=settings.ingest.always_confirm_extractor,
             default_extractor=settings.ingest.default_extractor,
+            tax_llm_fallback=settings.ingest.tax_llm_fallback,
             date_format_hints=list(settings.ingest.date_format_hints),
             default_currency=settings.ingest.default_currency,
         ),
@@ -121,6 +122,7 @@ def put_settings(body: schemas.Settings, current: SettingsDep) -> schemas.Settin
         ingest=IngestConfig(
             always_confirm_extractor=body.ingest.always_confirm_extractor,
             default_extractor=body.ingest.default_extractor,
+            tax_llm_fallback=body.ingest.tax_llm_fallback,
             date_format_hints=tuple(body.ingest.date_format_hints),
             default_currency=body.ingest.default_currency,
         ),

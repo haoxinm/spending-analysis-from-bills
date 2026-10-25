@@ -59,3 +59,38 @@ def test_recipient_name_never_in_parsed_output(pdf: Path) -> None:
     for text in _outputs_for(pdf):
         for part in _NAME_PARTS:
             assert part.lower() not in text.lower()
+
+
+def test_llm_fallback_output_has_no_tin_shapes() -> None:
+    """Even when the model echoes identifiers, nothing identifier-shaped survives validation."""
+    from spend_analyzer.core.tax_types import UnparsedRegion
+    from spend_analyzer.llm.tax_parser import TaxLLMExtractor
+    from tests.ingest.tax_support import doc_from_lines
+    from tests.llm_fakes import FakeLLM, install, remote_cfg
+
+    reply = json.dumps(
+        {
+            "forms": [
+                {
+                    "form_type": "1099-int",
+                    "payer_name": f"Granite {RECIPIENT_SSN}",
+                    "payer_tin_last4": "99-0000042",
+                    "account_last4": RECIPIENT_SSN,
+                    "pages": [1],
+                    "items": [{"box": "1", "amount": "5.00"}],
+                }
+            ]
+        }
+    )
+    mp = pytest.MonkeyPatch()
+    try:
+        install(mp, FakeLLM(default=reply))
+        doc = doc_from_lines(["Tax Year 2024", "Payer 99-0000042", "Interest 5.00"])
+        regions = (UnparsedRegion("unknown", (1,), "unreadable"),)
+        result = TaxLLMExtractor(remote_cfg()).extract(doc, regions, tax_year=2024)
+    finally:
+        mp.undo()
+    assert result.forms
+    blob = repr(result)
+    assert not NINE_DIGITS.search(blob) and not SSN_SHAPE.search(blob)
+    assert RECIPIENT_SSN not in blob

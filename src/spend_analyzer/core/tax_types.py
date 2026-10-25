@@ -1,7 +1,7 @@
 """Domain types for income and tax analysis from tax forms (W-2, 1099 family, 1040).
 
-Pure data and vocabulary: no I/O, no database, no network, and no LLM. Tax data never reaches an
-egress seam.
+Pure data and vocabulary: no I/O, no database, no network, and no LLM import. Tax data reaches an
+egress seam only through the opt-in `TaxFallbackExtractor` (see below), never by default.
 
 **Sign and unit convention (D6):** every amount is an integer count of minor currency units
 (cents), USD only in v1. `ParsedIncomeItem.amount_minor` is the amount as received: positive is
@@ -17,6 +17,10 @@ Aggregation takes income and withholding from source forms, and liability, refun
 preferential-versus-ordinary split from the return form. With no source forms for a year, income
 falls back to the return's line items.
 
+**Fallback (opt-in):** parsed items and forms carry their provenance (`origin`, `extraction_method`;
+default ``"parser"``). Only the optional LLM fallback produces ``"llm"``; the user's manual edits
+produce ``"manual"`` in the database layer.
+
 **Privacy (D3):** a full SSN, ITIN or EIN never appears in these types; only the last four digits
 (`payer_tin_last4`, `account_last4`). Recipient name and address are never captured. `payer_name`
 is local only, like `issuers.name`.
@@ -24,7 +28,7 @@ is local only, like `issuers.name`.
 
 from __future__ import annotations
 
-from collections.abc import Mapping
+from collections.abc import Mapping, Sequence
 from dataclasses import dataclass
 from types import MappingProxyType
 from typing import Final, Literal, Protocol, get_args, runtime_checkable
@@ -163,6 +167,10 @@ TAX_CATEGORY_LABELS: Final[Mapping[TaxCategory, str]] = MappingProxyType(
 )
 
 
+#: Where a stored figure came from: a deterministic parser, the opt-in LLM fallback, or the user.
+TaxOrigin = Literal["parser", "llm", "manual"]
+
+
 @dataclass(frozen=True, slots=True)
 class ParsedIncomeItem:
     """One income line from a form. `amount_minor` follows D6 (negative only for capital loss)."""
@@ -173,6 +181,7 @@ class ParsedIncomeItem:
     box: str | None  # display only, e.g. "1", "1a", "line 1a"
     label: str | None  # short label from our own table, never scraped text
     is_memo: bool = False
+    origin: TaxOrigin = "parser"
 
 
 @dataclass(frozen=True, slots=True)
@@ -186,6 +195,7 @@ class ParsedTaxItem:
     label: str | None
     jurisdiction: str | None = None  # None = federal/FICA; "CA" for a state; locality (<=32 chars)
     is_estimate: bool = False
+    origin: TaxOrigin = "parser"
 
 
 @dataclass(frozen=True, slots=True)
@@ -204,6 +214,7 @@ class ParsedTaxForm:
     income: tuple[ParsedIncomeItem, ...]
     taxes: tuple[ParsedTaxItem, ...]
     warnings: tuple[str, ...] = ()  # never raw document text or digit runs of 6 or more
+    extraction_method: TaxOrigin = "parser"
 
 
 @dataclass(frozen=True, slots=True)
@@ -233,6 +244,39 @@ class ParsedTaxDocument:
     forms: tuple[ParsedTaxForm, ...]  # at least one
     warnings: tuple[str, ...] = ()
     unparsed: tuple[UnparsedRegion, ...] = ()
+
+
+@dataclass(frozen=True, slots=True)
+class FallbackResult:
+    """What an opt-in fallback extractor returns: validated forms (``extraction_method="llm"``,
+    items ``origin="llm"``) and fixed-text warnings. Never raises for a model problem."""
+
+    forms: tuple[ParsedTaxForm, ...] = ()
+    warnings: tuple[str, ...] = ()
+    requests_sent: int = 0
+
+
+class TaxFallbackExtractor(Protocol):
+    """An optional extractor for the parts of a tax file the deterministic parsers could not read.
+
+    Defined here (no LLM import) so the tax package can accept one without depending on any
+    network code; the only implementation lives in ``llm/tax_parser.py`` and is created by
+    ``api/services/tax_llm.py``. Deterministic results always win: callers pass only regions the
+    parsers failed to read.
+    """
+
+    id: str
+    version: str
+
+    def preview(self, doc: ExtractedDoc, regions: Sequence[UnparsedRegion]) -> list[str]:
+        """Exactly the redacted texts that `extract` would send. No network."""
+        ...
+
+    def extract(
+        self, doc: ExtractedDoc, regions: Sequence[UnparsedRegion], *, tax_year: int
+    ) -> FallbackResult:
+        """Read `regions` of `doc`. `tax_year` is the deterministic year (never from the model)."""
+        ...
 
 
 @runtime_checkable

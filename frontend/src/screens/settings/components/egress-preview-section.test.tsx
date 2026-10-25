@@ -34,7 +34,7 @@ const baseSettings: Settings = {
     has_key: true,
   },
   privacy: { store_pdf_copies: true, store_extract_cache: false, pii_terms: [] },
-  ingest: { always_confirm_extractor: false, default_extractor: "auto" as const, date_format_hints: [], default_currency: "USD" },
+  ingest: { always_confirm_extractor: false, default_extractor: "auto" as const, tax_llm_fallback: false, date_format_hints: [], default_currency: "USD" },
   server: { port: 8756 },
 };
 

@@ -30,6 +30,7 @@ from typing import Any, cast
 from sqlalchemy.orm import Session
 
 from spend_analyzer.config import LLMConfig
+from spend_analyzer.core.tax_types import TaxFallbackExtractor
 from spend_analyzer.core.types import Kind
 
 
@@ -85,6 +86,8 @@ class TaxImportResult:
     warnings: tuple[str, ...]
     error: str | None
     skipped_from: tuple[tuple[int, str, str], ...] = ()
+    llm_used: bool = False
+    llm_form_count: int = 0
 
 
 def _resolve(module_path: str, attr: str) -> Callable[..., Any]:
@@ -285,8 +288,10 @@ def import_tax_document(
     user_id: int,
     original_name: str,
     tax_year: int | None = None,
+    fallback: TaxFallbackExtractor | None = None,
 ) -> TaxImportResult:
-    """Import one W-2 / 1099 / 1040 PDF in a single step. Commits.
+    """Import one W-2 / 1099 / 1040 PDF in a single step. Commits. `fallback` is the opt-in LLM
+    fallback from `api.services.tax_llm.build_tax_fallback` (`None` = deterministic only).
 
     Raises:
         ModuleNotFoundError: `ingest/tax/pipeline.py` is not present in this build.
@@ -294,5 +299,12 @@ def import_tax_document(
     fn = _resolve("spend_analyzer.ingest.tax.pipeline", "import_tax_document")
     return cast(
         TaxImportResult,
-        fn(session, pdf_path, user_id=user_id, original_name=original_name, tax_year=tax_year),
+        fn(
+            session,
+            pdf_path,
+            user_id=user_id,
+            original_name=original_name,
+            tax_year=tax_year,
+            fallback=fallback,
+        ),
     )

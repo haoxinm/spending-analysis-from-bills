@@ -54,13 +54,19 @@ This is the reason to run this instead of a hosted budgeting app, so it comes fi
 - **One HTTP client, two callers.** Only `llm/client.py` imports an HTTP client, and only the two
   seams above may import it — checked by `tests/test_architecture_guards.py` on every change.
   Statement ingestion (`ingest/`) can never make a network call.
-- **Tax forms never go to an LLM.** W-2, 1099 and 1040 PDFs are read by deterministic local
-  parsers only: there is no LLM extractor for them, and the tax code imports neither an LLM nor an
-  HTTP client (`tests/test_architecture_guards.py`). Only the **last four digits** of a payer or
-  account identifier are stored; full SSNs, ITINs and EINs are never written to the database, the
-  logs or the extract cache, and your own and your spouse's numbers are never read. The PDF is
-  deleted after import unless you set `[privacy] store_tax_pdf_copies = true`. See
-  [docs/TAX.md](docs/TAX.md).
+- **Tax forms stay local unless you opt in.** W-2, 1099 and 1040 PDFs are read by deterministic
+  local parsers, and the tax code imports neither an LLM nor an HTTP client
+  (`tests/test_architecture_guards.py`). The only exception is a separate, off-by-default switch,
+  `[ingest] tax_llm_fallback = true` (Settings -> LLM, or `llm set --tax-llm-fallback`), which
+  works only while an LLM is configured. With it on, just the pages the parsers could not read are
+  sent, redacted: SSNs, EINs and account numbers are masked to their last 4 digits, recipient /
+  employee name and address rows are removed (best effort), and your personal-info entries from
+  **Settings -> Privacy** (the same list and matching rules used for statements) are removed.
+  Values read that way are tagged and marked "review", and `tax import --no-llm` turns it off for
+  a run. Only the **last four digits** of a payer or account identifier are stored; full SSNs, ITINs
+  and EINs are never written to the database, the logs or the extract cache, and your own and your
+  spouse's numbers are never read. The PDF is deleted after import unless you set
+  `[privacy] store_tax_pdf_copies = true`. See [docs/TAX.md](docs/TAX.md).
 - **Account balances stay local.** The balances you enter for net worth (checking, savings,
   investment, credit card) live only in your local database. They are never exported, never part
   of any LLM payload, and the net-worth code imports neither an LLM nor an HTTP client.

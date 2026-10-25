@@ -4,7 +4,9 @@ Upload hardening is shared with `/api/statements` (`api/services/uploads.py`). I
 synchronous step (`gateway.import_tax_document`); all tax SQL lives in `analytics/tax_query.py`.
 
 Privacy: responses expose only the last four digits of a taxpayer identifier and never
-`stored_path`; `payer_name` is local-only data. Tax data is never sent to an LLM.
+`stored_path`; `payer_name` is local-only data. Tax data is never sent to an LLM unless the user opts in
+(`[ingest] tax_llm_fallback`, see `api/services/tax_llm.py`); then only redacted pages the built-in
+parsers could not read are sent.
 """
 
 from __future__ import annotations
@@ -16,12 +18,13 @@ from typing import Annotated, Literal
 
 from fastapi import APIRouter, Form, HTTPException, Query, Response, UploadFile
 from pydantic import BaseModel
+from starlette.concurrency import run_in_threadpool
 
 from spend_analyzer.analytics import tax_query
 from spend_analyzer.analytics.tax_query import TaxQuery
 from spend_analyzer.api import schemas
 from spend_analyzer.api.deps import SessionDep
-from spend_analyzer.api.services import crud, gateway
+from spend_analyzer.api.services import crud, gateway, tax_llm
 from spend_analyzer.api.services.uploads import (
     read_pdf_upload,
     sanitize_original_name,
@@ -158,9 +161,21 @@ async def upload_tax_document(
     original_name = sanitize_original_name(file.filename or "tax-form.pdf", "tax-form.pdf")
     pdf_path = save_upload(data)
 
-    result = gateway.import_tax_document(
-        session, pdf_path, user_id=user_id, original_name=original_name, tax_year=tax_year
-    )
+    def _import() -> gateway.TaxImportResult:
+        # The opt-in LLM fallback can take seconds per request, so the whole import runs in a
+        # worker thread (the request's session is used by this one thread at a time, and the
+        # engine allows cross-thread use). The fallback is built first, outside any write.
+        fallback = tax_llm.build_tax_fallback(session, user_id)
+        return gateway.import_tax_document(
+            session,
+            pdf_path,
+            user_id=user_id,
+            original_name=original_name,
+            tax_year=tax_year,
+            fallback=fallback,
+        )
+
+    result = await run_in_threadpool(_import)
     doc = tax_query.get_tax_document(session, result.document_id)
     if doc is None:  # pragma: no cover - defensive
         raise HTTPException(status_code=500, detail="import did not create a document")
@@ -177,6 +192,8 @@ async def upload_tax_document(
         tax_item_count=result.tax_item_count,
         warnings=list(result.warnings),
         error=result.error,
+        llm_used=result.llm_used,
+        llm_form_count=result.llm_form_count,
     )
 
 

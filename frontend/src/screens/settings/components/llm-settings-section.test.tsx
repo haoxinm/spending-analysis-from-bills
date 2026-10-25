@@ -40,7 +40,7 @@ const offSettings: Settings = {
     has_key: false,
   },
   privacy: { store_pdf_copies: true, store_extract_cache: false, pii_terms: [] },
-  ingest: { always_confirm_extractor: false, default_extractor: "auto", date_format_hints: [], default_currency: "USD" },
+  ingest: { always_confirm_extractor: false, default_extractor: "auto", tax_llm_fallback: false, date_format_hints: [], default_currency: "USD" },
   server: { port: 8756 },
 };
 
@@ -147,7 +147,7 @@ describe("LlmSettingsSection", () => {
     await user.paste('{"top_p": 0.5}');
     expect(screen.queryByRole("alert")).not.toBeInTheDocument();
     await user.click(screen.getByRole("button", { name: /save llm settings/i }));
-    expect(onSave).toHaveBeenCalledWith(expect.objectContaining({ extra_body: { top_p: 0.5 } }), "auto");
+    expect(onSave).toHaveBeenCalledWith(expect.objectContaining({ extra_body: { top_p: 0.5 } }), "auto", false);
   });
 
   it("saves the default-extractor checkbox together with the LLM settings", async () => {
@@ -157,7 +157,19 @@ describe("LlmSettingsSection", () => {
     expect(screen.getByRole("button", { name: /save llm settings/i })).toBeDisabled();
     await user.click(screen.getByRole("checkbox", { name: /parse statements with the llm by default/i }));
     await user.click(screen.getByRole("button", { name: /save llm settings/i }));
-    expect(onSave).toHaveBeenCalledWith(expect.objectContaining({ model: "claude" }), "llm");
+    expect(onSave).toHaveBeenCalledWith(expect.objectContaining({ model: "claude" }), "llm", false);
+  });
+
+  it("saves the tax LLM fallback opt-in (off by default) with privacy copy", async () => {
+    const user = userEvent.setup();
+    const onSave = vi.fn();
+    renderSection(remoteSettings, onSave);
+    const box = screen.getByRole("checkbox", { name: /use the llm for tax forms/i });
+    expect(box).not.toBeChecked();
+    expect(screen.getByText(/masked to the last 4 digits/i)).toBeInTheDocument();
+    await user.click(box);
+    await user.click(screen.getByRole("button", { name: /save llm settings/i }));
+    expect(onSave).toHaveBeenCalledWith(expect.anything(), "auto", true);
   });
 
   it("never displays the existing API key, only whether one is on file", () => {

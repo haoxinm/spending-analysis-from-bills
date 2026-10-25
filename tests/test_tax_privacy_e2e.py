@@ -224,3 +224,120 @@ def test_import_and_classify_send_no_tax_content_to_the_llm(
     assert len(forbidden) > 20
     for item in forbidden:
         assert item not in wire, "tax content leaked into an LLM request"
+
+
+# --- opt-in LLM fallback -------------------------------------------------------------------------
+
+_UNREADABLE_PAGE = [
+    "Year-End Statement  Tax Year 2024",
+    "Granite Fund Trust  summary of income paid to you during the year",
+    "Payer identification  99-0000042      Account  SYN-000123456789",
+    "RECIPIENT'S name: Jordan Q. Testperson",
+    "RECIPIENT'S TIN: 912-34-5678",
+    "Street address: 100 Example Lane",
+    "Spouse reached at (312) 555-0100",
+    "Interest paid to you                      1,234.56",
+    "Please keep this statement with your tax records for the year.",
+    "Questions about this statement may be sent to the customer service center.",
+]
+
+
+def _unreadable_pdf(tmp_path: Path) -> Path:
+    from tests.fixtures.gen.base import render_lines_pdf
+
+    path = tmp_path / "year_end.pdf"
+    render_lines_pdf(path, [_UNREADABLE_PAGE])
+    return path
+
+
+def _enable_llm(*, fallback: bool) -> None:
+    from spend_analyzer.config import IngestConfig
+
+    save_settings(
+        Settings(
+            llm=remote_cfg(),
+            ingest=IngestConfig(tax_llm_fallback=fallback),
+            privacy=PrivacyConfig(pii_terms=("Jordan Q. Testperson", "(312) 555-0100")),
+        )
+    )
+
+
+def test_llm_fallback_off_by_default_even_with_llm_configured(
+    home: Path, session: Session, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    from spend_analyzer.api.services.tax_llm import build_tax_fallback
+
+    monkeypatch.setenv("SPEND_ANALYZER_LLM_API_KEY", "sk-test-key-not-real")
+    fake = install(monkeypatch, FakeLLM())  # a request would raise
+    _enable_llm(fallback=False)
+    user = User(name="alice")
+    session.add(user)
+    session.flush()
+    assert build_tax_fallback(session, user.id) is None
+    result = import_tax_document(
+        session,
+        _unreadable_pdf(tmp_path),
+        user_id=user.id,
+        original_name="y.pdf",
+        fallback=build_tax_fallback(session, user.id),
+    )
+    assert result.status == "unsupported" and not result.llm_used
+    assert fake.requests == []
+
+
+def test_llm_fallback_request_is_redacted(
+    home: Path, session: Session, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    from spend_analyzer.api.services.tax_llm import build_tax_fallback
+
+    monkeypatch.setenv("SPEND_ANALYZER_LLM_API_KEY", "sk-test-key-not-real")
+    reply = json.dumps(
+        {
+            "forms": [
+                {
+                    "form_type": "1099-int",
+                    "payer_name": "Granite Fund Trust",
+                    "payer_tin_last4": "0042",
+                    "account_last4": "6789",
+                    "pages": [1],
+                    "items": [{"box": "1", "amount": "1,234.56"}],
+                }
+            ]
+        }
+    )
+    fake = install(monkeypatch, FakeLLM(default=reply))
+    _enable_llm(fallback=True)
+    user = User(name="alice")
+    session.add(user)
+    session.flush()
+    fallback = build_tax_fallback(session, user.id)
+    assert fallback is not None
+    result = import_tax_document(
+        session,
+        _unreadable_pdf(tmp_path),
+        user_id=user.id,
+        original_name="Jordan Testperson 912345678.pdf",
+        fallback=fallback,
+    )
+    assert result.status == "parsed" and result.llm_used
+    wire = json.dumps(fake.requests) + json.dumps(fake.urls) + json.dumps(fake.headers)
+    for secret in (
+        "912-34-5678",
+        "912345678",
+        "99-0000042",
+        "990000042",
+        "000123456789",
+        "SYN-000123456789",
+        "Jordan",
+        "Testperson",
+        "Example Lane",
+        "555-0100",
+        "y.pdf",
+        "year_end.pdf",
+        "Jordan Testperson 912345678.pdf",
+    ):
+        assert secret not in wire, secret
+    for kept in ("5678", "0042", "6789", "1,234.56"):
+        assert kept in wire
+    assert {i.origin for i in session.scalars(select(IncomeItem))} == {"llm"}
+    assert {f.extraction_method for f in session.scalars(select(TaxForm))} == {"llm"}

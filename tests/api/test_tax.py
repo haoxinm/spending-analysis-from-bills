@@ -421,3 +421,56 @@ def test_same_pdf_for_two_users_is_not_a_duplicate(client: TestClient, session: 
     assert (first["status"], second["status"]) == ("parsed", "parsed")
     assert second["document"]["user_id"] == b.id
     assert first["document"]["id"] != second["document"]["id"]
+
+
+def test_upload_uses_the_llm_fallback_only_when_opted_in(
+    client: TestClient, user_id: int, monkeypatch: pytest.MonkeyPatch, tmp_path: Any
+) -> None:
+    import json
+
+    from spend_analyzer.config import IngestConfig, Settings, save_settings
+    from tests.fixtures.gen.base import render_lines_pdf
+    from tests.llm_fakes import FakeLLM, install, remote_cfg
+
+    lines = [
+        "Year-End Statement  Tax Year 2024",
+        "Granite Fund Trust  summary of income paid to you during the year",
+        "Interest paid to you                      1,234.56",
+        "Please keep this statement with your tax records for the year.",
+        "Questions about this statement may be sent to the customer service center.",
+    ]
+    reply = json.dumps(
+        {
+            "forms": [
+                {
+                    "form_type": "1099-int",
+                    "pages": [1],
+                    "items": [{"box": "1", "amount": "1234.56"}],
+                }
+            ]
+        }
+    )
+    fake = install(monkeypatch, FakeLLM(default=reply))
+    pdf = tmp_path / "ye.pdf"
+    render_lines_pdf(pdf, [lines])
+
+    def post(name: str) -> Any:
+        return client.post(
+            "/api/tax/documents",
+            data={"user_id": str(user_id)},
+            files={"file": (name, pdf.read_bytes() + name.encode(), "application/pdf")},
+        )
+
+    save_settings(Settings(llm=remote_cfg(), ingest=IngestConfig(tax_llm_fallback=False)))
+    off = post("off.pdf")
+    assert off.json()["status"] == "unsupported" and off.json()["llm_used"] is False
+    assert fake.requests == []
+
+    save_settings(Settings(llm=remote_cfg(), ingest=IngestConfig(tax_llm_fallback=True)))
+    on = post("on.pdf")
+    body = on.json()
+    assert body["status"] == "parsed", body
+    assert (body["llm_used"], body["llm_form_count"]) == (True, 1)
+    detail = client.get(f"/api/tax/documents/{body['document']['id']}").json()
+    (form,) = detail["forms"]
+    assert form["extraction_method"] == "llm" and form["needs_review"] is True

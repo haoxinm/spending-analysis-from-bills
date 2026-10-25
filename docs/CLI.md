@@ -133,6 +133,7 @@ Changes only the options you pass.
 | `--pages-per-request N` | statement parsing: pages per request (`0` = all selected pages at once) |
 | `--enable` / `--disable` | turn the LLM on/off |
 | `--default-extractor auto\|llm` | `[ingest] default_extractor` for new imports |
+| `--tax-llm-fallback` / `--no-tax-llm-fallback` | `[ingest] tax_llm_fallback`: send redacted, unreadable tax-form pages to the LLM (off by default) |
 
 ```console
 # Local (nothing leaves this machine)
@@ -215,7 +216,8 @@ return-2024.pdf: tax document #3 -> parsed (2024: 1040) 6 income / 7 tax item(s)
 
 Imports one or more tax-form PDFs in a single step (no confirm phase). Options: `--user-id` (whose
 forms these are; defaults to the default user) and `--tax-year` (used only when a form doesn't
-print its year). Re-importing an identical file is a no-op, and a form already imported from a
+print its year) and `--no-llm` (skip the optional LLM fallback for this run; see
+[TAX.md](TAX.md#llm-fallback-optional)). Re-importing an identical file is a no-op, and a form already imported from a
 different file is skipped:
 
 ```console

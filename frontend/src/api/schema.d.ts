@@ -1405,6 +1405,11 @@ export interface components {
              * @enum {string}
              */
             default_extractor: "auto" | "llm";
+            /**
+             * Tax Llm Fallback
+             * @default false
+             */
+            tax_llm_fallback: boolean;
             /** Date Format Hints */
             date_format_hints: string[];
             /** Default Currency */
@@ -2196,6 +2201,16 @@ export interface components {
             warnings: string[];
             /** Error */
             error: string | null;
+            /**
+             * Llm Used
+             * @default false
+             */
+            llm_used: boolean;
+            /**
+             * Llm Form Count
+             * @default 0
+             */
+            llm_form_count: number;
         };
         /** TaxIncomePayer */
         TaxIncomePayer: {

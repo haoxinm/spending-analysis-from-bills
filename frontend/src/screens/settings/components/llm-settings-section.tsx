@@ -83,7 +83,7 @@ function numberOrNull(raw: string): number | null {
 
 export interface LlmSettingsSectionProps {
   settings: Settings;
-  onSave: (llm: LlmSettings, defaultExtractor: Extractor) => void;
+  onSave: (llm: LlmSettings, defaultExtractor: Extractor, taxLlmFallback: boolean) => void;
   saving: boolean;
 }
 
@@ -93,6 +93,7 @@ export function LlmSettingsSection({ settings, onSave, saving }: LlmSettingsSect
   const { toast } = useToast();
   const [draft, setDraft] = React.useState<LlmSettings>(settings.llm);
   const [extractor, setExtractor] = React.useState<Extractor>(settings.ingest.default_extractor);
+  const [taxFallback, setTaxFallback] = React.useState(settings.ingest.tax_llm_fallback ?? false);
   const [bodyText, setBodyText] = React.useState(formatExtraBody(settings.llm.extra_body));
   const [headersText, setHeadersText] = React.useState(formatHeaders(settings.llm.extra_headers));
   const [apiKeyInput, setApiKeyInput] = React.useState("");
@@ -111,6 +112,10 @@ export function LlmSettingsSection({ settings, onSave, saving }: LlmSettingsSect
     setExtractor(settings.ingest.default_extractor);
   }, [settings.ingest.default_extractor]);
 
+  React.useEffect(() => {
+    setTaxFallback(settings.ingest.tax_llm_fallback ?? false);
+  }, [settings.ingest.tax_llm_fallback]);
+
   const body = parseExtraBody(bodyText);
   const headers = parseHeaders(headersText);
   const effective: LlmSettings = { ...draft, extra_body: body.value, extra_headers: headers.value };
@@ -122,7 +127,9 @@ export function LlmSettingsSection({ settings, onSave, saving }: LlmSettingsSect
     extra_headers: settings.llm.extra_headers ?? {},
   };
   const dirty =
-    JSON.stringify(effective) !== JSON.stringify(saved) || extractor !== settings.ingest.default_extractor;
+    JSON.stringify(effective) !== JSON.stringify(saved) ||
+    extractor !== settings.ingest.default_extractor ||
+    taxFallback !== (settings.ingest.tax_llm_fallback ?? false);
 
   const update = <K extends keyof LlmSettings>(key: K, value: LlmSettings[K]) => {
     setDraft((prev) => ({ ...prev, [key]: value }));
@@ -420,6 +427,23 @@ export function LlmSettingsSection({ settings, onSave, saving }: LlmSettingsSect
               Parse statements with the LLM by default
             </label>
 
+            <label className="flex items-start gap-2 text-sm">
+              <input
+                type="checkbox"
+                className="mt-1"
+                checked={taxFallback}
+                onChange={(e) => setTaxFallback(e.target.checked)}
+              />
+              <span>
+                Use the LLM for tax forms the built-in parsers can&apos;t read
+                <span className="block text-xs text-muted-foreground">
+                  Send unreadable sections of tax forms to your LLM. SSNs, EINs and account numbers are masked to
+                  the last 4 digits; names/addresses are removed best-effort. Values it reads are marked for
+                  review. Off by default: tax forms otherwise never leave this computer.
+                </span>
+              </span>
+            </label>
+
             <div className="flex flex-col gap-2 rounded-md border border-border p-3">
               <div className="flex items-center gap-2">
                 <span className="text-sm font-medium">API key {local ? "(optional for local)" : ""}</span>
@@ -463,7 +487,7 @@ export function LlmSettingsSection({ settings, onSave, saving }: LlmSettingsSect
         )}
 
         <div className="flex flex-wrap items-center gap-2">
-          <Button onClick={() => onSave(effective, extractor)} disabled={!dirty || saving || invalid}>
+          <Button onClick={() => onSave(effective, extractor, taxFallback)} disabled={!dirty || saving || invalid}>
             Save LLM settings
           </Button>
           {draft.enabled ? (

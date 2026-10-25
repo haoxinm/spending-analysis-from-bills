@@ -168,6 +168,10 @@ class IngestConfig(BaseModel):
     #: "auto": propose the best-scoring built-in parser/layout spec. "llm": propose the LLM
     #: statement parser for every new upload (only when an LLM is configured).
     default_extractor: Literal["auto", "llm"] = "auto"
+    #: Opt-in: send the redacted pages of a tax file that the built-in parsers could not read to
+    #: the configured LLM (only effective while the LLM is enabled and configured). Off by default:
+    #: tax forms never leave the machine unless this is switched on.
+    tax_llm_fallback: bool = False
     date_format_hints: tuple[str, ...] = ("%m/%d/%Y", "%m/%d", "%d %b %Y", "%Y-%m-%d")
     default_currency: str = "USD"
 

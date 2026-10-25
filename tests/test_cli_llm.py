@@ -214,3 +214,13 @@ def test_doctor_checks_llm_when_enabled(
 
 def test_help_mentions_llm() -> None:
     assert "llm" in runner.invoke(app, ["--help"]).output
+
+
+def test_tax_llm_fallback_flag(home: Path) -> None:
+    assert load_settings().ingest.tax_llm_fallback is False
+    result = runner.invoke(app, ["llm", "set", "--tax-llm-fallback"])
+    assert result.exit_code == 0, result.output
+    assert load_settings().ingest.tax_llm_fallback is True
+    assert "[ingest] tax_llm_fallback: true" in runner.invoke(app, ["llm", "show"]).output
+    runner.invoke(app, ["llm", "set", "--no-tax-llm-fallback"])
+    assert load_settings().ingest.tax_llm_fallback is False

@@ -30,6 +30,7 @@ _CLIENT = "src/spend_analyzer/llm/client.py"
 _CLIENT_CALLERS = {
     "src/spend_analyzer/classify/llm/egress.py",
     "src/spend_analyzer/llm/statement_parser.py",
+    "src/spend_analyzer/llm/tax_parser.py",
 }
 
 
@@ -139,7 +140,12 @@ def _tax_module_paths() -> list[Path]:
     tax_pkg = _SRC_ROOT / "ingest" / "tax"
     if tax_pkg.is_dir():
         paths.extend(_iter_py_files(tax_pkg))
-    for rel in ("analytics/tax_query.py", "api/routers/tax.py", "core/tax_types.py"):
+    for rel in (
+        "analytics/tax_query.py",
+        "api/routers/tax.py",
+        "core/tax_types.py",
+        "core/tax_boxes.py",
+    ):
         candidate = _SRC_ROOT / rel
         if candidate.is_file():
             paths.append(candidate)
@@ -172,6 +178,32 @@ def test_tax_modules_import_no_llm_or_http() -> None:
         if hits:
             offenders[_rel(path)] = hits
     assert not offenders, f"tax modules import an LLM or network module: {offenders}"
+
+
+def test_only_the_tax_llm_factory_imports_the_tax_llm_parser() -> None:
+    """The tax package gets the fallback injected; `api/services/tax_llm.py` is the sole importer
+    of the egress module (the CLI reaches it through that factory)."""
+    allowed = {"src/spend_analyzer/api/services/tax_llm.py"}
+    offenders = [
+        _rel(path)
+        for path in _iter_py_files(_SRC_ROOT)
+        if any(
+            m == "spend_analyzer.llm.tax_parser" or m.startswith("spend_analyzer.llm.tax_parser.")
+            for m in _full_imported_modules(_parse(path))
+        )
+        and _rel(path) not in allowed
+    ]
+    assert not offenders, f"llm.tax_parser imported outside the factory: {offenders}"
+
+
+def test_tax_llm_parser_imports_no_database_or_analytics() -> None:
+    tree = _parse(_SRC_ROOT / "llm" / "tax_parser.py")
+    bad = {
+        m
+        for m in _full_imported_modules(tree)
+        if m.startswith(("spend_analyzer.db", "spend_analyzer.analytics", "spend_analyzer.api"))
+    }
+    assert not bad, f"llm/tax_parser.py must stay free of DB/analytics/API code: {bad}"
 
 
 def _net_worth_module_paths() -> list[Path]:

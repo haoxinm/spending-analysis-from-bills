@@ -29,6 +29,7 @@ from spend_analyzer.core.errors import SpendAnalyzerError
 from spend_analyzer.core.logging import configure_logging, get_logger
 from spend_analyzer.core.paths import ensure_home
 from spend_analyzer.core.shellquote import join_command
+from spend_analyzer.core.tax_types import TaxFallbackExtractor
 from spend_analyzer.core.webui import web_ui_warning
 from spend_analyzer.db.migrate import upgrade_head
 from spend_analyzer.db.models import Transaction
@@ -794,6 +795,13 @@ def _check_tax_year(value: int | None, option: str) -> int | None:
     return value
 
 
+def _tax_fallback(session: Session, user_id: int) -> TaxFallbackExtractor | None:
+    """The opt-in LLM fallback (None unless an LLM is configured and `tax_llm_fallback` is on)."""
+    from spend_analyzer.api.services.tax_llm import build_tax_fallback
+
+    return build_tax_fallback(session, user_id)
+
+
 @tax_app.command(name="import")
 def tax_import_cmd(
     paths: list[str] = typer.Argument(  # noqa: B008 - typer's documented pattern
@@ -805,12 +813,20 @@ def tax_import_cmd(
     tax_year: int | None = typer.Option(
         None, "--tax-year", help="Tax year to use when the form does not print one."
     ),
+    no_llm: bool = typer.Option(
+        False,
+        "--no-llm",
+        help="Never use the LLM fallback for this run, even if it is switched on in the settings.",
+    ),
 ) -> None:
-    """Import one or more tax-form PDFs in a single step (parsed locally; nothing leaves this
-    machine). Re-importing an identical file is a no-op."""
+    """Import one or more tax-form PDFs in a single step. Parsing is local: nothing leaves this
+    machine unless you opted in to the LLM fallback (`llm set --tax-llm-fallback`), which sends
+    only redacted pages the built-in parsers could not read. Re-importing an identical file is a
+    no-op."""
     _check_tax_year(tax_year, "--tax-year")
     with _open_engine() as engine, _open_session(engine) as session:
         resolved_user_id = _require_user_id(session, user_id)
+        fallback = None if no_llm else _tax_fallback(session, resolved_user_id)
         any_error = False
         for raw_path in paths:
             pdf_path = Path(raw_path)
@@ -829,6 +845,7 @@ def tax_import_cmd(
                     user_id=resolved_user_id,
                     original_name=pdf_path.name,
                     tax_year=tax_year,
+                    fallback=fallback,
                 )
             except SpendAnalyzerError as exc:
                 typer.echo(f"{raw_path}: {exc}", err=True)
@@ -845,6 +862,8 @@ def tax_import_cmd(
                 )
                 if result.skipped_duplicate_forms:
                     line += f", skipped {result.skipped_duplicate_forms} duplicate form(s)"
+                if result.llm_used:
+                    line += " [LLM fallback used: review the marked values]"
                 typer.echo(line)
             elif result.status == "duplicate":
                 typer.echo(prefix)
