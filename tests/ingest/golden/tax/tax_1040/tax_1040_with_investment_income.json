@@ -1,0 +1,134 @@
+{
+  "expected_warnings": [],
+  "forms": [
+    {
+      "account_last4": null,
+      "agi_minor": 10955000,
+      "filing_status": "single",
+      "form_type": "1040",
+      "income": [
+        {
+          "amount_minor": 9000000,
+          "box": "line 1z",
+          "category": "salary_wages",
+          "is_memo": false,
+          "label": "Wages, salaries, tips",
+          "source_form": "1040"
+        },
+        {
+          "amount_minor": 185000,
+          "box": "line 2b",
+          "category": "interest",
+          "is_memo": false,
+          "label": "Taxable interest",
+          "source_form": "1040"
+        },
+        {
+          "amount_minor": 420000,
+          "box": "line 3b",
+          "category": "ordinary_dividends",
+          "is_memo": false,
+          "label": "Ordinary dividends",
+          "source_form": "1040"
+        },
+        {
+          "amount_minor": 310000,
+          "box": "line 3a",
+          "category": "qualified_dividends",
+          "is_memo": true,
+          "label": "Qualified dividends",
+          "source_form": "1040"
+        },
+        {
+          "amount_minor": 150000,
+          "box": "Schedule D line 7",
+          "category": "short_term_capital_gain",
+          "is_memo": false,
+          "label": "Net short-term capital gain or loss",
+          "source_form": "1040"
+        },
+        {
+          "amount_minor": 1200000,
+          "box": "Schedule D line 15",
+          "category": "long_term_capital_gain",
+          "is_memo": false,
+          "label": "Net long-term capital gain or loss",
+          "source_form": "1040"
+        }
+      ],
+      "is_corrected": false,
+      "payer_name": null,
+      "payer_tin_last4": null,
+      "tax_year": 2024,
+      "taxable_income_minor": 9495000,
+      "taxes": [
+        {
+          "amount_minor": 1489100,
+          "box": "line 24",
+          "category": "total_federal_tax",
+          "is_estimate": false,
+          "jurisdiction": null,
+          "label": "Total tax",
+          "source_form": "1040"
+        },
+        {
+          "amount_minor": 1519100,
+          "box": "line 25d",
+          "category": "federal_income_tax_withheld",
+          "is_estimate": false,
+          "jurisdiction": null,
+          "label": "Federal income tax withheld",
+          "source_form": "1040"
+        },
+        {
+          "amount_minor": 1519100,
+          "box": "line 33",
+          "category": "total_payments",
+          "is_estimate": false,
+          "jurisdiction": null,
+          "label": "Total payments",
+          "source_form": "1040"
+        },
+        {
+          "amount_minor": 30000,
+          "box": "line 34",
+          "category": "refund",
+          "is_estimate": false,
+          "jurisdiction": null,
+          "label": "Overpaid / refund",
+          "source_form": "1040"
+        },
+        {
+          "amount_minor": 0,
+          "box": "Schedule 2 line 12",
+          "category": "net_investment_income_tax",
+          "is_estimate": false,
+          "jurisdiction": null,
+          "label": "Net investment income tax",
+          "source_form": "1040"
+        },
+        {
+          "amount_minor": 1262600,
+          "box": "line 16",
+          "category": "federal_tax_ordinary_est",
+          "is_estimate": true,
+          "jurisdiction": null,
+          "label": "Tax on ordinary income (estimate)",
+          "source_form": "1040"
+        },
+        {
+          "amount_minor": 226500,
+          "box": "line 16",
+          "category": "federal_tax_preferential_est",
+          "is_estimate": true,
+          "jurisdiction": null,
+          "label": "Tax on qualified dividends and gains (estimate)",
+          "source_form": "1040"
+        }
+      ],
+      "warnings": []
+    }
+  ],
+  "tax_year": 2024,
+  "warnings": []
+}

@@ -1,0 +1,73 @@
+{
+  "expected_warnings": [
+    "form layout for tax year 2026 not verified",
+    "no federal bracket table for tax year 2026; tax split not estimated"
+  ],
+  "forms": [
+    {
+      "account_last4": null,
+      "agi_minor": 7200000,
+      "filing_status": "single",
+      "form_type": "1040",
+      "income": [
+        {
+          "amount_minor": 7200000,
+          "box": "line 1z",
+          "category": "salary_wages",
+          "is_memo": false,
+          "label": "Wages, salaries, tips",
+          "source_form": "1040"
+        }
+      ],
+      "is_corrected": false,
+      "payer_name": null,
+      "payer_tin_last4": null,
+      "tax_year": 2026,
+      "taxable_income_minor": 5625000,
+      "taxes": [
+        {
+          "amount_minor": 729500,
+          "box": "line 24",
+          "category": "total_federal_tax",
+          "is_estimate": false,
+          "jurisdiction": null,
+          "label": "Total tax",
+          "source_form": "1040"
+        },
+        {
+          "amount_minor": 739500,
+          "box": "line 25d",
+          "category": "federal_income_tax_withheld",
+          "is_estimate": false,
+          "jurisdiction": null,
+          "label": "Federal income tax withheld",
+          "source_form": "1040"
+        },
+        {
+          "amount_minor": 739500,
+          "box": "line 33",
+          "category": "total_payments",
+          "is_estimate": false,
+          "jurisdiction": null,
+          "label": "Total payments",
+          "source_form": "1040"
+        },
+        {
+          "amount_minor": 10000,
+          "box": "line 34",
+          "category": "refund",
+          "is_estimate": false,
+          "jurisdiction": null,
+          "label": "Overpaid / refund",
+          "source_form": "1040"
+        }
+      ],
+      "warnings": [
+        "form layout for tax year 2026 not verified",
+        "no federal bracket table for tax year 2026; tax split not estimated"
+      ]
+    }
+  ],
+  "tax_year": 2026,
+  "warnings": []
+}

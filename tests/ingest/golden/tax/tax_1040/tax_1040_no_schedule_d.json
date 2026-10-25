@@ -1,0 +1,117 @@
+{
+  "expected_warnings": [],
+  "forms": [
+    {
+      "account_last4": null,
+      "agi_minor": 5420000,
+      "filing_status": "qss",
+      "form_type": "1040",
+      "income": [
+        {
+          "amount_minor": 5200000,
+          "box": "line 1z",
+          "category": "salary_wages",
+          "is_memo": false,
+          "label": "Wages, salaries, tips",
+          "source_form": "1040"
+        },
+        {
+          "amount_minor": 40000,
+          "box": "line 2b",
+          "category": "interest",
+          "is_memo": false,
+          "label": "Taxable interest",
+          "source_form": "1040"
+        },
+        {
+          "amount_minor": 60000,
+          "box": "line 3b",
+          "category": "ordinary_dividends",
+          "is_memo": false,
+          "label": "Ordinary dividends",
+          "source_form": "1040"
+        },
+        {
+          "amount_minor": 60000,
+          "box": "line 3a",
+          "category": "qualified_dividends",
+          "is_memo": true,
+          "label": "Qualified dividends",
+          "source_form": "1040"
+        },
+        {
+          "amount_minor": 120000,
+          "box": "line 7",
+          "category": "long_term_capital_gain",
+          "is_memo": false,
+          "label": "Capital gain or loss",
+          "source_form": "1040"
+        }
+      ],
+      "is_corrected": false,
+      "payer_name": null,
+      "payer_tin_last4": null,
+      "tax_year": 2024,
+      "taxable_income_minor": 2500000,
+      "taxes": [
+        {
+          "amount_minor": 232300,
+          "box": "line 24",
+          "category": "total_federal_tax",
+          "is_estimate": false,
+          "jurisdiction": null,
+          "label": "Total tax",
+          "source_form": "1040"
+        },
+        {
+          "amount_minor": 296300,
+          "box": "line 25d",
+          "category": "federal_income_tax_withheld",
+          "is_estimate": false,
+          "jurisdiction": null,
+          "label": "Federal income tax withheld",
+          "source_form": "1040"
+        },
+        {
+          "amount_minor": 296300,
+          "box": "line 33",
+          "category": "total_payments",
+          "is_estimate": false,
+          "jurisdiction": null,
+          "label": "Total payments",
+          "source_form": "1040"
+        },
+        {
+          "amount_minor": 64000,
+          "box": "line 34",
+          "category": "refund",
+          "is_estimate": false,
+          "jurisdiction": null,
+          "label": "Overpaid / refund",
+          "source_form": "1040"
+        },
+        {
+          "amount_minor": 232300,
+          "box": "line 16",
+          "category": "federal_tax_ordinary_est",
+          "is_estimate": true,
+          "jurisdiction": null,
+          "label": "Tax on ordinary income (estimate)",
+          "source_form": "1040"
+        },
+        {
+          "amount_minor": 0,
+          "box": "line 16",
+          "category": "federal_tax_preferential_est",
+          "is_estimate": true,
+          "jurisdiction": null,
+          "label": "Tax on qualified dividends and gains (estimate)",
+          "source_form": "1040"
+        }
+      ],
+      "warnings": []
+    }
+  ],
+  "tax_year": 2024,
+  "warnings": []
+}
