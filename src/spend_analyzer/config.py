@@ -111,8 +111,11 @@ class LLMConfig(BaseModel):
 
     @property
     def mode(self) -> Literal["none", "local", "remote"]:
-        """`none` when disabled or not configured; else `local`/`remote`, from `base_url`."""
-        if not self.enabled or not self.base_url or not self.model:
+        """`none` when disabled or no address; else `local`/`remote`, from `base_url`.
+
+        The model is optional: single-model local servers (llama.cpp, vLLM) don't need one.
+        """
+        if not self.enabled or not self.base_url.strip():
             return "none"
         return "local" if is_local_url(self.base_url) else "remote"
 

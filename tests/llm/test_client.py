@@ -111,6 +111,32 @@ def test_temperature_omitted_when_none_and_sent_when_set(fake: FakeLLM, fmt: str
     assert fake.requests[2]["temperature"] == 0.3
 
 
+@pytest.mark.parametrize("fmt", FORMATS)
+def test_model_key_omitted_when_blank(fake: FakeLLM, fmt: str) -> None:
+    _run(fake, remote_cfg(api_format=fmt, model=""), json_schema=SCHEMA)
+    _run(fake, remote_cfg(api_format=fmt, model="  "))
+    _run(fake, remote_cfg(api_format=fmt, model="m"))
+    assert "model" not in fake.requests[0]
+    assert "model" not in fake.requests[1]
+    assert fake.requests[2]["model"] == "m"
+    assert "model" not in client.build_request_preview(
+        remote_cfg(api_format=fmt, model=""), system="S", user="U"
+    )
+
+
+def test_4xx_with_blank_model_adds_hint(fake: FakeLLM) -> None:
+    fake.queue((400, {"error": {"message": "model required"}}))
+    with pytest.raises(LLMError, match=r"400.*model required.*no model is set"):
+        _run(fake, remote_cfg(model=""))
+
+
+def test_4xx_with_model_has_no_hint(fake: FakeLLM) -> None:
+    fake.queue((404, {"error": {"message": "unknown model"}}))
+    with pytest.raises(LLMError) as exc:
+        _run(fake, remote_cfg())
+    assert "no model is set" not in str(exc.value)
+
+
 def test_chat_body_shape(fake: FakeLLM) -> None:
     _run(fake, remote_cfg(), json_schema=SCHEMA, schema_name="thing")
     body = fake.requests[0]

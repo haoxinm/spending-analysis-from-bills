@@ -107,7 +107,7 @@ api key on file: no
 [ingest] default_extractor: auto
 ```
 
-`mode` is derived, not set: `none` (disabled or no base URL/model), `local` (`localhost`,
+`mode` is derived, not set: `none` (disabled or no base URL; the model is optional), `local` (`localhost`,
 `127.0.0.1`, `::1`), or `remote` (anything else). `show` never prints the API key.
 
 ### `llm set`
@@ -120,7 +120,7 @@ Changes only the options you pass.
 | `--base-url URL` | endpoint root, e.g. `http://localhost:11434` |
 | `--format FMT` | `openai_chat` (`/v1/chat/completions`), `openai_responses` (`/v1/responses`), `anthropic_messages` (`/v1/messages`) |
 | `--path PATH` | request path; `''` = the format's default |
-| `--model NAME` | model id as the server knows it |
+| `--model NAME` | model id as the server knows it; optional for single-model local servers (llama.cpp, vLLM) — left blank, no `model` is sent — but required by OpenAI and Anthropic |
 | `--temperature X` | float, or `none` to not send one |
 | `--max-tokens N` | int, or `none` for the provider default |
 | `--reasoning-effort E` | `minimal`, `low`, `medium`, `high`, `xhigh`, `max`; `''` clears |
@@ -153,7 +153,7 @@ $ spend-analyzer llm set --base-url http://gpu-box:8000 --format openai_chat \
 
 ### `llm enable` / `llm disable`
 
-`enable` turns the LLM on (it needs a base URL and a model — set them with `llm set`); `disable`
+`enable` turns the LLM on (it needs a base URL — set it with `llm set`; a model is optional for single-model local servers); `disable`
 turns it off. While it is off, nothing is ever sent anywhere.
 
 ### `llm set-key` / `llm clear-key`

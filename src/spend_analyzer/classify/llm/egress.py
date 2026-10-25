@@ -141,9 +141,9 @@ def classify_batch(descriptions: list[str], cfg: LLMConfig) -> BatchResult:
 
     Raises:
         EgressViolation: the payload contains a `FORBIDDEN` pattern (never swallowed).
-        LLMError: no endpoint is configured (`cfg.mode == "none"`: disabled, or `base_url`/
-            `model` empty — a first-class mode per D2, not a crash), or the request itself failed
-            (network, auth, timeout, malformed response after retries).
+        LLMError: no endpoint is configured (`cfg.mode == "none"`: disabled, or `base_url`
+            empty; the model is optional — a first-class mode per D2, not a crash), or the request
+            itself failed (network, auth, timeout, malformed response after retries).
     """
     if not cfg.is_configured:
         raise LLMError("no provider configured")

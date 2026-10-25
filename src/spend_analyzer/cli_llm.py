@@ -67,7 +67,7 @@ def _describe(settings: Settings) -> None:
     if not cfg.enabled:
         typer.echo("(disabled — run `spend-analyzer llm enable` to turn it on)")
     elif cfg.mode == "none":
-        typer.echo("(not usable yet: base URL and model are both required)")
+        typer.echo("(not usable yet: a base URL is required)")
     elif cfg.mode == "remote":
         typer.echo(
             f"WARNING: merchant descriptions — and, for statements you parse with the LLM, "
@@ -228,7 +228,7 @@ def _set_enabled(value: bool) -> None:
 
 @llm_app.command("enable")
 def enable_cmd() -> None:
-    """Turn the LLM on (needs a base URL and model; see `llm set`)."""
+    """Turn the LLM on (needs a base URL; see `llm set`)."""
     _set_enabled(True)
 
 

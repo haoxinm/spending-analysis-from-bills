@@ -25,12 +25,11 @@ def explain_not_configured(cfg: LLMConfig) -> str:
         problems.append("the LLM is turned off")
     if not cfg.base_url.strip():
         problems.append("no address (base URL) is set")
-    if not cfg.model.strip():
-        problems.append("no model is set")
     why = "; ".join(problems) or "the LLM is not configured"
     return (
-        f"LLM mode is 'none': {why}. Turn on 'Use an LLM' and fill in the address and model, "
-        "then Test (CLI: `spend-analyzer llm set --base-url ... --model ... --enable`)."
+        f"LLM mode is 'none': {why}. Turn on 'Use an LLM' and fill in the address "
+        "(the model is optional for single-model local servers), then Test "
+        "(CLI: `spend-analyzer llm set --base-url ... --enable`)."
     )
 
 

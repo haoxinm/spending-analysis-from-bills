@@ -59,7 +59,7 @@ def complete(
     """
     if not cfg.is_configured:
         raise LLMError(
-            "no LLM configured (enable it and set base_url and model: "
+            "no LLM configured (enable it and set base_url: "
             "`spend-analyzer llm set ...` or the Settings screen)"
         )
 
@@ -78,8 +78,14 @@ def complete(
     latency_ms = int((time.monotonic() - started) * 1000)
 
     if status >= 400:
+        hint = (
+            " (no model is set — this server may need one; set Model in Settings "
+            "or `spend-analyzer llm set --model ...`)"
+            if not cfg.model.strip()
+            else ""
+        )
         raise LLMError(
-            f"LLM endpoint {cfg.resolved_url} returned HTTP {status}: {_error_detail(body)}"
+            f"LLM endpoint {cfg.resolved_url} returned HTTP {status}: {_error_detail(body)}{hint}"
         )
     if not isinstance(body, dict):
         raise LLMError(f"LLM endpoint returned a non-JSON response: {str(body)[:300]}")
@@ -124,11 +130,17 @@ def _build_body(
     return body
 
 
+def _model_field(cfg: LLMConfig) -> dict[str, str]:
+    """`{"model": ...}`, or nothing when blank (single-model local servers don't need it)."""
+    model = cfg.model.strip()
+    return {"model": model} if model else {}
+
+
 def _chat_body(
     cfg: LLMConfig, system: str, user: str, json_schema: dict[str, Any] | None, schema_name: str
 ) -> dict[str, Any]:
     body: dict[str, Any] = {
-        "model": cfg.model,
+        **_model_field(cfg),
         "messages": [
             {"role": "system", "content": system},
             {"role": "user", "content": user},
@@ -153,7 +165,7 @@ def _responses_body(
     cfg: LLMConfig, system: str, user: str, json_schema: dict[str, Any] | None, schema_name: str
 ) -> dict[str, Any]:
     body: dict[str, Any] = {
-        "model": cfg.model,
+        **_model_field(cfg),
         "instructions": system,
         "input": [{"role": "user", "content": user}],
         "store": False,
@@ -180,7 +192,7 @@ def _anthropic_body(
     cfg: LLMConfig, system: str, user: str, json_schema: dict[str, Any] | None
 ) -> dict[str, Any]:
     body: dict[str, Any] = {
-        "model": cfg.model,
+        **_model_field(cfg),
         "max_tokens": cfg.max_tokens or _ANTHROPIC_DEFAULT_MAX_TOKENS,
         "system": system,
         "messages": [{"role": "user", "content": user}],

@@ -115,7 +115,7 @@ def test_classify_batch_raises_when_disabled_or_blank(fake: FakeLLM) -> None:
     with pytest.raises(LLMError, match="no provider configured"):
         egress.classify_batch(["TRADER JOES"], _cfg(enabled=False))
     with pytest.raises(LLMError, match="no provider configured"):
-        egress.classify_batch(["TRADER JOES"], _cfg(base_url="", model=""))
+        egress.classify_batch(["TRADER JOES"], _cfg(base_url=""))
     assert fake.requests == []
 
 

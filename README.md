@@ -65,7 +65,8 @@ every request, so a running server picks up changes made from the Settings scree
 
 Pick whichever of these suits you; they all write the same settings.
 
-**1. The CLI** (`--preset` fills in the URL and API format; add `--model`):
+**1. The CLI** (`--preset` fills in the URL and API format; add `--model`; the model is optional for
+single-model local servers such as llama.cpp or vLLM, but OpenAI and Anthropic require one):
 
 ```console
 $ spend-analyzer llm set --preset ollama --model llama3.1 --enable            # local, no key
@@ -88,7 +89,7 @@ enabled = true
 base_url = "http://localhost:11434"   # or https://api.openai.com, https://api.anthropic.com, ...
 api_format = "openai_chat"            # openai_chat | openai_responses | anthropic_messages
 path = ""                             # empty = the format's default path
-model = "llama3.1"
+model = "llama3.1"                     # optional for single-model local servers; OpenAI/Anthropic need one
 # temperature = 0.0                   # omit to not send one (some newer models reject it)
 # max_tokens = 4096
 # reasoning_effort = "low"            # minimal | low | medium | high | xhigh | max

@@ -129,10 +129,18 @@ def test_enable_disable_and_show(home: Path, kr: _Keyring) -> None:
     assert load_settings().llm.enabled is False
 
 
-def test_enable_without_model_explains(home: Path) -> None:
+def test_enable_without_base_url_explains(home: Path) -> None:
     result = runner.invoke(app, ["llm", "enable"])
     assert result.exit_code == 0
     assert "not usable yet" in result.output
+
+
+def test_enable_with_base_url_and_no_model_is_usable(home: Path) -> None:
+    runner.invoke(app, ["llm", "set", "--base-url", "http://127.0.0.1:8000"])
+    result = runner.invoke(app, ["llm", "enable"])
+    assert result.exit_code == 0
+    assert "mode: local" in result.output
+    assert "not usable yet" not in result.output
 
 
 def test_set_key_from_stdin_and_clear_key(home: Path, kr: _Keyring) -> None:

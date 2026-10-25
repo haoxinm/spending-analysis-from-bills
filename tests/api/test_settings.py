@@ -161,7 +161,19 @@ def test_test_llm_disabled_draft_explains_why(client: TestClient) -> None:
 
     body = client.post("/api/settings/test-llm", json={"llm": _draft(base_url="", model="")}).json()
     assert "no address" in body["detail"]
-    assert "no model" in body["detail"]
+    assert "no model" not in body["detail"]
+
+
+def test_test_llm_with_blank_model_reaches_the_endpoint(
+    client: TestClient, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    fake = install(monkeypatch, FakeLLM(default=_REPLY))
+    draft = _draft(base_url="http://127.0.0.1:8000", model="", api_format="openai_responses")
+    body = client.post("/api/settings/test-llm", json={"llm": draft}).json()
+    assert body["ok"] is True, body
+    assert body["mode"] == "local"
+    assert len(fake.requests) == 1
+    assert "model" not in fake.requests[0]
 
 
 def test_test_llm_without_body_tests_saved_settings(client: TestClient) -> None:

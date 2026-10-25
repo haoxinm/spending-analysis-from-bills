@@ -251,7 +251,15 @@ export function LlmSettingsSection({ settings, onSave, saving }: LlmSettingsSect
               </label>
               <label className="flex flex-col gap-1">
                 <span className="text-xs text-muted-foreground">Model</span>
-                <Input value={draft.model} onChange={(e) => update("model", e.target.value)} className="w-48" />
+                <Input
+                  value={draft.model}
+                  onChange={(e) => update("model", e.target.value)}
+                  placeholder="e.g. llama3.1 — optional for single-model local servers"
+                  className="w-48"
+                />
+                <span className="max-w-48 text-xs text-muted-foreground" data-testid="model-hint">
+                  Leave blank if your local server has one model loaded. OpenAI and Anthropic require one.
+                </span>
               </label>
             </div>
 

@@ -212,7 +212,14 @@ def test_mode_derivation(base_url: str, mode: str) -> None:
 def test_mode_none_when_disabled_or_incomplete() -> None:
     assert LLMConfig(enabled=False, base_url="http://localhost:1", model="m").mode == "none"
     assert LLMConfig(enabled=True, base_url="", model="m").mode == "none"
-    assert LLMConfig(enabled=True, base_url="http://localhost:1", model="").mode == "none"
+    assert LLMConfig(enabled=True, base_url="  ", model="m").mode == "none"
+
+
+def test_blank_model_is_still_configured() -> None:
+    local = LLMConfig(enabled=True, base_url="http://127.0.0.1:8000", model="")
+    assert (local.mode, local.is_configured) == ("local", True)
+    remote = LLMConfig(enabled=True, base_url="https://api.example.com", model="")
+    assert (remote.mode, remote.is_configured) == ("remote", True)
 
 
 @pytest.mark.parametrize(

@@ -222,11 +222,11 @@ def run_eval(cfg: LLMConfig, *, csv_path: Path, mode: EvalMode) -> EvalReport:
         matrix, and every misclassified row.
 
     Raises:
-        ConfigError: `csv_path` is malformed, or `mode="llm"` but `cfg` names no provider/model.
+        ConfigError: `csv_path` is malformed, or `mode="llm"` but `cfg` names no endpoint.
     """
     if mode == "llm" and not cfg.is_configured:
         raise ConfigError(
-            "run_eval(mode='llm') requires a configured [llm] endpoint (enabled, base_url, model); "
+            "run_eval(mode='llm') requires a configured [llm] endpoint (enabled, base_url); "
             "use mode='rules' to evaluate the deterministic cascade only"
         )
 
