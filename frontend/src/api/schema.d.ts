@@ -895,6 +895,11 @@ export interface components {
             /** Group Id */
             group_id: string;
         };
+        /** ConflictResponse */
+        ConflictResponse: {
+            /** Detail */
+            detail: string;
+        };
         /** ExtractRequest */
         ExtractRequest: {
             /** Issuer Id */
@@ -956,6 +961,21 @@ export interface components {
             match_terms: string[];
             /** Default Spec Id */
             default_spec_id?: number | null;
+        };
+        /** IssuerConflictDetail */
+        IssuerConflictDetail: {
+            /** Message */
+            message: string;
+            /** Existing Issuer Id */
+            existing_issuer_id: number;
+        };
+        /**
+         * IssuerConflictResponse
+         * @description The 409 body for an issuer create/rename that collides with an existing issuer; mirrors
+         *     the layout-spec 422 convention of a structured `detail`.
+         */
+        IssuerConflictResponse: {
+            detail: components["schemas"]["IssuerConflictDetail"];
         };
         /** IssuerCreate */
         IssuerCreate: {
@@ -2630,6 +2650,15 @@ export interface operations {
                     "application/json": components["schemas"]["Issuer"];
                 };
             };
+            /** @description An issuer with this name (or slug) already exists. */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["IssuerConflictResponse"];
+                };
+            };
             /** @description Validation Error */
             422: {
                 headers: {
@@ -2692,6 +2721,15 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["Issuer"];
+                };
+            };
+            /** @description An issuer with this name (or slug) already exists. */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["IssuerConflictResponse"];
                 };
             };
             /** @description Validation Error */
@@ -2780,6 +2818,15 @@ export interface operations {
                     "application/json": components["schemas"]["LayoutSpec"];
                 };
             };
+            /** @description That layout spec already exists. */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ConflictResponse"];
+                };
+            };
             /** @description Validation Error */
             422: {
                 headers: {
@@ -2813,6 +2860,15 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["LayoutSpec"];
+                };
+            };
+            /** @description That layout spec already exists. */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ConflictResponse"];
                 };
             };
             /** @description Validation Error */

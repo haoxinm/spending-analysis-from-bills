@@ -50,11 +50,35 @@ export type { components } from "./schema";
  * of `throw error` on a value that is not guaranteed to be an `Error` instance
  * (`only-throw-error`).
  */
+export class ApiError extends Error {
+  /** The raw `detail` from the error body (a string, or a structured object such as the issuer
+   * 409's `{ message, existing_issuer_id }`). */
+  readonly detail: unknown;
+
+  constructor(message: string, detail: unknown) {
+    super(message);
+    this.name = "ApiError";
+    this.detail = detail;
+  }
+}
+
+/** The existing issuer's id from an issuer-conflict (409) error, if `error` is one. */
+export function existingIssuerIdFromError(error: unknown): number | null {
+  if (!(error instanceof ApiError)) return null;
+  const detail = error.detail;
+  if (typeof detail !== "object" || detail === null || !("existing_issuer_id" in detail)) return null;
+  return typeof detail.existing_issuer_id === "number" ? detail.existing_issuer_id : null;
+}
+
 export function throwIfError(error: unknown): void {
   if (error === undefined || error === null) return;
   const detail =
-    typeof error === "object" && error !== null && "detail" in error
-      ? String(error.detail)
-      : JSON.stringify(error);
-  throw new Error(detail);
+    typeof error === "object" && "detail" in error ? error.detail : error;
+  const message =
+    typeof detail === "string"
+      ? detail
+      : typeof detail === "object" && detail !== null && "message" in detail && typeof detail.message === "string"
+        ? detail.message
+        : JSON.stringify(detail);
+  throw new ApiError(message, detail);
 }

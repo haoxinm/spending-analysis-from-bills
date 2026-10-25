@@ -62,3 +62,27 @@ def test_preview_match_with_no_terms_returns_empty(client: TestClient) -> None:
     response = client.post("/api/issuers/preview-match", json={"match_terms": []})
     assert response.status_code == 200
     assert response.json() == []
+
+
+def test_create_duplicate_issuer_returns_409_with_existing_id(client: TestClient) -> None:
+    first = client.post("/api/issuers", json={"name": "Discover"}).json()
+
+    dup = client.post("/api/issuers", json={"name": "discover"})
+    assert dup.status_code == 409
+    detail = dup.json()["detail"]
+    assert detail["message"] == "An issuer named 'Discover' already exists."
+    assert detail["existing_issuer_id"] == first["id"]
+
+    # Same slug, different name ("Chase-Bank" vs "Chase Bank") also conflicts.
+    client.post("/api/issuers", json={"name": "Chase Bank"})
+    assert client.post("/api/issuers", json={"name": "Chase-Bank"}).status_code == 409
+    assert len(client.get("/api/issuers").json()) == 2
+
+
+def test_rename_issuer_to_existing_name_returns_409(client: TestClient) -> None:
+    a = client.post("/api/issuers", json={"name": "Alpha"}).json()
+    b = client.post("/api/issuers", json={"name": "Beta"}).json()
+    resp = client.patch(f"/api/issuers/{b['id']}", json={"name": "Alpha"})
+    assert resp.status_code == 409
+    assert resp.json()["detail"]["existing_issuer_id"] == a["id"]
+    assert client.patch(f"/api/issuers/{b['id']}", json={"name": "Beta"}).status_code == 200

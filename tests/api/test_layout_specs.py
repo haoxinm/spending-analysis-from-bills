@@ -92,3 +92,11 @@ def test_missing_layout_spec_is_404(client) -> None:  # type: ignore[no-untyped-
     )
     assert client.post("/api/layout-specs/999999/approve").status_code == 404
     assert client.get("/api/layout-specs/999999/export").status_code == 404
+
+
+def test_create_duplicate_layout_spec_returns_409(client: TestClient) -> None:
+    body = {"name": "BofA credit", "spec_yaml": _VALID_SPEC_YAML}
+    assert client.post("/api/layout-specs", json=body).status_code == 201
+    dup = client.post("/api/layout-specs", json=body)
+    assert dup.status_code == 409
+    assert "already exists" in dup.json()["detail"]

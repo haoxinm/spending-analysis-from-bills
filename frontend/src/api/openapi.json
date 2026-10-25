@@ -2285,6 +2285,16 @@
               }
             }
           },
+          "409": {
+            "description": "An issuer with this name (or slug) already exists.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/IssuerConflictResponse"
+                }
+              }
+            }
+          },
           "422": {
             "description": "Validation Error",
             "content": {
@@ -2333,6 +2343,16 @@
               "application/json": {
                 "schema": {
                   "$ref": "#/components/schemas/Issuer"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "An issuer with this name (or slug) already exists.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/IssuerConflictResponse"
                 }
               }
             }
@@ -2480,6 +2500,16 @@
               }
             }
           },
+          "409": {
+            "description": "That layout spec already exists.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ConflictResponse"
+                }
+              }
+            }
+          },
           "422": {
             "description": "Validation Error",
             "content": {
@@ -2528,6 +2558,16 @@
               "application/json": {
                 "schema": {
                   "$ref": "#/components/schemas/LayoutSpec"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "That layout spec already exists.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ConflictResponse"
                 }
               }
             }
@@ -3494,6 +3534,19 @@
         ],
         "title": "ClassifyRunResponse"
       },
+      "ConflictResponse": {
+        "properties": {
+          "detail": {
+            "type": "string",
+            "title": "Detail"
+          }
+        },
+        "type": "object",
+        "required": [
+          "detail"
+        ],
+        "title": "ConflictResponse"
+      },
       "ExtractRequest": {
         "properties": {
           "issuer_id": {
@@ -3691,6 +3744,37 @@
           "match_terms"
         ],
         "title": "Issuer"
+      },
+      "IssuerConflictDetail": {
+        "properties": {
+          "message": {
+            "type": "string",
+            "title": "Message"
+          },
+          "existing_issuer_id": {
+            "type": "integer",
+            "title": "Existing Issuer Id"
+          }
+        },
+        "type": "object",
+        "required": [
+          "message",
+          "existing_issuer_id"
+        ],
+        "title": "IssuerConflictDetail"
+      },
+      "IssuerConflictResponse": {
+        "properties": {
+          "detail": {
+            "$ref": "#/components/schemas/IssuerConflictDetail"
+          }
+        },
+        "type": "object",
+        "required": [
+          "detail"
+        ],
+        "title": "IssuerConflictResponse",
+        "description": "The 409 body for an issuer create/rename that collides with an existing issuer; mirrors\nthe layout-spec 422 convention of a structured `detail`."
       },
       "IssuerCreate": {
         "properties": {

@@ -1,6 +1,7 @@
 import * as React from "react";
 import { Link } from "react-router-dom";
 
+import { existingIssuerIdFromError } from "@/api/client";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 
@@ -31,6 +32,21 @@ export function IssuerExtractorPicker({
   const [newIssuerName, setNewIssuerName] = React.useState("");
 
   const issuers = issuersQuery.data ?? [];
+  const typedName = newIssuerName.trim();
+  const nameMatch = typedName
+    ? issuers.find((i) => i.name.toLowerCase() === typedName.toLowerCase())
+    : undefined;
+  // After a 409 the server names the existing issuer; fall back to the typed-name match.
+  const existingId = existingIssuerIdFromError(createIssuer.error);
+  const existingIssuer =
+    (existingId !== null ? issuers.find((i) => i.id === existingId) : undefined) ?? nameMatch;
+  const selectIssuer = (issuerId: number) =>
+    onIssuerChange(issuerId, extractorChoiceForIssuer(issuerId, specs, fallbackParserId));
+  const closeCreateForm = () => {
+    setIsCreatingIssuer(false);
+    setNewIssuerName("");
+    createIssuer.reset();
+  };
   const specs = specsQuery.data ?? [];
   const specsForIssuer = specs.filter((s) => s.issuer_id === item.issuerId && s.approved);
   const fallbackParserId = item.proposal?.parser_id ?? null;
@@ -51,49 +67,70 @@ export function IssuerExtractorPicker({
       <label className="flex flex-1 flex-col gap-1 text-xs font-medium text-muted-foreground">
         Issuer
         {isCreatingIssuer ? (
-          <div className="flex gap-1.5">
-            <Input
-              autoFocus
-              placeholder="Issuer name, e.g. Bank of America"
-              value={newIssuerName}
-              onChange={(event) => setNewIssuerName(event.target.value)}
-              className="h-8 text-sm"
-            />
-            <Button
-              type="button"
-              size="sm"
-              disabled={newIssuerName.trim().length === 0 || createIssuer.isPending}
-              onClick={() => {
-                const name = newIssuerName.trim();
-                createIssuer.mutate(
-                  { name, match_terms: [name.toLowerCase()] },
-                  {
-                    onSuccess: (issuer) => {
-                      setIsCreatingIssuer(false);
-                      setNewIssuerName("");
-                      onIssuerChange(
-                        issuer.id,
-                        extractorChoiceForIssuer(issuer.id, specs, fallbackParserId),
-                      );
+          <>
+            <div className="flex gap-1.5">
+              <Input
+                autoFocus
+                placeholder="Issuer name, e.g. Bank of America"
+                value={newIssuerName}
+                onChange={(event) => {
+                  setNewIssuerName(event.target.value);
+                  createIssuer.reset();
+                }}
+                aria-invalid={createIssuer.isError || undefined}
+                className="h-8 text-sm"
+              />
+              <Button
+                type="button"
+                size="sm"
+                disabled={typedName.length === 0 || createIssuer.isPending}
+                onClick={() => {
+                  createIssuer.mutate(
+                    { name: typedName, match_terms: [typedName.toLowerCase()] },
+                    {
+                      onSuccess: (issuer) => {
+                        closeCreateForm();
+                        selectIssuer(issuer.id);
+                      },
                     },
-                  },
-                );
-              }}
-            >
-              Add
-            </Button>
-            <Button type="button" size="sm" variant="ghost" onClick={() => setIsCreatingIssuer(false)}>
-              Cancel
-            </Button>
-          </div>
+                  );
+                }}
+              >
+                Add
+              </Button>
+              <Button type="button" size="sm" variant="ghost" onClick={closeCreateForm}>
+                Cancel
+              </Button>
+            </div>
+            {createIssuer.isError ? (
+              <p role="alert" className="font-normal text-destructive">
+                {createIssuer.error.message}
+              </p>
+            ) : nameMatch ? (
+              <p className="font-normal">An issuer named '{nameMatch.name}' already exists.</p>
+            ) : null}
+            {existingIssuer && (createIssuer.isError || nameMatch) ? (
+              <Button
+                type="button"
+                size="sm"
+                variant="outline"
+                className="self-start"
+                onClick={() => {
+                  closeCreateForm();
+                  selectIssuer(existingIssuer.id);
+                }}
+              >
+                Use existing '{existingIssuer.name}'
+              </Button>
+            ) : null}
+          </>
         ) : (
           <div className="flex gap-1.5">
             <select
               className="h-8 flex-1 rounded-md border border-input bg-transparent px-2 text-sm text-foreground"
               value={item.issuerId ?? ""}
               onChange={(event) => {
-                const issuerId = Number(event.target.value);
-                onIssuerChange(issuerId, extractorChoiceForIssuer(issuerId, specs, fallbackParserId));
+                selectIssuer(Number(event.target.value));
               }}
             >
               <option value="" disabled>

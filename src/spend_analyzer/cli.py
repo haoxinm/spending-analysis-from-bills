@@ -636,7 +636,11 @@ def issuers_add(
 ) -> None:
     """Register an issuer so `import` can match its statements confidently (§3.12a)."""
     with _open_engine() as engine, _open_session(engine) as session:
-        issuer = crud.create_issuer(session, name=name, match_terms=list(match_term))
+        try:
+            issuer = crud.create_issuer(session, name=name, match_terms=list(match_term))
+        except crud.DuplicateIssuerError as exc:
+            typer.echo(f"{exc} (issuer #{exc.existing.id})", err=True)
+            raise typer.Exit(code=1) from None
         if default_spec is not None:
             issuer = crud.update_issuer(
                 session, issuer, name=None, match_terms=None, default_spec_id=default_spec

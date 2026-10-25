@@ -14,7 +14,8 @@ from collections.abc import Sequence
 from datetime import date
 from pathlib import Path
 
-from sqlalchemy import Select, select
+from sqlalchemy import Select, or_, select
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
 from spend_analyzer.core.paths import statements_dir
@@ -401,11 +402,45 @@ def get_issuer(session: Session, issuer_id: int) -> Issuer | None:
     return session.get(Issuer, issuer_id)
 
 
+class DuplicateIssuerError(Exception):
+    """An issuer with the same name or slug already exists; `existing` is that issuer."""
+
+    def __init__(self, existing: Issuer) -> None:
+        super().__init__(f"An issuer named '{existing.name}' already exists.")
+        self.existing = existing
+
+
+class DuplicateLayoutSpecError(Exception):
+    """A layout spec with the same `parser_id` (name + version) already exists."""
+
+    def __init__(self, name: str, version: int) -> None:
+        super().__init__(f"A layout spec named '{name}' (version {version}) already exists.")
+
+
+def find_issuer_conflict(session: Session, name: str) -> Issuer | None:
+    """The existing issuer `name` would collide with: same name, or same derived slug."""
+    return session.execute(
+        select(Issuer).where((Issuer.slug == _slugify(name)) | (Issuer.name == name)).limit(1)
+    ).scalar_one_or_none()
+
+
 def create_issuer(session: Session, *, name: str, match_terms: list[str]) -> Issuer:
+    """Raises `DuplicateIssuerError` if the name or slug is taken (including a concurrent insert
+    that wins the race between the check and the flush)."""
+    conflict = find_issuer_conflict(session, name)
+    if conflict is not None:
+        raise DuplicateIssuerError(conflict)
     slug = _slugify(name)
     issuer = Issuer(name=name, slug=slug, match_terms=json.dumps(match_terms or [name]))
     session.add(issuer)
-    session.flush()
+    try:
+        session.flush()
+    except IntegrityError:
+        session.rollback()
+        conflict = find_issuer_conflict(session, name)
+        if conflict is None:
+            raise
+        raise DuplicateIssuerError(conflict) from None
     return issuer
 
 
@@ -417,7 +452,12 @@ def update_issuer(
     match_terms: list[str] | None,
     default_spec_id: int | None,
 ) -> Issuer:
-    if name is not None:
+    if name is not None and name != issuer.name:
+        conflict = session.execute(
+            select(Issuer).where(Issuer.name == name, Issuer.id != issuer.id)
+        ).scalar_one_or_none()
+        if conflict is not None:
+            raise DuplicateIssuerError(conflict)
         issuer.name = name
     if match_terms is not None:
         issuer.match_terms = json.dumps(match_terms)
@@ -458,10 +498,20 @@ def create_layout_spec(
     session: Session, *, name: str, spec_yaml: str, issuer_id: int | None, version: int = 1
 ) -> LayoutSpec:
     slug = _slugify(name)
+    parser_id = f"spec_{slug}_v{version}"
+    if session.execute(
+        select(LayoutSpec.id).where(
+            or_(
+                LayoutSpec.parser_id == parser_id,
+                (LayoutSpec.name == name) & (LayoutSpec.version == version),
+            )
+        )
+    ).first():
+        raise DuplicateLayoutSpecError(name, version)
     spec = LayoutSpec(
         name=name,
         version=version,
-        parser_id=f"spec_{slug}_v{version}",
+        parser_id=parser_id,
         issuer_id=issuer_id,
         spec_yaml=spec_yaml,
         source="pasted",

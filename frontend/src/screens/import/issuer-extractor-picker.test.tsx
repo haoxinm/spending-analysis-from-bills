@@ -22,11 +22,15 @@ const SPECS: LayoutSpec[] = [
   { id: 10, name: "Chase custom", version: 1, issuer_id: 3, approved: true, source: "user" },
 ];
 
-async function renderPicker(itemOverrides: Partial<ImportItem> = {}) {
+async function renderPicker(
+  itemOverrides: Partial<ImportItem> = {},
+  createResponse?: Response,
+) {
   vi.resetModules();
   const fetchMock = vi.fn<typeof fetch>((input) => {
     const { url, method } = describeRequest(input);
     if (url.includes("/api/issuers") && method === "POST") {
+      if (createResponse) return Promise.resolve(createResponse.clone());
       return Promise.resolve(
         jsonResponse({ id: 99, name: "New Bank", slug: "new-bank", match_terms: ["new bank"], default_spec_id: null }, 201),
       );
@@ -108,5 +112,38 @@ describe("IssuerExtractorPicker", () => {
     await waitFor(() =>
       expect(onIssuerChange).toHaveBeenCalledWith(99, { kind: "parser", parserId: "layout_a_credit" }),
     );
+  });
+
+  it("shows the server's 409 inline and selects the existing issuer on request", async () => {
+    const { onIssuerChange } = await renderPicker(
+      {},
+      jsonResponse(
+        { detail: { message: "An issuer named 'Amex' already exists.", existing_issuer_id: 4 } },
+        409,
+      ),
+    );
+    await waitFor(() => expect(screen.getByRole("option", { name: "Amex" })).toBeInTheDocument());
+    await userEvent.click(screen.getByRole("button", { name: "New" }));
+    await userEvent.type(screen.getByPlaceholderText(/Issuer name/), "American Express");
+    await userEvent.click(screen.getByRole("button", { name: "Add" }));
+
+    expect((await screen.findByRole("alert")).textContent).toBe("An issuer named 'Amex' already exists.");
+    expect(onIssuerChange).not.toHaveBeenCalled();
+
+    await userEvent.click(screen.getByRole("button", { name: "Use existing 'Amex'" }));
+
+    expect(onIssuerChange).toHaveBeenCalledWith(4, { kind: "parser", parserId: "layout_a_credit" });
+    expect(screen.queryByRole("alert")).not.toBeInTheDocument();
+  });
+
+  it("warns before submitting when the typed name matches an existing issuer", async () => {
+    const { onIssuerChange } = await renderPicker();
+    await waitFor(() => expect(screen.getByRole("option", { name: "Amex" })).toBeInTheDocument());
+    await userEvent.click(screen.getByRole("button", { name: "New" }));
+    await userEvent.type(screen.getByPlaceholderText(/Issuer name/), "chase");
+
+    expect(screen.getByText("An issuer named 'Chase' already exists.")).toBeInTheDocument();
+    await userEvent.click(screen.getByRole("button", { name: "Use existing 'Chase'" }));
+    expect(onIssuerChange).toHaveBeenCalledWith(3, expect.anything());
   });
 });

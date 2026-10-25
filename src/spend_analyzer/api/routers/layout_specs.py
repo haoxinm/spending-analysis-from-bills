@@ -9,6 +9,8 @@ never reaches the database.
 
 from __future__ import annotations
 
+from typing import Any
+
 from fastapi import APIRouter, HTTPException
 from starlette.responses import PlainTextResponse
 
@@ -61,17 +63,35 @@ def list_layout_specs(session: SessionDep) -> list[schemas.LayoutSpec]:
     return [_spec_schema(s) for s in crud.list_layout_specs(session)]
 
 
-@router.post("/layout-specs", response_model=schemas.LayoutSpec, status_code=201)
+_CONFLICT_RESPONSES: dict[int | str, dict[str, Any]] = {
+    409: {"model": schemas.ConflictResponse, "description": "That layout spec already exists."}
+}
+
+
+@router.post(
+    "/layout-specs",
+    response_model=schemas.LayoutSpec,
+    status_code=201,
+    responses=_CONFLICT_RESPONSES,
+)
 def create_layout_spec(body: schemas.LayoutSpecCreate, session: SessionDep) -> schemas.LayoutSpec:
     _validate_spec_yaml(body.spec_yaml)
-    spec = crud.create_layout_spec(
-        session, name=body.name, spec_yaml=body.spec_yaml, issuer_id=body.issuer_id
-    )
+    try:
+        spec = crud.create_layout_spec(
+            session, name=body.name, spec_yaml=body.spec_yaml, issuer_id=body.issuer_id
+        )
+    except crud.DuplicateLayoutSpecError as exc:
+        raise HTTPException(status_code=409, detail=str(exc)) from None
     session.commit()
     return _spec_schema(spec)
 
 
-@router.post("/layout-specs/{spec_id}/revise", response_model=schemas.LayoutSpec, status_code=201)
+@router.post(
+    "/layout-specs/{spec_id}/revise",
+    response_model=schemas.LayoutSpec,
+    status_code=201,
+    responses=_CONFLICT_RESPONSES,
+)
 def revise_layout_spec(
     spec_id: int, body: schemas.LayoutSpecCreate, session: SessionDep
 ) -> schemas.LayoutSpec:
@@ -79,9 +99,12 @@ def revise_layout_spec(
     if previous is None:
         raise HTTPException(status_code=404, detail="layout spec not found")
     _validate_spec_yaml(body.spec_yaml)
-    spec = crud.revise_layout_spec(
-        session, previous, spec_yaml=body.spec_yaml, issuer_id=body.issuer_id
-    )
+    try:
+        spec = crud.revise_layout_spec(
+            session, previous, spec_yaml=body.spec_yaml, issuer_id=body.issuer_id
+        )
+    except crud.DuplicateLayoutSpecError as exc:
+        raise HTTPException(status_code=409, detail=str(exc)) from None
     session.commit()
     return _spec_schema(spec)
 

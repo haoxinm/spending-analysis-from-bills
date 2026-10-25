@@ -322,6 +322,16 @@ def test_gate2_registering_an_issuer_first_makes_a_later_import_auto_confirm(hom
     assert "awaiting_extractor" not in second_result.output, second_result.output
 
 
+def test_issuers_add_duplicate_prints_friendly_error(home: Path) -> None:
+    assert runner.invoke(app, ["migrate"], catch_exceptions=False).exit_code == 0
+    assert runner.invoke(app, ["issuers", "add", "Discover"]).exit_code == 0
+
+    result = runner.invoke(app, ["issuers", "add", "discover"])
+    assert result.exit_code == 1
+    assert "An issuer named 'Discover' already exists." in result.output
+    assert "Traceback" not in result.output
+
+
 def test_import_builtin_failure_warns_and_prints_llm_retry_command(
     home: Path, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:

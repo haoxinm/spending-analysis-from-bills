@@ -345,6 +345,22 @@ class IssuerUpdate(_Model):
     default_spec_id: int | None = None
 
 
+class IssuerConflictDetail(_Model):
+    message: str
+    existing_issuer_id: int
+
+
+class IssuerConflictResponse(_Model):
+    """The 409 body for an issuer create/rename that collides with an existing issuer; mirrors
+    the layout-spec 422 convention of a structured `detail`."""
+
+    detail: IssuerConflictDetail
+
+
+class ConflictResponse(_Model):
+    detail: str
+
+
 class IssuerMatchPreviewRequest(_Model):
     match_terms: list[str]
 
