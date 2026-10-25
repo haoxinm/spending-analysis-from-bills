@@ -5,10 +5,10 @@ import { EgressPreviewSection } from "./components/egress-preview-section";
 import { LlmSettingsSection } from "./components/llm-settings-section";
 import { PrivacySection } from "./components/privacy-section";
 import { UsersAccountsSection } from "./components/users-accounts-section";
-import { type LlmSettings, type PrivacySettings, useSettingsQuery, useUpdateSettings } from "./lib/hooks";
+import { type LlmSettings, type PrivacySettings, type Settings, useSettingsQuery, useUpdateSettings } from "./lib/hooks";
 
 /**
- * Settings screen (P3-E): users and accounts CRUD, the LLM provider three-way choice (D2) with
+ * Settings screen (P3-E): users and accounts CRUD, the unified LLM endpoint with
  * its key/model/threshold/batch-size fields, privacy toggles, and the egress preview — "the
  * feature that earns user trust", per the plan.
  */
@@ -32,9 +32,9 @@ function SettingsScreen() {
 
   const settings = settingsQuery.data;
 
-  const saveLlm = (llm: LlmSettings) => {
+  const saveLlm = (llm: LlmSettings, defaultExtractor: Settings["ingest"]["default_extractor"]) => {
     updateSettings.mutate(
-      { ...settings, llm },
+      { ...settings, llm, ingest: { ...settings.ingest, default_extractor: defaultExtractor } },
       {
         onSuccess: () => toast({ title: "LLM settings saved" }),
         onError: (err) => toast({ title: "Could not save settings", description: String(err), variant: "destructive" }),

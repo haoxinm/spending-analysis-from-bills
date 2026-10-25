@@ -14,17 +14,27 @@ vi.mock("../lib/hooks", () => ({
 
 const baseSettings: Settings = {
   llm: {
-    mode: "remote",
-    provider: "anthropic",
+    enabled: true,
+    base_url: "https://api.anthropic.com",
+    api_format: "openai_chat" as const,
+    path: "",
     model: "claude",
-    api_base: "",
+    temperature: null,
+    max_tokens: null,
+    reasoning_effort: "",
+    extra_body: {},
+    extra_headers: {},
+    structured_output: true,
     batch_size: 50,
     timeout_s: 120,
     confidence_threshold: 0.7,
+    parse_pages_per_request: 0,
+    mode: "remote" as const,
+    resolved_url: "https://api.anthropic.com/v1/chat/completions",
     has_key: true,
   },
   privacy: { store_pdf_copies: true, store_extract_cache: false, pii_terms: [] },
-  ingest: { always_confirm_extractor: false, date_format_hints: [], default_currency: "USD" },
+  ingest: { always_confirm_extractor: false, default_extractor: "auto" as const, date_format_hints: [], default_currency: "USD" },
   server: { port: 8756 },
 };
 

@@ -8,17 +8,17 @@ describe("setApiKey / clearApiKey", () => {
     document.head.querySelectorAll('meta[name="spend-token"]').forEach((el) => el.remove());
   });
 
-  it("PUTs the provider and key, never leaking the key into an error path", async () => {
+  it("PUTs the key and base_url, never leaking the key into an error path", async () => {
     const fetchMock = vi.fn<typeof fetch>(() => Promise.resolve(new Response(null, { status: 204 })));
     vi.stubGlobal("fetch", fetchMock);
 
-    await setApiKey("anthropic", "sk-secret");
+    await setApiKey("https://api.anthropic.com", "sk-secret");
 
     expect(fetchMock).toHaveBeenCalledTimes(1);
     const [url, init] = fetchMock.mock.calls[0] ?? [];
     expect(url as string).toContain("/api/settings/api-key");
     expect(init?.method).toBe("PUT");
-    expect(JSON.parse(init?.body as string)).toEqual({ provider: "anthropic", api_key: "sk-secret" });
+    expect(JSON.parse(init?.body as string)).toEqual({ api_key: "sk-secret", base_url: "https://api.anthropic.com" });
   });
 
   it("sends the per-launch spend token when the meta tag is present", async () => {
@@ -29,7 +29,7 @@ describe("setApiKey / clearApiKey", () => {
     const fetchMock = vi.fn<typeof fetch>(() => Promise.resolve(new Response(null, { status: 204 })));
     vi.stubGlobal("fetch", fetchMock);
 
-    await setApiKey("openai", "sk-x");
+    await setApiKey("https://api.openai.com", "sk-x");
 
     const [, init] = fetchMock.mock.calls[0] ?? [];
     const headers = new Headers(init?.headers);
@@ -47,17 +47,17 @@ describe("setApiKey / clearApiKey", () => {
     );
     vi.stubGlobal("fetch", fetchMock);
 
-    await expect(setApiKey("anthropic", "sk-secret")).rejects.toThrow("provider not configured");
+    await expect(setApiKey("https://api.anthropic.com", "sk-secret")).rejects.toThrow("provider not configured");
   });
 
-  it("DELETEs with the provider as a query parameter", async () => {
+  it("DELETEs with base_url as a query parameter", async () => {
     const fetchMock = vi.fn<typeof fetch>(() => Promise.resolve(new Response(null, { status: 204 })));
     vi.stubGlobal("fetch", fetchMock);
 
-    await clearApiKey("anthropic");
+    await clearApiKey("https://api.anthropic.com");
 
     const [url, init] = fetchMock.mock.calls[0] ?? [];
-    expect(url as string).toContain("provider=anthropic");
+    expect(url as string).toContain("base_url=https%3A%2F%2Fapi.anthropic.com");
     expect(init?.method).toBe("DELETE");
   });
 
@@ -65,6 +65,6 @@ describe("setApiKey / clearApiKey", () => {
     const fetchMock = vi.fn<typeof fetch>(() => Promise.resolve(new Response("nope", { status: 404 })));
     vi.stubGlobal("fetch", fetchMock);
 
-    await expect(clearApiKey("anthropic")).rejects.toThrow("404");
+    await expect(clearApiKey("https://api.anthropic.com")).rejects.toThrow("404");
   });
 });

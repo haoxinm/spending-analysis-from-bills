@@ -1,23 +1,12 @@
 /**
- * Setting or clearing the LLM provider's API key.
+ * Setting or clearing the LLM endpoint's API key.
  *
- * The key is Keychain-backed (I7) and **write-only**: `GET /api/settings` never returns it
- * (only `has_key`, §3.7/§3.10), and this screen never displays a previously-saved key.
+ * The key lives in the operating system's credential store (I7), is stored per host of the
+ * endpoint's `base_url`, and is **write-only**: `GET /api/settings` never returns it (only
+ * `has_key`), and this screen never displays a previously-saved key.
  *
- * CONTRACT GAP (§0.6 change request): the frozen HTTP surface (§3.12) and the checked-in
- * `openapi.json` have no route to *set* a key — `spend_analyzer.config.set_api_key` /
- * `delete_api_key` exist (P0-2) and are wired into `POST /api/settings/test-llm`, but no
- * router exposes a write endpoint (see the docstring of
- * `src/spend_analyzer/api/routers/settings.py`, which says this explicitly: "Settings UI work
- * is Phase 3"). This module calls the endpoints below, which do not exist yet on `main`:
- *
- *   PUT    /api/settings/api-key   body {provider, api_key} -> 204
- *   DELETE /api/settings/api-key?provider=<provider> -> 204
- *
- * They are not in `schema.d.ts`, so they are called with a plain `fetch` (not the typed
- * `apiClient`) rather than inventing an untyped escape hatch on the shared client, which P3-E
- * does not own. Reported to the orchestrator as a contract change request; until the router
- * gains these routes, both calls resolve as HTTP errors that the UI surfaces via toast.
+ *   PUT    /api/settings/api-key            body {api_key, base_url} -> 204
+ *   DELETE /api/settings/api-key?base_url=<base_url> -> 204
  */
 
 function readSpendToken(): string | undefined {
@@ -53,21 +42,21 @@ function jsonHeaders(): HeadersInit {
   };
 }
 
-/** Writes a new API key for `provider` to the Keychain. Never resolves with the key's value. */
-export async function setApiKey(provider: string, apiKey: string): Promise<void> {
+/** Writes a new API key for `baseUrl`'s host to the credential store. Never resolves with the key. */
+export async function setApiKey(baseUrl: string, apiKey: string): Promise<void> {
   const response = await fetch(apiKeyUrl(), {
     method: "PUT",
     headers: jsonHeaders(),
-    body: JSON.stringify({ provider, api_key: apiKey }),
+    body: JSON.stringify({ api_key: apiKey, base_url: baseUrl }),
   });
   if (!response.ok) {
     throw new Error(await readErrorDetail(response));
   }
 }
 
-/** Removes the stored API key for `provider` from the Keychain. */
-export async function clearApiKey(provider: string): Promise<void> {
-  const response = await fetch(apiKeyUrl(`provider=${encodeURIComponent(provider)}`), {
+/** Removes the stored API key for `baseUrl`'s host from the credential store. */
+export async function clearApiKey(baseUrl: string): Promise<void> {
+  const response = await fetch(apiKeyUrl(`base_url=${encodeURIComponent(baseUrl)}`), {
     method: "DELETE",
     headers: jsonHeaders(),
   });

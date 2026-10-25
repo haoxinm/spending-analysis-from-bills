@@ -7,17 +7,27 @@ import type { Settings } from "../lib/hooks";
 
 const baseSettings: Settings = {
   llm: {
-    mode: "none",
-    provider: "",
+    enabled: false,
+    base_url: "",
+    api_format: "openai_chat" as const,
+    path: "",
     model: "",
-    api_base: "",
+    temperature: null,
+    max_tokens: null,
+    reasoning_effort: "",
+    extra_body: {},
+    extra_headers: {},
+    structured_output: true,
     batch_size: 50,
     timeout_s: 120,
     confidence_threshold: 0.7,
+    parse_pages_per_request: 0,
+    mode: "none" as const,
+    resolved_url: "",
     has_key: false,
   },
   privacy: { store_pdf_copies: true, store_extract_cache: false, pii_terms: ["Alex"] },
-  ingest: { always_confirm_extractor: false, date_format_hints: [], default_currency: "USD" },
+  ingest: { always_confirm_extractor: false, default_extractor: "auto" as const, date_format_hints: [], default_currency: "USD" },
   server: { port: 8756 },
 };
 

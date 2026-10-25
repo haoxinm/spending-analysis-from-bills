@@ -51,8 +51,9 @@ export function useUpdateSettings() {
 
 export function useTestLlm() {
   return useMutation({
-    mutationFn: async () => {
-      const { data, error } = await apiClient.POST("/settings/test-llm");
+    // Tests the unsaved draft, not whatever is on disk.
+    mutationFn: async (llm: LlmSettings) => {
+      const { data, error } = await apiClient.POST("/settings/test-llm", { body: { llm } });
       throwIfError(error);
       return data;
     },
@@ -61,14 +62,14 @@ export function useTestLlm() {
 
 export function useSetApiKey() {
   return useMutation({
-    mutationFn: ({ provider, apiKey }: { provider: string; apiKey: string }) =>
-      setApiKey(provider, apiKey),
+    mutationFn: ({ baseUrl, apiKey }: { baseUrl: string; apiKey: string }) =>
+      setApiKey(baseUrl, apiKey),
   });
 }
 
 export function useClearApiKey() {
   return useMutation({
-    mutationFn: ({ provider }: { provider: string }) => clearApiKey(provider),
+    mutationFn: ({ baseUrl }: { baseUrl: string }) => clearApiKey(baseUrl),
   });
 }
 

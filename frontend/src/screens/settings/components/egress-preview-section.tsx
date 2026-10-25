@@ -8,6 +8,14 @@ import { EmptyState, ErrorState, LoadingState } from "@/components/primitives/st
 import { type Settings, useClassifyPreview, useUsersQuery } from "../lib/hooks";
 import { buildPreviewCsv, summarizeRedactionSignals } from "../lib/redaction";
 
+function llmHost(baseUrl: string): string {
+  try {
+    return new URL(/^[a-z][a-z0-9+.-]*:\/\//i.test(baseUrl) ? baseUrl : `http://${baseUrl}`).host || "the configured LLM";
+  } catch {
+    return "the configured LLM";
+  }
+}
+
 export interface EgressPreviewSectionProps {
   settings: Settings;
 }
@@ -40,12 +48,12 @@ export function EgressPreviewSection({ settings }: EgressPreviewSectionProps) {
         {mode === "none" ? (
           <EmptyState
             title="Nothing is ever sent"
-            description="LLM mode is 'No LLM — rules only', so classification never leaves this machine. Switch modes above to preview a payload."
+            description="No LLM is configured, so classification never leaves this machine. Turn on “Use an LLM” above to preview a payload."
           />
         ) : (
           <>
             <p className="text-sm text-muted-foreground">
-              This is exactly what the next classify run would send to <strong>{settings.llm.provider || "the configured provider"}</strong>
+              This is exactly what the next classify run would send to <strong>{llmHost(settings.llm.base_url)}</strong>
               {mode === "local" ? " (running locally — nothing leaves this machine)" : ""}: one row per
               distinct merchant, as <code>description_clean</code> only (I1) — never the raw statement text,
               dates, amounts, issuer names or account identifiers.
