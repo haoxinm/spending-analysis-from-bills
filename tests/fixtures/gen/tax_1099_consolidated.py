@@ -2,8 +2,8 @@
 
 Software-style layout (label ... value on one row): a header, a ``Form 1099 Summary`` block, then
 per account an ``Account number`` row followed by ``1099-INT`` / ``1099-DIV`` / ``1099-B`` /
-``1099-MISC`` sections (headings without the word "Form", as consolidated broker documents print
-them). The 1099-B section reuses `tax_1099_b.section_lines`. Each account yields one
+``1099-MISC`` sections (headings printed as ``Form 1099-DIV ...`` like real broker documents; the
+single-form parsers halve their scores because other headings / the consolidated marker appear). The 1099-B section reuses `tax_1099_b.section_lines`. Each account yields one
 ``1099-consolidated`` form in the golden.
 
 Variants: ``int_div_b``, ``int_div_b_misc`` (adds MISC and a state withholding row),
@@ -98,7 +98,7 @@ def int_section(interest: str, bonds: str, exempt: str, withheld: str) -> _Secti
     f = "1099-INT"
     i, b, e, w = money(interest), money(bonds), money(exempt), money(withheld)
     lines = [
-        "1099-INT  Interest Income",
+        "Form 1099-INT  Interest Income",
         _row("Interest income (Box 1)", i),
         _row("Interest on U.S. Savings Bonds (Box 3)", b),
         _row("Tax-exempt interest (Box 8)", e),
@@ -124,7 +124,7 @@ def div_section(
     o, q, g, w = money(ordinary), money(qualified), money(capgain), money(withheld)
     state_lines, state_taxes = _state(f, state)
     lines = [
-        "1099-DIV  Dividends and Distributions",
+        "Form 1099-DIV  Dividends and Distributions",
         _row("Ordinary dividends (Box 1a)", o),
         _row("Qualified dividends (Box 1b)", q),
         _row("Capital gain distributions (Box 2a)", g),
@@ -144,7 +144,7 @@ def misc_section(rents: str, royalties: str, other: str, withheld: str) -> _Sect
     f = "1099-MISC"
     r, y, o, w = money(rents), money(royalties), money(other), money(withheld)
     lines = [
-        "1099-MISC  Miscellaneous Information",
+        "Form 1099-MISC  Miscellaneous Information",
         _row("Rents (Box 1)", r),
         _row("Royalties (Box 2)", y),
         _row("Other income (Box 3)", o),
@@ -162,7 +162,7 @@ def misc_section(rents: str, royalties: str, other: str, withheld: str) -> _Sect
 def b_section(lots: Sequence[Lot], *, summary: bool, detail: bool, withheld: str) -> _Section:
     w = money(withheld)
     lines = section_lines(
-        lots, heading=f"1099-B  {B_TITLE}", summary=summary, detail=detail, withheld=w
+        lots, heading=f"Form 1099-B  {B_TITLE}", summary=summary, detail=detail, withheld=w
     )
     return _Section(
         [*lines, ""],
@@ -261,10 +261,10 @@ class Tax1099ConsolidatedBuilder:
             BROKER.name,
             "Consolidated Form 1099 Tax Information",
             f"Tax Year {TAX_YEAR}",
-            f"Payer name: {BROKER.name}",
-            f"Payer TIN: {BROKER.ein}",
-            f"Recipient name: {RECIPIENT_NAME}",
-            f"Recipient TIN: {RECIPIENT_SSN}",
+            f"Payer's name: {BROKER.name}",
+            f"Payer's TIN: {BROKER.ein}",
+            f"Recipient's name: {RECIPIENT_NAME}",
+            f"Recipient's TIN: {RECIPIENT_SSN}",
             "",
             *_summary_lines(accounts),
         ]
