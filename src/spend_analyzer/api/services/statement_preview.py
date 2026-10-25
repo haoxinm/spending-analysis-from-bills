@@ -13,24 +13,21 @@ that could be mistaken for something safe to send anywhere (I1b/I3).
 from __future__ import annotations
 
 import contextlib
+import io
 import json
-import threading
 from dataclasses import dataclass
 from pathlib import Path
 
 import pdfplumber
+import pypdfium2
 from sqlalchemy.orm import Session
 
 from spend_analyzer.config import Settings
 from spend_analyzer.core.errors import SpendAnalyzerError
+from spend_analyzer.core.native_locks import PDFIUM_LOCK
 from spend_analyzer.core.types import Word
 from spend_analyzer.db.models import User
 from spend_analyzer.ingest.extract import extract
-
-#: pdfium (behind `pdfplumber.Page.to_image`, via `pypdfium2`) is not thread-safe: the Import
-#: screen requests every page thumbnail at once and FastAPI serves them from its threadpool, and
-#: concurrent renders segfault the whole server process. Serialise every render behind this lock.
-_PDFIUM_LOCK = threading.Lock()
 
 
 class PagePreviewNotFound(SpendAnalyzerError):
@@ -85,20 +82,37 @@ def page_infos(pdf_path: Path, selected: list[int] | None) -> list[tuple[int, in
 def render_page_png(pdf_path: Path, page_number: int, width: int) -> bytes:
     """A PNG thumbnail of ``page_number`` (1-based), ``width`` pixels wide.
 
+    pdfium is not thread-safe (the Import screen requests every thumbnail at once from FastAPI's
+    threadpool; a crash is a hard SIGTRAP/SIGSEGV). So this drives `pypdfium2` directly and does
+    everything, including closing the bitmap, page and document explicitly, under `PDFIUM_LOCK`,
+    rather than leaving native handles to garbage-collector finalizers on arbitrary threads.
+
     Raises:
         PagePreviewNotFound: ``page_number`` is out of range.
     """
-    import io
-
-    with _PDFIUM_LOCK, pdfplumber.open(pdf_path) as pdf:
-        if page_number < 1 or page_number > len(pdf.pages):
-            raise PagePreviewNotFound(
-                f"page {page_number} does not exist (this statement has {len(pdf.pages)} page(s))"
-            )
-        image = pdf.pages[page_number - 1].to_image(width=width)
-        buffer = io.BytesIO()
-        image.original.save(buffer, format="PNG")
-        return buffer.getvalue()
+    with PDFIUM_LOCK:
+        doc = pypdfium2.PdfDocument(pdf_path)
+        page = None
+        bitmap = None
+        try:
+            count = len(doc)
+            if page_number < 1 or page_number > count:
+                raise PagePreviewNotFound(
+                    f"page {page_number} does not exist (this statement has {count} page(s))"
+                )
+            page = doc[page_number - 1]
+            bitmap = page.render(scale=width / page.get_width())
+            pil = bitmap.to_pil()
+            buffer = io.BytesIO()
+            pil.save(buffer, format="PNG")
+            pil.close()
+            return buffer.getvalue()
+        finally:
+            if bitmap is not None:
+                bitmap.close()
+            if page is not None:
+                page.close()
+            doc.close()
 
 
 def llm_pii_terms(session: Session, settings: Settings, user_id: int | None) -> tuple[str, ...]:

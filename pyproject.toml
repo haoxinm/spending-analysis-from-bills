@@ -25,6 +25,7 @@ dependencies = [
   "typer>=0.12",
   "python-multipart>=0.0.9",
   "tomli-w>=1.0",
+  "pypdfium2>=4",
 ]
 
 [project.optional-dependencies]
@@ -83,7 +84,7 @@ files = ["src"]
 plugins = ["pydantic.mypy"]
 
 [[tool.mypy.overrides]]
-module = ["pdfplumber.*", "reportlab.*", "keyring.*"]
+module = ["pdfplumber.*", "pypdfium2.*", "reportlab.*", "keyring.*"]
 ignore_missing_imports = true
 
 # `hatchling` is a build-time-only dependency (declared in `[build-system] requires`, §4's stack

@@ -23,6 +23,7 @@ import keyring.errors
 import tomli_w
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
+from spend_analyzer.core.native_locks import KEYRING_LOCK
 from spend_analyzer.core.paths import config_path, ensure_home
 
 #: keyring service name; the account within it is the provider name (e.g. "anthropic").
@@ -296,7 +297,8 @@ def get_api_key(account: str) -> str | None:
         if env_value:
             return env_value
     try:
-        return keyring.get_password(_KEYRING_SERVICE, account)
+        with KEYRING_LOCK:
+            return keyring.get_password(_KEYRING_SERVICE, account)
     except keyring.errors.KeyringError:
         return None
 
@@ -313,10 +315,11 @@ def get_llm_api_key(cfg: LLMConfig) -> str | None:
 def set_api_key(provider: str, key: str) -> None:
     """Store ``key`` for ``provider`` in the OS keychain. Never written to `config.toml` or the
     database."""
-    keyring.set_password(_KEYRING_SERVICE, provider, key)
+    with KEYRING_LOCK:
+        keyring.set_password(_KEYRING_SERVICE, provider, key)
 
 
 def delete_api_key(provider: str) -> None:
     """Remove ``provider``'s key from the OS keychain, if present."""
-    with contextlib.suppress(keyring.errors.PasswordDeleteError):
+    with KEYRING_LOCK, contextlib.suppress(keyring.errors.PasswordDeleteError):
         keyring.delete_password(_KEYRING_SERVICE, provider)
