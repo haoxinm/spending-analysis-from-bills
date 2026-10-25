@@ -101,6 +101,17 @@ def _mount_frontend(app: FastAPI, web_dir: Path, token: str) -> None:
     it from there) and falling back to `index.html` for any unknown non-API path (SPA routing)."""
     index_path = web_dir / "index.html"
     if not web_dir.is_dir() or not index_path.is_file():
+
+        @app.get("/", include_in_schema=False)
+        def web_ui_missing() -> HTMLResponse:
+            return HTMLResponse(
+                "<!doctype html><title>Spend Analyzer</title><h1>Web UI not built</h1>"
+                "<p>The API is running, but the web UI has not been built. From a source "
+                "checkout run: <code>cd frontend &amp;&amp; npm ci &amp;&amp; npm run "
+                "build</code>, then restart <code>spend-analyzer serve</code>.</p>",
+                status_code=503,
+            )
+
         return
 
     assets_dir = web_dir / "assets"

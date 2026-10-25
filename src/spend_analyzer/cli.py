@@ -26,6 +26,8 @@ from spend_analyzer.config import load_settings
 from spend_analyzer.core.errors import SpendAnalyzerError
 from spend_analyzer.core.logging import configure_logging, get_logger
 from spend_analyzer.core.paths import ensure_home
+from spend_analyzer.core.shellquote import join_command
+from spend_analyzer.core.webui import web_ui_warning
 from spend_analyzer.db.migrate import upgrade_head
 from spend_analyzer.db.models import Transaction
 
@@ -168,6 +170,10 @@ def serve_cmd(
     from spend_analyzer.api.app import create_app
 
     settings = load_settings()
+    package_dir = Path(__file__).resolve().parent
+    warning = web_ui_warning(package_dir.parent.parent / "frontend", package_dir / "web")
+    if warning is not None:
+        typer.echo(f"WARNING: {warning}", err=True)
     with _open_engine() as engine:
         with _open_session(engine) as session:
             _sync_taxonomy_and_defaults(session)
@@ -267,23 +273,31 @@ def import_cmd(
             )
 
             if not should_confirm:
-                confirm_cmd = f"spend-analyzer import {raw_path} --user-id {resolved_user_id}"
+                confirm_args = [
+                    "spend-analyzer",
+                    "import",
+                    raw_path,
+                    "--user-id",
+                    str(resolved_user_id),
+                ]
                 if proposal.issuer_id is not None:
-                    confirm_cmd += f" --issuer-id {proposal.issuer_id}"
+                    confirm_args += ["--issuer-id", str(proposal.issuer_id)]
                 if proposal.parser_id is not None:
-                    confirm_cmd += f" --parser-id {proposal.parser_id}"
+                    confirm_args += ["--parser-id", proposal.parser_id]
                 if proposal.parser_id == "llm":
                     # LLM imports are never auto-confirmed: the user chooses the pages (their
                     # redacted text leaves the machine) before anything is sent.
                     stmt_row = crud.get_statement(session, proposal.statement_id)
                     last_page = (stmt_row.page_count if stmt_row else None) or 1
-                    confirm_cmd += f" --pages 1-{last_page}"
+                    confirm_args += ["--pages", f"1-{last_page}"]
+                    confirm_cmd = join_command(confirm_args)
                     typer.echo(
                         f"{raw_path}: statement #{proposal.statement_id} will be parsed by the "
                         "LLM; choose the pages to send (edit --pages, e.g. 2-3) and confirm "
                         f"with:\n  {confirm_cmd}"
                     )
                     continue
+                confirm_cmd = join_command(confirm_args)
                 typer.echo(
                     f"{raw_path}: statement #{proposal.statement_id} awaiting_extractor "
                     f"(detect_score={proposal.detect_score}); confirm with:\n  {confirm_cmd}"

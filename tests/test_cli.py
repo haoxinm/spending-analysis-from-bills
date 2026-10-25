@@ -230,12 +230,19 @@ def _confirm_command_args(import_output: str) -> list[str]:
     after an `awaiting_extractor` result, and return it as the argv `runner.invoke` takes
     (everything after the leading `spend-analyzer`) — exactly what a terminal user would copy
     and run."""
+    import os
     import re
     import shlex
 
     match = re.search(r"confirm with:\n\s+spend-analyzer (.+)", import_output)
     assert match is not None, f"no confirm command printed:\n{import_output}"
-    return shlex.split(match.group(1))
+    line = match.group(1).strip()
+    if os.name != "nt":
+        return shlex.split(line)
+    # Windows quoting (subprocess.list2cmdline): backslashes are literal, tokens may be wrapped
+    # in double quotes.
+    tokens = shlex.split(line, posix=False)
+    return [t[1:-1] if len(t) >= 2 and t[0] == t[-1] == '"' else t for t in tokens]
 
 
 def test_gate2_end_to_end_import_classify_report(home: Path) -> None:

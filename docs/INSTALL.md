@@ -200,3 +200,12 @@ An editable/development install (`uv sync`, `pip install -e .`) skips the fronte
 `frontend`'s own dev server at it instead (`cd frontend && npm run dev`) to work on the UI. Set
 `SPEND_ANALYZER_SKIP_FRONTEND_BUILD=1` to build a wheel deliberately without the UI (e.g. an API-
 only environment); `spend-analyzer serve` still runs, it just won't have a page to serve at `/`.
+
+After a `git pull` (or any change under `frontend/`), rebuild the web UI — an editable install
+(`uv sync`) never does, and `spend-analyzer serve` keeps showing the old UI until you do:
+
+```console
+$ cd frontend && npm ci && npm run build
+```
+
+`serve` prints a warning at startup when the built UI is missing or older than the frontend sources.

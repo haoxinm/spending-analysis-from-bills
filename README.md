@@ -135,6 +135,10 @@ $ spend-analyzer serve                 # local web UI at http://127.0.0.1:<port>
 See [docs/INSTALL.md](docs/INSTALL.md) for requirements, upgrading, uninstalling, and
 troubleshooting, and [docs/CLI.md](docs/CLI.md) for the full command reference.
 
+Running from a source checkout? After `git pull`, rebuild the web UI with
+`cd frontend && npm ci && npm run build` (an editable install never does; `serve` warns when the
+build is missing or stale).
+
 ## What it does
 
 - **Imports native digital PDF statements** (not scanned/OCR) from credit cards, debit cards, and
