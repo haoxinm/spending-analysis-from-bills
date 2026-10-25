@@ -34,7 +34,7 @@ def explain_not_configured(cfg: LLMConfig) -> str:
     )
 
 
-def test_connection(cfg: LLMConfig) -> ConnectionResult:
+def check_connection(cfg: LLMConfig) -> ConnectionResult:
     """One real round trip with a harmless one-row batch. Never raises."""
     if cfg.mode == "none":
         return ConnectionResult(False, explain_not_configured(cfg))

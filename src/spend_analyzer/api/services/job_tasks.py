@@ -9,6 +9,7 @@ session, since the request has already returned by the time these run.
 from __future__ import annotations
 
 import uuid
+from collections.abc import Sequence
 from typing import Any
 
 from sqlalchemy.orm import Session, sessionmaker
@@ -28,6 +29,7 @@ def enqueue_import_then_classify(
     layout_spec_id: int | None,
     remember: bool,
     cfg: LLMConfig,
+    pages: Sequence[int] | None = None,
 ) -> str:
     """Enqueue the import job for `statement_id`; on success, enqueue a classify job for the
     transactions it inserted. Returns the import job's id immediately."""
@@ -41,6 +43,7 @@ def enqueue_import_then_classify(
                 parser_id=parser_id,
                 layout_spec_id=layout_spec_id,
                 remember=remember,
+                pages=pages,
             )
             session.commit()
         progress.update(1, 1)

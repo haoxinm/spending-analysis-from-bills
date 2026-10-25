@@ -1,7 +1,7 @@
 """Tests for `spend_analyzer.eval.harness` (P4-C).
 
 `run_eval` never touches the database, so no `session`/`engine` fixture is needed here. The LLM
-path is exercised with `litellm.completion` monkeypatched, exactly as `tests/classify/
+path is exercised with the fake endpoint in `tests/llm_fakes.py`, exactly as `tests/classify/
 test_egress.py` does — never a real network call (§6.5).
 """
 
@@ -14,10 +14,10 @@ from typing import Any
 
 import pytest
 
-from spend_analyzer.classify.llm import egress
 from spend_analyzer.config import LLMConfig
 from spend_analyzer.core.errors import ConfigError
 from spend_analyzer.eval import harness
+from tests.llm_fakes import install, remote_cfg
 
 _REAL_CSV = Path(__file__).parent / "descriptions.csv"
 
@@ -31,26 +31,7 @@ def _write_csv(path: Path, rows: list[tuple[str, str, str]]) -> Path:
 
 
 def _cfg(**overrides: Any) -> LLMConfig:
-    base = {"mode": "remote", "provider": "anthropic", "model": "anthropic/claude-x"}
-    base.update(overrides)
-    return LLMConfig(**base)
-
-
-class _FakeMessage:
-    def __init__(self, content: str) -> None:
-        self.content = content
-
-
-class _FakeChoice:
-    def __init__(self, content: str) -> None:
-        self.message = _FakeMessage(content)
-
-
-class _FakeResponse:
-    def __init__(self, content: str) -> None:
-        self.choices = [_FakeChoice(content)]
-        self.usage = None
-        self._hidden_params: dict[str, Any] = {"response_cost": 0.0}
+    return remote_cfg(**overrides)
 
 
 def _items_payload(*items: dict[str, Any]) -> str:
@@ -60,7 +41,7 @@ def _items_payload(*items: dict[str, Any]) -> str:
 @pytest.fixture(autouse=True)
 def _fake_api_key(monkeypatch: pytest.MonkeyPatch) -> None:
     """Keychain/keyring must be mocked in tests (per the common brief)."""
-    monkeypatch.setenv("ANTHROPIC_API_KEY", "sk-ant-test-key-not-real")
+    monkeypatch.setenv("SPEND_ANALYZER_LLM_API_KEY", "sk-ant-test-key-not-real")
 
 
 # --------------------------------------------------------------------------------------------
@@ -109,10 +90,7 @@ def test_load_eval_csv_loads_the_real_fixture() -> None:
 def test_run_eval_rules_mode_makes_no_network_call(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    def _fail(*args: Any, **kwargs: Any) -> Any:
-        raise AssertionError("mode='rules' must never call litellm.completion")
-
-    monkeypatch.setattr(egress.litellm, "completion", _fail)
+    fake = install(monkeypatch)
     csv_path = _write_csv(
         tmp_path / "eval.csv",
         [
@@ -121,9 +99,7 @@ def test_run_eval_rules_mode_makes_no_network_call(
             ("MYSTERY MERCHANT XYZ", "grocery", "grocery_stores"),
         ],
     )
-    report = harness.run_eval(
-        _cfg(mode="none", provider="", model=""), csv_path=csv_path, mode="rules"
-    )
+    report = harness.run_eval(LLMConfig(), csv_path=csv_path, mode="rules")
 
     assert report.mode == "rules"
     assert report.total == 3
@@ -136,11 +112,12 @@ def test_run_eval_rules_mode_makes_no_network_call(
     fallback_row = next(r for r in report.misclassified if r.classified_by == "fallback")
     assert fallback_row.predicted_category == "others"
     assert fallback_row.predicted_subcategory == "uncategorized"
+    assert fake.requests == []
 
 
 def test_run_eval_rules_mode_does_not_require_a_configured_provider(tmp_path: Path) -> None:
     csv_path = _write_csv(tmp_path / "eval.csv", [("STARBUCKS", "restaurant", "dine_in")])
-    report = harness.run_eval(LLMConfig(mode="none"), csv_path=csv_path, mode="rules")
+    report = harness.run_eval(LLMConfig(), csv_path=csv_path, mode="rules")
     assert report.total == 1
     assert report.correct == 1
 
@@ -154,7 +131,7 @@ def test_run_eval_perfect_score_confusion_matrix_is_diagonal(tmp_path: Path) -> 
             ("NETFLIX.COM", "entertainment", "streaming"),
         ],
     )
-    report = harness.run_eval(LLMConfig(mode="none"), csv_path=csv_path, mode="rules")
+    report = harness.run_eval(LLMConfig(), csv_path=csv_path, mode="rules")
     assert report.accuracy == 1.0
     assert report.category_accuracy == {"restaurant": 1.0, "entertainment": 1.0}
     assert report.confusion == {
@@ -172,31 +149,25 @@ def test_run_eval_perfect_score_confusion_matrix_is_diagonal(tmp_path: Path) -> 
 def test_run_eval_llm_mode_requires_a_configured_provider(tmp_path: Path) -> None:
     csv_path = _write_csv(tmp_path / "eval.csv", [("STARBUCKS", "restaurant", "dine_in")])
     with pytest.raises(ConfigError, match="requires a configured"):
-        harness.run_eval(LLMConfig(mode="none"), csv_path=csv_path, mode="llm")
+        harness.run_eval(LLMConfig(), csv_path=csv_path, mode="llm")
 
 
 def test_run_eval_llm_mode_only_sends_rows_rules_left_unresolved(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    captured: dict[str, Any] = {}
-
-    def _fake_completion(**kwargs: Any) -> _FakeResponse:
-        captured.update(kwargs)
-        return _FakeResponse(
-            _items_payload(
-                {
-                    "id": 1,
-                    "category": "grocery",
-                    "subcategory": "grocery_stores",
-                    "merchant_canonical": "Mystery Merchant",
-                    "confidence": 0.9,
-                    "is_online_store": False,
-                }
-            )
+    fake = install(monkeypatch)
+    fake.queue(
+        _items_payload(
+            {
+                "id": 1,
+                "category": "grocery",
+                "subcategory": "grocery_stores",
+                "merchant_canonical": "Mystery Merchant",
+                "confidence": 0.9,
+                "is_online_store": False,
+            }
         )
-
-    monkeypatch.setattr(egress.litellm, "supports_response_schema", lambda **_: True)
-    monkeypatch.setattr(egress.litellm, "completion", _fake_completion)
+    )
 
     csv_path = _write_csv(
         tmp_path / "eval.csv",
@@ -209,8 +180,8 @@ def test_run_eval_llm_mode_only_sends_rows_rules_left_unresolved(
 
     # Only the unresolved row's description was sent — the rules-resolved row never reaches
     # the LLM egress path at all.
-    assert "MYSTERY MERCHANT XYZ" in captured["messages"][1]["content"]
-    assert "STARBUCKS" not in captured["messages"][1]["content"]
+    assert "MYSTERY MERCHANT XYZ" in fake.last_user_text
+    assert "STARBUCKS" not in fake.last_user_text
     assert report.total == 2
     assert report.correct == 2
     assert report.llm_requests == 1
@@ -220,8 +191,7 @@ def test_run_eval_llm_mode_only_sends_rows_rules_left_unresolved(
 def test_run_eval_llm_mode_falls_back_when_llm_returns_nothing_useful(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    monkeypatch.setattr(egress.litellm, "supports_response_schema", lambda **_: True)
-    monkeypatch.setattr(egress.litellm, "completion", lambda **_: _FakeResponse(_items_payload()))
+    install(monkeypatch).default = _items_payload()
     csv_path = _write_csv(
         tmp_path / "eval.csv", [("UNMATCHABLE MERCHANT NAME", "grocery", "grocery_stores")]
     )
@@ -242,7 +212,7 @@ def test_text_table_contains_accuracy_and_confusion(tmp_path: Path) -> None:
         tmp_path / "eval.csv",
         [("STARBUCKS", "restaurant", "dine_in"), ("NETFLIX.COM", "entertainment", "streaming")],
     )
-    report = harness.run_eval(LLMConfig(mode="none"), csv_path=csv_path, mode="rules")
+    report = harness.run_eval(LLMConfig(), csv_path=csv_path, mode="rules")
     table = report.text_table()
     assert "Eval report (mode=rules): 2/2 correct" in table
     assert "Accuracy by category" in table
@@ -255,7 +225,7 @@ def test_to_json_round_trips(tmp_path: Path) -> None:
     csv_path = _write_csv(
         tmp_path / "eval.csv", [("MYSTERY MERCHANT", "grocery", "grocery_stores")]
     )
-    report = harness.run_eval(LLMConfig(mode="none"), csv_path=csv_path, mode="rules")
+    report = harness.run_eval(LLMConfig(), csv_path=csv_path, mode="rules")
     data = json.loads(report.to_json())
     assert data["mode"] == "rules"
     assert data["total"] == 1

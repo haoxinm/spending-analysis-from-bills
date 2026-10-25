@@ -36,6 +36,7 @@ from __future__ import annotations
 
 import contextlib
 import json
+from collections.abc import Sequence
 from dataclasses import dataclass
 from datetime import UTC, date, datetime, timedelta
 from pathlib import Path
@@ -58,6 +59,7 @@ from spend_analyzer.ingest.extract import extract, sha256_file
 from spend_analyzer.ingest.layout import locate_table_bands
 from spend_analyzer.ingest.layout_spec import build_parser_for_row, resolve_spec
 from spend_analyzer.ingest.normalize import normalize
+from spend_analyzer.ingest.pages import dump_pages, load_pages, validate_pages
 from spend_analyzer.ingest.parsers.generic_table import generic_table
 from spend_analyzer.ingest.registry import discover_all_parsers
 from spend_analyzer.ingest.registry import select as select_parser
@@ -248,7 +250,21 @@ def propose_import(
 
     table_bands = locate_table_bands(doc)
     issuer_id = issuer_match.match_issuer(session, doc, table_bands)
-    selected, score, layout_spec_id = _select_parser(session, doc, issuer_id)
+    llm_default = settings.ingest.default_extractor == "llm" and settings.llm.is_configured
+    score: float | None
+    layout_spec_id: int | None
+    if llm_default:
+        # LLM imports are never auto-confirmed: the user picks the pages to send first.
+        from spend_analyzer.llm.statement_parser import LLM_PARSER_ID, LLMStatementParser
+
+        parser_id_value: str = LLM_PARSER_ID
+        parser_version: str = LLMStatementParser.version
+        score = None
+        layout_spec_id = None
+    else:
+        selected, score, layout_spec_id = _select_parser(session, doc, issuer_id)
+        parser_id_value = selected.id
+        parser_version = selected.version
 
     statement = Statement(
         user_id=user_id,
@@ -258,8 +274,8 @@ def propose_import(
         page_count=doc.page_count,
         issuer_id=issuer_id,
         layout_spec_id=layout_spec_id,
-        parser_id=selected.id,
-        parser_version=selected.version,
+        parser_id=parser_id_value,
+        parser_version=parser_version,
         detect_score=score,
         status=STATUS_AWAITING_EXTRACTOR,
         ingested_at=_utcnow_iso(),
@@ -271,10 +287,12 @@ def propose_import(
         statement_id=statement.id,
         status=STATUS_AWAITING_EXTRACTOR,
         issuer_id=issuer_id,
-        parser_id=selected.id,
+        parser_id=parser_id_value,
         layout_spec_id=layout_spec_id,
         detect_score=score,
-        confident=_is_confident(issuer_id, score, STATUS_AWAITING_EXTRACTOR),
+        confident=(
+            False if llm_default else _is_confident(issuer_id, score, STATUS_AWAITING_EXTRACTOR)
+        ),
     )
 
 
@@ -334,6 +352,7 @@ def confirm_import(
     parser_id: str | None,
     layout_spec_id: int | None,
     remember: bool,
+    pages: Sequence[int] | None = None,
 ) -> ImportResult:
     """Phase 2 of A22: parse, normalize, reconcile, dedupe, and persist a statement's
     transactions in one atomic transaction.
@@ -352,6 +371,9 @@ def confirm_import(
         remember: when `True` and the import reconciles cleanly with no drift, updates
             `issuers.default_spec_id` (only when a layout spec, not a built-in parser, was used)
             and `issuers.last_used_at` (A23).
+        pages: 1-based pages to parse (deduped, sorted, validated against the PDF's page count)
+            and saved to `statements.selected_pages`; `None` keeps the saved selection (default:
+            all pages). Every parser, template or LLM, sees only the selected pages.
 
     Returns:
         An `ImportResult`. `inserted`/`skipped_duplicates`/`transaction_ids` all refer to *this*
@@ -387,8 +409,11 @@ def confirm_import(
 
     user_id, path = _resolve_source(statement)
     settings = load_settings()
-    doc = extract(path)
-    parser = _resolve_parser(session, parser_id=parser_id, layout_spec_id=layout_spec_id)
+    full_doc = extract(path)
+    doc = _apply_page_selection(statement, full_doc, pages)
+    parser = _resolve_parser(
+        session, parser_id=parser_id, layout_spec_id=layout_spec_id, user_id=user_id
+    )
 
     try:
         parsed = parser.parse(doc)
@@ -415,6 +440,16 @@ def confirm_import(
     return result
 
 
+def _apply_page_selection(
+    statement: Statement, doc: ExtractedDoc, pages: Sequence[int] | None
+) -> ExtractedDoc:
+    """Validate and save an explicit ``pages`` selection on ``statement`` (if given), then return
+    ``doc`` restricted to the statement's saved selection (all pages when none is saved)."""
+    if pages is not None:
+        statement.selected_pages = dump_pages(validate_pages(pages, doc.page_count))
+    return doc.select_pages(load_pages(statement.selected_pages))
+
+
 def _resolve_source(statement: Statement) -> tuple[int, Path]:
     """Recover `(user_id, pdf_path)` for Phase 2 from the `statements` row and the data dir
     alone — never from anything only a Python process could remember (see the module docstring
@@ -439,7 +474,11 @@ def _mark_failed(session: Session, statement: Statement, status: str, error_deta
 
 
 def _resolve_parser(
-    session: Session, *, parser_id: str | None, layout_spec_id: int | None
+    session: Session,
+    *,
+    parser_id: str | None,
+    layout_spec_id: int | None,
+    user_id: int | None = None,
 ) -> StatementParser:
     if layout_spec_id is not None:
         row = session.get(LayoutSpec, layout_spec_id)
@@ -447,6 +486,18 @@ def _resolve_parser(
             raise SpendAnalyzerError(f"no layout_specs row with id={layout_spec_id}")
         return cast(StatementParser, build_parser_for_row(row))
 
+    if parser_id == "llm":
+        # Lazy: the LLM statement parser is one of only two modules allowed to reach the HTTP
+        # client; `ingest/` itself never imports it at module scope.
+        from spend_analyzer.llm.statement_parser import LLMStatementParser
+
+        settings = load_settings()
+        terms: set[str] = set(settings.privacy.pii_terms)
+        user = session.get(User, user_id) if user_id is not None else None
+        if user is not None:
+            with contextlib.suppress(json.JSONDecodeError, TypeError):
+                terms.update(json.loads(user.pii_aliases))
+        return LLMStatementParser(settings.llm, tuple(sorted(terms)))
     if parser_id == generic_table.id:
         return generic_table
     for candidate in discover_all_parsers():
@@ -840,7 +891,12 @@ def _shift_iso_date(iso_date: str, days: int) -> str:
 
 
 def reparse(
-    session: Session, statement_id: int, *, parser_id: str | None, layout_spec_id: int | None
+    session: Session,
+    statement_id: int,
+    *,
+    parser_id: str | None,
+    layout_spec_id: int | None,
+    pages: Sequence[int] | None = None,
 ) -> ImportResult:
     """Re-run a *previously confirmed* statement with a different extractor, rebuilding its rows
     (the API surface's ``POST /api/statements/{id}/reparse``).
@@ -873,8 +929,11 @@ def reparse(
     if account is None:  # pragma: no cover - defensive; FK integrity guarantees this
         raise SpendAnalyzerError(f"account {statement.account_id} not found")
 
-    doc = extract(Path(statement.stored_path))
-    parser = _resolve_parser(session, parser_id=parser_id, layout_spec_id=layout_spec_id)
+    full_doc = extract(Path(statement.stored_path))
+    doc = _apply_page_selection(statement, full_doc, pages)
+    parser = _resolve_parser(
+        session, parser_id=parser_id, layout_spec_id=layout_spec_id, user_id=account.user_id
+    )
 
     try:
         parsed = parser.parse(doc)

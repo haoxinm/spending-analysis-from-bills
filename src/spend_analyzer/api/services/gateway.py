@@ -109,6 +109,7 @@ def confirm_import(
     parser_id: str | None,
     layout_spec_id: int | None,
     remember: bool,
+    pages: Sequence[int] | None = None,
 ) -> ImportResult:
     """Phase 2 of A22: parse and persist. Commits the statement and its transactions atomically.
 
@@ -125,12 +126,18 @@ def confirm_import(
             parser_id=parser_id,
             layout_spec_id=layout_spec_id,
             remember=remember,
+            pages=pages,
         ),
     )
 
 
 def reparse(
-    session: Session, statement_id: int, *, parser_id: str | None, layout_spec_id: int | None
+    session: Session,
+    statement_id: int,
+    *,
+    parser_id: str | None,
+    layout_spec_id: int | None,
+    pages: Sequence[int] | None = None,
 ) -> ImportResult:
     """Re-run extraction with a different extractor, rebuilding the statement's rows.
 
@@ -140,7 +147,13 @@ def reparse(
     fn = _resolve("spend_analyzer.ingest.pipeline", "reparse")
     return cast(
         ImportResult,
-        fn(session, statement_id, parser_id=parser_id, layout_spec_id=layout_spec_id),
+        fn(
+            session,
+            statement_id,
+            parser_id=parser_id,
+            layout_spec_id=layout_spec_id,
+            pages=pages,
+        ),
     )
 
 

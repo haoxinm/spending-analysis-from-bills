@@ -165,7 +165,9 @@ def classify_batch(descriptions: list[str], cfg: LLMConfig) -> BatchResult:
     expected_ids = set(range(1, len(descriptions) + 1))
     items, missing_ids = _validate_items(raw_items, expected_ids)
 
-    schema_mode: SchemaMode = "json_schema" if resp.schema_mode == "json_schema" else "text_fallback"
+    schema_mode: SchemaMode = (
+        "json_schema" if resp.schema_mode == "json_schema" else "text_fallback"
+    )
     return BatchResult(
         items=tuple(items),
         missing_ids=tuple(missing_ids),

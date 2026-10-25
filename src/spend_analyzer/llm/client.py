@@ -66,17 +66,21 @@ def complete(
     use_schema = json_schema is not None and cfg.structured_output
     started = time.monotonic()
     try:
-        status, body = _post(cfg, _build_body(cfg, system, user, json_schema if use_schema else None, schema_name))
+        status, body = _post(
+            cfg, _build_body(cfg, system, user, json_schema if use_schema else None, schema_name)
+        )
         schema_mode = "json_schema" if use_schema else "text_fallback"
         if use_schema and status in _SCHEMA_REJECTED_STATUSES:
             status, body = _post(cfg, _build_body(cfg, system, user, None, schema_name))
             schema_mode = "text_fallback"
-    except httpx.HTTPError as exc:
+    except (httpx.HTTPError, OSError) as exc:
         raise LLMError(f"LLM request to {cfg.resolved_url} failed: {exc}") from exc
     latency_ms = int((time.monotonic() - started) * 1000)
 
     if status >= 400:
-        raise LLMError(f"LLM endpoint {cfg.resolved_url} returned HTTP {status}: {_error_detail(body)}")
+        raise LLMError(
+            f"LLM endpoint {cfg.resolved_url} returned HTTP {status}: {_error_detail(body)}"
+        )
     if not isinstance(body, dict):
         raise LLMError(f"LLM endpoint returned a non-JSON response: {str(body)[:300]}")
 
@@ -284,10 +288,14 @@ def extract_json(text: str) -> Any:
         return json.loads(stripped)
     except json.JSONDecodeError:
         pass
-    # Fall back to the outermost {...} or [...] span (a model that adds a sentence first).
-    for opener, closer in (("{", "}"), ("[", "]")):
-        start, end = stripped.find(opener), stripped.rfind(closer)
-        if start != -1 and end > start:
+    # Fall back to the outermost {...} or [...] span (a model that adds a sentence first),
+    # trying whichever opener appears first in the text.
+    spans = sorted(
+        (stripped.find(op), op, cl) for op, cl in (("{", "}"), ("[", "]")) if op in stripped
+    )
+    for start, _opener, closer in spans:
+        end = stripped.rfind(closer)
+        if end > start:
             try:
                 return json.loads(stripped[start : end + 1])
             except json.JSONDecodeError:

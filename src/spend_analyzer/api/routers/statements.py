@@ -14,16 +14,18 @@ import re
 import tempfile
 from pathlib import Path
 
-from fastapi import APIRouter, Form, HTTPException, UploadFile
+from fastapi import APIRouter, Form, HTTPException, Response, UploadFile
 from sqlalchemy.orm import Session
 
 from spend_analyzer.api import schemas
 from spend_analyzer.api.deps import JobRunnerDep, SessionDep, SessionFactoryDep, SettingsDep
 from spend_analyzer.api.services import crud, gateway, statement_preview
 from spend_analyzer.api.services.job_tasks import enqueue_import_then_classify
+from spend_analyzer.core.errors import SpendAnalyzerError
 from spend_analyzer.core.paths import statements_dir
 from spend_analyzer.db.models import Statement
-from spend_analyzer.ingest.extract import sha256_file
+from spend_analyzer.ingest.extract import extract, sha256_file
+from spend_analyzer.ingest.pages import load_pages, parse_page_spec
 from spend_analyzer.jobs.runner import JobProgress
 
 router = APIRouter(tags=["statements"])
@@ -64,6 +66,8 @@ def _statement_response(session: Session, statement: Statement) -> schemas.State
         issuer_id=statement.issuer_id,
         parser_id=statement.parser_id,
         layout_spec_id=statement.layout_spec_id,
+        page_count=statement.page_count,
+        selected_pages=load_pages(statement.selected_pages),
         status=statement.status,
         period_start=statement.period_start,
         period_end=statement.period_end,
@@ -205,6 +209,83 @@ def preview_statement_page(
     )
 
 
+def _pdf_or_404(statement_id: int, session: Session) -> tuple[Statement, Path]:
+    statement = crud.get_statement(session, statement_id)
+    if statement is None:
+        raise HTTPException(status_code=404, detail="statement not found")
+    pdf_path = crud.staged_pdf_path(statement)
+    if pdf_path is None:
+        raise HTTPException(
+            status_code=404,
+            detail=(
+                "no PDF copy is available for this statement "
+                "([privacy] store_pdf_copies was off and it is already confirmed)"
+            ),
+        )
+    return statement, pdf_path
+
+
+@router.get("/statements/{statement_id}/pages", response_model=list[schemas.StatementPageInfo])
+def list_statement_pages(statement_id: int, session: SessionDep) -> list[schemas.StatementPageInfo]:
+    """Per-page text stats and a snippet, so the user can choose which pages to keep/parse."""
+    statement, pdf_path = _pdf_or_404(statement_id, session)
+    rows = statement_preview.page_infos(pdf_path, load_pages(statement.selected_pages))
+    return [
+        schemas.StatementPageInfo(
+            page_number=n, char_count=chars, snippet=snippet, selected=is_selected
+        )
+        for n, chars, snippet, is_selected in rows
+    ]
+
+
+@router.get("/statements/{statement_id}/pages/{page_number}/image")
+def statement_page_image(
+    statement_id: int, page_number: int, session: SessionDep, width: int = 400
+) -> Response:
+    """PNG thumbnail of one page (loaded via `<img src=...?token=...>`; local-only)."""
+    _statement, pdf_path = _pdf_or_404(statement_id, session)
+    width = max(100, min(1600, width))
+    try:
+        png = statement_preview.render_page_png(pdf_path, page_number, width)
+    except statement_preview.PagePreviewNotFound as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from None
+    return Response(
+        content=png, media_type="image/png", headers={"Cache-Control": "private, max-age=300"}
+    )
+
+
+@router.get("/statements/{statement_id}/llm-preview", response_model=schemas.LlmParsePreview)
+def llm_preview(
+    statement_id: int, session: SessionDep, settings: SettingsDep, pages: str | None = None
+) -> schemas.LlmParsePreview:
+    """Exactly the (redacted) page text the LLM statement parser would send. No network call."""
+    from spend_analyzer.llm import statement_parser
+
+    statement, pdf_path = _pdf_or_404(statement_id, session)
+    selection: list[int] | None
+    if pages:
+        try:
+            selection = parse_page_spec(pages)
+        except ValueError as exc:
+            raise HTTPException(status_code=422, detail=str(exc)) from None
+    else:
+        selection = load_pages(statement.selected_pages)
+    try:
+        doc = extract(pdf_path).select_pages(selection)
+    except SpendAnalyzerError as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from None
+    terms = statement_preview.llm_pii_terms(session, settings, statement.user_id)
+    requests = statement_parser.preview(doc, settings.llm, terms)
+    return schemas.LlmParsePreview(
+        mode=settings.llm.mode,
+        resolved_url=settings.llm.resolved_url if settings.llm.is_configured else "",
+        model=settings.llm.model,
+        pages=[p.page_number for p in doc.pages],
+        requests=requests,
+        total_chars=sum(len(r) for r in requests),
+    )
+
+
 @router.post(
     "/statements/{statement_id}/extract", response_model=schemas.JobIdResponse, status_code=202
 )
@@ -231,6 +312,7 @@ def extract_statement(
         layout_spec_id=body.layout_spec_id,
         remember=body.remember,
         cfg=settings.llm,
+        pages=body.pages,
     )
     return schemas.JobIdResponse(job_id=job_id)
 
@@ -251,12 +333,19 @@ def reparse_statement(
 
     def task(progress: JobProgress) -> dict[str, object]:
         with session_factory() as job_session:
-            result = gateway.reparse(
-                job_session,
-                statement_id,
-                parser_id=body.parser_id,
-                layout_spec_id=body.layout_spec_id,
-            )
+            try:
+                result = gateway.reparse(
+                    job_session,
+                    statement_id,
+                    parser_id=body.parser_id,
+                    layout_spec_id=body.layout_spec_id,
+                    pages=body.pages,
+                )
+            except SpendAnalyzerError:
+                # `reparse` records `status='error'` + `error_detail` on the row but leaves the
+                # commit to its caller; persist that so the failure surfaces on the statement.
+                job_session.commit()
+                raise
             job_session.commit()
         progress.update(1, 1)
         return {"inserted": result.inserted, "transaction_ids": list(result.transaction_ids)}

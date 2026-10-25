@@ -9,6 +9,7 @@ import pytest
 from fastapi.testclient import TestClient
 
 from spend_analyzer import config as config_module
+from tests.llm_fakes import FakeLLM, install
 
 
 class _FakeKeyring:
@@ -39,7 +40,7 @@ def fake_keyring(monkeypatch: pytest.MonkeyPatch) -> _FakeKeyring:
     monkeypatch.setattr(config_module.keyring, "get_password", fake.get_password)
     monkeypatch.setattr(config_module.keyring, "set_password", fake.set_password)
     monkeypatch.setattr(config_module.keyring, "delete_password", fake.delete_password)
-    monkeypatch.delenv("ANTHROPIC_API_KEY", raising=False)
+    monkeypatch.delenv("SPEND_ANALYZER_LLM_API_KEY", raising=False)
     return fake
 
 
@@ -70,23 +71,136 @@ def test_test_llm_reports_disabled_when_mode_is_none(client: TestClient) -> None
     assert body["ok"] is False
 
 
+_REPLY = (
+    '{"items": [{"id": 1, "category": "grocery", "subcategory": "grocery_stores",'
+    ' "merchant_canonical": "Test Merchant", "confidence": 0.9, "is_online_store": false}]}'
+)
 _SECRET = "sk-ant-super-secret-value"
+_ANTHROPIC = "https://api.anthropic.com"
+_ACCOUNT = ("spend-analyzer", "llm:api.anthropic.com")
+
+
+def _draft(**kw: object) -> dict[str, object]:
+    base: dict[str, object] = {
+        "enabled": True,
+        "base_url": "https://api.example.com",
+        "api_format": "openai_chat",
+        "model": "m",
+    }
+    base.update(kw)
+    return base
+
+
+def test_get_settings_reports_derived_fields(client: TestClient) -> None:
+    body = client.get("/api/settings").json()
+    body["llm"].update(enabled=True, base_url="http://localhost:11434", model="llama3")
+    saved = client.put("/api/settings", json=body).json()["llm"]
+    assert saved["mode"] == "local"
+    assert saved["resolved_url"] == "http://localhost:11434/v1/chat/completions"
+    refetched = client.get("/api/settings").json()["llm"]
+    assert refetched["mode"] == "local"
+    assert refetched["resolved_url"] == saved["resolved_url"]
+
+
+def test_put_ignores_derived_fields_and_round_trips_values(client: TestClient) -> None:
+    body = client.get("/api/settings").json()
+    body["llm"].update(
+        enabled=True,
+        base_url="https://api.example.com",
+        model="m",
+        mode="local",
+        resolved_url="bogus",
+        has_key=True,
+        temperature=0.25,
+        extra_body={"top_k": 3},
+        extra_headers={"X-A": "b"},
+    )
+    out = client.put("/api/settings", json=body).json()["llm"]
+    assert out["mode"] == "remote"
+    assert out["resolved_url"] == "https://api.example.com/v1/chat/completions"
+    assert out["has_key"] is False
+    assert out["temperature"] == 0.25
+    assert out["extra_body"] == {"top_k": 3}
+    assert out["extra_headers"] == {"X-A": "b"}
+
+    body["llm"]["temperature"] = None
+    assert client.put("/api/settings", json=body).json()["llm"]["temperature"] is None
+    assert client.get("/api/settings").json()["llm"]["temperature"] is None
+
+
+def test_test_llm_draft_works_while_saved_config_is_disabled(
+    client: TestClient, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    fake = install(monkeypatch, FakeLLM(default=_REPLY))
+    assert client.get("/api/settings").json()["llm"]["mode"] == "none"
+    response = client.post("/api/settings/test-llm", json={"llm": _draft()})
+    body = response.json()
+    assert body["ok"] is True, body
+    assert fake.urls == ["https://api.example.com/v1/chat/completions"]
+    assert "Connected to https://api.example.com/v1/chat/completions (remote)" in body["detail"]
+    assert body["mode"] == "remote"
+    assert body["resolved_url"] == "https://api.example.com/v1/chat/completions"
+    assert "'none'" not in (body["detail"] or "")
+
+
+def test_test_llm_draft_uses_key_for_draft_host(
+    client: TestClient, fake_keyring: _FakeKeyring, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    fake_keyring.store[("spend-analyzer", "llm:api.example.com")] = "key-for-example"
+    fake = install(monkeypatch, FakeLLM(default=_REPLY))
+    client.post("/api/settings/test-llm", json={"llm": _draft()})
+    assert fake.headers
+    assert "key-for-example" in str(fake.headers[0])
+
+
+def test_test_llm_disabled_draft_explains_why(client: TestClient) -> None:
+    body = client.post("/api/settings/test-llm", json={"llm": _draft(enabled=False)}).json()
+    assert body["ok"] is False
+    assert "turned off" in body["detail"]
+    assert "Use an LLM" in body["detail"]
+
+    body = client.post("/api/settings/test-llm", json={"llm": _draft(base_url="", model="")}).json()
+    assert "no address" in body["detail"]
+    assert "no model" in body["detail"]
+
+
+def test_test_llm_without_body_tests_saved_settings(client: TestClient) -> None:
+    body = client.post("/api/settings/test-llm").json()
+    assert body["ok"] is False
+    assert body["mode"] == "none"
 
 
 def test_put_api_key_stores_it_and_never_echoes_it(
     client: TestClient, fake_keyring: _FakeKeyring
 ) -> None:
     response = client.put(
-        "/api/settings/api-key", json={"provider": "anthropic", "api_key": _SECRET}
+        "/api/settings/api-key", json={"base_url": _ANTHROPIC, "api_key": _SECRET}
     )
     assert response.status_code == 204
     assert response.text == ""
     assert _SECRET not in response.headers.values()
+    assert fake_keyring.store[_ACCOUNT] == _SECRET
+    assert _SECRET not in str(client.get("/api/settings").json())
 
-    assert fake_keyring.store[("spend-analyzer", "anthropic")] == _SECRET
 
-    settings_body = client.get("/api/settings").json()
-    assert _SECRET not in str(settings_body)
+def test_put_api_key_defaults_to_saved_base_url(
+    client: TestClient, fake_keyring: _FakeKeyring
+) -> None:
+    body = client.get("/api/settings").json()
+    body["llm"].update(enabled=True, base_url=_ANTHROPIC, model="m")
+    client.put("/api/settings", json=body)
+    assert client.put("/api/settings/api-key", json={"api_key": _SECRET}).status_code == 204
+    assert fake_keyring.store[_ACCOUNT] == _SECRET
+    assert client.get("/api/settings").json()["llm"]["has_key"] is True
+
+
+def test_put_api_key_without_any_base_url_is_400(
+    client: TestClient, fake_keyring: _FakeKeyring
+) -> None:
+    response = client.put("/api/settings/api-key", json={"api_key": _SECRET})
+    assert response.status_code == 400
+    assert "base URL" in response.json()["detail"]
+    assert not fake_keyring.store
 
 
 def test_put_api_key_is_never_logged(
@@ -94,7 +208,7 @@ def test_put_api_key_is_never_logged(
 ) -> None:
     with caplog.at_level(logging.DEBUG):
         response = client.put(
-            "/api/settings/api-key", json={"provider": "anthropic", "api_key": _SECRET}
+            "/api/settings/api-key", json={"base_url": _ANTHROPIC, "api_key": _SECRET}
         )
     assert response.status_code == 204
     for record in caplog.records:
@@ -104,9 +218,9 @@ def test_put_api_key_is_never_logged(
 def test_put_api_key_never_reaches_config_toml(
     client: TestClient, fake_keyring: _FakeKeyring, home: Path
 ) -> None:
-    client.put("/api/settings/api-key", json={"provider": "anthropic", "api_key": _SECRET})
+    client.put("/api/settings/api-key", json={"base_url": _ANTHROPIC, "api_key": _SECRET})
     settings_body = client.get("/api/settings").json()
-    settings_body["llm"]["provider"] = "anthropic"
+    settings_body["llm"]["base_url"] = _ANTHROPIC
     client.put("/api/settings", json=settings_body)
 
     config_path = home / "config.toml"
@@ -115,32 +229,32 @@ def test_put_api_key_never_reaches_config_toml(
 
 
 def test_delete_api_key_clears_it(client: TestClient, fake_keyring: _FakeKeyring) -> None:
-    client.put("/api/settings/api-key", json={"provider": "anthropic", "api_key": _SECRET})
-    assert ("spend-analyzer", "anthropic") in fake_keyring.store
+    client.put("/api/settings/api-key", json={"base_url": _ANTHROPIC, "api_key": _SECRET})
+    assert _ACCOUNT in fake_keyring.store
 
-    response = client.delete("/api/settings/api-key", params={"provider": "anthropic"})
+    response = client.delete("/api/settings/api-key", params={"base_url": _ANTHROPIC})
     assert response.status_code == 204
-    assert ("spend-analyzer", "anthropic") not in fake_keyring.store
+    assert _ACCOUNT not in fake_keyring.store
 
 
 def test_delete_api_key_is_idempotent_when_absent(
     client: TestClient, fake_keyring: _FakeKeyring
 ) -> None:
-    response = client.delete("/api/settings/api-key", params={"provider": "never-set"})
+    response = client.delete("/api/settings/api-key", params={"base_url": "https://nowhere.test"})
     assert response.status_code == 204
 
 
 def test_api_key_routes_require_the_token(client: TestClient) -> None:
     put_response = client.put(
         "/api/settings/api-key",
-        json={"provider": "anthropic", "api_key": _SECRET},
+        json={"base_url": _ANTHROPIC, "api_key": _SECRET},
         headers={"X-Spend-Token": "wrong-token"},
     )
     assert put_response.status_code == 403
 
     delete_response = client.delete(
         "/api/settings/api-key",
-        params={"provider": "anthropic"},
+        params={"base_url": _ANTHROPIC},
         headers={"X-Spend-Token": "wrong-token"},
     )
     assert delete_response.status_code == 403

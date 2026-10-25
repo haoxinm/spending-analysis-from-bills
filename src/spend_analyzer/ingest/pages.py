@@ -25,7 +25,9 @@ def parse_page_spec(spec: str) -> list[int]:
             lo = int(lo_s.strip())
             hi = int(hi_s.strip()) if sep else lo
         except ValueError:
-            raise ValueError(f"invalid page spec {spec!r}: {token!r} is not a page or range") from None
+            raise ValueError(
+                f"invalid page spec {spec!r}: {token!r} is not a page or range"
+            ) from None
         if lo < 1 or hi < lo:
             raise ValueError(f"invalid page spec {spec!r}: bad range {token!r}")
         pages.update(range(lo, hi + 1))

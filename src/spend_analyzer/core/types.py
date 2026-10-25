@@ -12,9 +12,9 @@ explicitly in its tests.
 
 from __future__ import annotations
 
+from collections.abc import Sequence
 from dataclasses import dataclass, field
 from datetime import date
-from collections.abc import Sequence
 from typing import Literal, Protocol, runtime_checkable
 
 #: Minimum median page character count for a document to be considered to have a text layer.

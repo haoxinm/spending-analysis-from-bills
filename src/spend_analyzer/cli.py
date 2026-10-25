@@ -41,6 +41,10 @@ app.add_typer(users_app, name="users")
 issuers_app = typer.Typer(help="Manage issuers (§3.12a, A23/A24), so later imports auto-confirm.")
 app.add_typer(issuers_app, name="issuers")
 
+from spend_analyzer.cli_llm import llm_app  # noqa: E402
+
+app.add_typer(llm_app, name="llm")
+
 _NOT_YET_IMPLEMENTED = "not yet implemented in this build"
 
 #: A12: same PDF magic-byte check the upload endpoint applies (`api/routers/statements.py`).
@@ -610,19 +614,18 @@ def _doctor_keychain() -> bool:
 
 
 def _doctor_llm() -> bool:
-    settings = load_settings()
-    if settings.llm.mode == "none":
-        typer.echo("SKIP  LLM connectivity (mode='none')")
-        return True
-    try:
-        from spend_analyzer.classify.llm.egress import classify_batch
+    from spend_analyzer.llm.diagnostics import check_connection
 
-        classify_batch(["Doctor Check"], settings.llm)
-        return _check("LLM connectivity", True)
-    except ModuleNotFoundError as exc:
-        return _check(f"LLM connectivity: egress module unavailable ({exc})", False)
-    except Exception as exc:
-        return _check(f"LLM connectivity failed: {exc}", False)
+    cfg = load_settings().llm
+    if cfg.mode == "none":
+        typer.echo(
+            "SKIP  LLM connectivity (disabled — run `spend-analyzer llm set ...` to configure)"
+        )
+        return True
+    result = check_connection(cfg)
+    if result.ok:
+        return _check(f"LLM connectivity ({result.detail})", True)
+    return _check(f"LLM connectivity failed: {result.detail}", False)
 
 
 def _check(label: str, passed: bool) -> bool:

@@ -27,7 +27,7 @@ from spend_analyzer.config import (
     save_settings,
     set_api_key,
 )
-from spend_analyzer.llm.diagnostics import test_connection
+from spend_analyzer.llm.diagnostics import check_connection
 
 router = APIRouter(tags=["settings"])
 
@@ -161,7 +161,7 @@ def test_llm_settings(
     """One-row round trip via the same `classify_batch` egress path every real classification
     uses. Tests the unsaved draft in `body.llm` when given, else the saved settings."""
     cfg = _llm_config(body.llm) if body is not None and body.llm is not None else settings.llm
-    result = test_connection(cfg)
+    result = check_connection(cfg)
     return schemas.TestLlmResponse(
         ok=result.ok,
         detail=result.detail,
