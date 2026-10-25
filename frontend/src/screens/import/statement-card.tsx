@@ -20,6 +20,8 @@ export interface StatementCardProps {
    * kept out of this component so it stays a pure presentational shell around the state
    * machine's status/progress/outcome rendering. */
   picker: React.ReactNode;
+  /** Page selection + LLM privacy notice (`PageSelector`), shown under the picker. */
+  pages?: React.ReactNode;
 }
 
 const STATUS_LABEL: Record<ImportItem["status"], string> = {
@@ -63,6 +65,7 @@ export function StatementCard({
   onRememberChange,
   onConfirm,
   picker,
+  pages,
 }: StatementCardProps) {
   const { event } = useJobProgress(item.status === "extracting" ? item.jobId : null);
 
@@ -74,7 +77,8 @@ export function StatementCard({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [event, item.clientId]);
 
-  const canConfirm = item.issuerId !== null && item.extractorChoice !== null;
+  const canConfirm =
+    item.issuerId !== null && item.extractorChoice !== null && item.selectedPages?.length !== 0;
   const shapeWarnings = parseShapeWarnings(item.statement?.shape_warnings);
   const reconciliationDelta = item.statement?.reconciliation_delta_minor ?? null;
 
@@ -115,6 +119,7 @@ export function StatementCard({
               </p>
             ) : null}
             {picker}
+            {pages}
             <div className="flex flex-wrap items-center gap-4">
               <label className="flex items-center gap-1.5 text-xs text-muted-foreground">
                 <input

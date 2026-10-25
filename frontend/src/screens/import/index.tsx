@@ -10,6 +10,7 @@ import { FileDropZone } from "./file-drop-zone";
 import { IssuerExtractorPicker } from "./issuer-extractor-picker";
 import { getStickyUserId, setStickyUserId } from "./storage";
 import { StatementCard } from "./statement-card";
+import { PageSelector } from "./page-selector";
 import { SummaryBar } from "./summary-bar";
 import type { ExtractorChoice, ImportItem } from "./types";
 import {
@@ -45,6 +46,7 @@ function ImportScreen() {
       if (item.statementId === undefined || item.issuerId === null || item.extractorChoice === null) {
         return;
       }
+      if (item.selectedPages?.length === 0) return;
       const choice = item.extractorChoice;
       extractStatement.mutate(
         {
@@ -54,6 +56,7 @@ function ImportScreen() {
             layout_spec_id: choice.kind === "spec" ? choice.layoutSpecId : null,
             parser_id: choice.kind === "parser" ? choice.parserId : null,
             remember: item.remember,
+            pages: item.selectedPages ?? null,
           },
         },
         {
@@ -96,6 +99,7 @@ function ImportScreen() {
               issuerId: response.proposal.issuer_id,
               extractorChoice: extractorChoiceFromProposal(response.proposal),
               remember: true,
+              selectedPages: response.statement.selected_pages ?? null,
             };
             if (response.statement.status === "awaiting_extractor" && shouldAutoConfirm(updatedItem)) {
               confirmImport(updatedItem);
@@ -194,6 +198,7 @@ function ImportScreen() {
               onRememberChange={(remember) =>
                 dispatch({ type: "remember_toggled", clientId: item.clientId, remember })
               }
+              pages={<PageSelector item={item} dispatch={dispatch} />}
               picker={
                 <IssuerExtractorPicker
                   item={item}

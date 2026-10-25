@@ -39,6 +39,10 @@ export interface ImportItem {
   extractorChoice: ExtractorChoice | null;
   remember: boolean;
 
+  /** Pages to extract from: `null`/undefined = all pages. An empty array means the user has
+   * deselected everything (importing is blocked until at least one page is chosen). */
+  selectedPages?: number[] | null;
+
   jobId?: string;
   jobEvent?: JobEvent;
 

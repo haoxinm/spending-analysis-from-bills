@@ -66,6 +66,7 @@ export type Action =
   | { type: "upload_failed"; clientId: string; message: string }
   | { type: "issuer_selected"; clientId: string; issuerId: number | null; extractorChoice: ExtractorChoice | null }
   | { type: "extractor_selected"; clientId: string; extractorChoice: ExtractorChoice }
+  | { type: "pages_selected"; clientId: string; pages: number[] | null }
   | { type: "remember_toggled"; clientId: string; remember: boolean }
   | { type: "extract_started"; clientId: string; jobId: string }
   | { type: "extract_failed"; clientId: string; message: string }
@@ -94,6 +95,7 @@ function reducer(items: ImportItem[], action: Action): ImportItem[] {
         statementId: action.statement.id,
         statement: action.statement,
         proposal: action.proposal,
+        selectedPages: action.statement.selected_pages ?? null,
         issuerId: action.proposal?.issuer_id ?? null,
         extractorChoice: action.proposal ? extractorChoiceFromProposal(action.proposal) : null,
         status: statusFromStatement(action.statement),
@@ -109,6 +111,9 @@ function reducer(items: ImportItem[], action: Action): ImportItem[] {
 
     case "extractor_selected":
       return patch(action.clientId, (item) => ({ ...item, extractorChoice: action.extractorChoice }));
+
+    case "pages_selected":
+      return patch(action.clientId, (item) => ({ ...item, selectedPages: action.pages }));
 
     case "remember_toggled":
       return patch(action.clientId, (item) => ({ ...item, remember: action.remember }));
@@ -181,9 +186,15 @@ export function useImportQueue(): UseImportQueueResult {
   return { items, queueFiles, dispatch };
 }
 
+/** Whether the chosen extractor is the LLM statement parser. */
+export function isLlmChoice(choice: ExtractorChoice | null): boolean {
+  return choice?.kind === "parser" && choice.parserId === "llm";
+}
+
 /** Whether `item`'s current proposal is confident enough to import in one click (§2f.2). */
 export function isConfidentProposal(item: ImportItem): boolean {
   return (
+    !isLlmChoice(item.extractorChoice) &&
     item.issuerId !== null &&
     item.extractorChoice !== null &&
     (item.proposal?.confidence ?? 0) >= CONFIDENT_SCORE_THRESHOLD
@@ -193,7 +204,9 @@ export function isConfidentProposal(item: ImportItem): boolean {
 /** Whether `item` should skip the confirmation step entirely (a confident proposal from an
  * issuer the user has told the screen not to ask about again). */
 export function shouldAutoConfirm(item: ImportItem): boolean {
-  return isConfidentProposal(item) && item.issuerId !== null && isSkipConfirmForIssuer(item.issuerId);
+  // Never auto-import with the LLM: it sends statement text off-device (or to a local model) and
+  // its output always needs a human look first.
+  return !isLlmChoice(item.extractorChoice) && isConfidentProposal(item) && item.issuerId !== null && isSkipConfirmForIssuer(item.issuerId);
 }
 
 /** Refreshes a statement after its extract job reaches a terminal state, then — once parsed —

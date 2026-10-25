@@ -1,9 +1,10 @@
 import * as React from "react";
+import { Link } from "react-router-dom";
 
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 
-import { useCreateIssuer, useIssuers, useLayoutSpecs } from "./api";
+import { useCreateIssuer, useImportSettings, useIssuers, useLayoutSpecs } from "./api";
 import { extractorChoiceForIssuer } from "./use-import-queue";
 import type { ExtractorChoice, ImportItem } from "./types";
 
@@ -24,6 +25,7 @@ export function IssuerExtractorPicker({
 }: IssuerExtractorPickerProps) {
   const issuersQuery = useIssuers();
   const specsQuery = useLayoutSpecs();
+  const settingsQuery = useImportSettings();
   const createIssuer = useCreateIssuer();
   const [isCreatingIssuer, setIsCreatingIssuer] = React.useState(false);
   const [newIssuerName, setNewIssuerName] = React.useState("");
@@ -32,6 +34,10 @@ export function IssuerExtractorPicker({
   const specs = specsQuery.data ?? [];
   const specsForIssuer = specs.filter((s) => s.issuer_id === item.issuerId && s.approved);
   const fallbackParserId = item.proposal?.parser_id ?? null;
+
+  const llmMode = settingsQuery.data?.llm.mode;
+  const llmUnavailable = llmMode === undefined || llmMode === "none";
+  const builtInParserId = fallbackParserId !== null && fallbackParserId !== "llm" ? fallbackParserId : null;
 
   const extractorValue =
     item.extractorChoice === null
@@ -124,18 +130,29 @@ export function IssuerExtractorPicker({
           <option value="" disabled>
             Select an extractor…
           </option>
-          {fallbackParserId !== null ? (
-            <option value={`parser:${fallbackParserId}`}>
-              Auto-detected: {fallbackParserId}
+          {builtInParserId !== null ? (
+            <option value={`parser:${builtInParserId}`}>
+              Auto-detected: {builtInParserId}
               {item.proposal ? ` (${Math.round(item.proposal.confidence * 100)}% match)` : ""}
             </option>
           ) : null}
+          <option value="parser:llm" disabled={llmUnavailable && extractorValue !== "parser:llm"}>
+            LLM (reads the selected pages)
+          </option>
           {specsForIssuer.map((spec) => (
             <option key={spec.id} value={`spec:${spec.id}`}>
               {spec.name} v{spec.version}
             </option>
           ))}
         </select>
+        {llmMode === "none" ? (
+          <span className="font-normal">
+            <Link to="/settings" className="underline">
+              Set up an LLM in Settings
+            </Link>{" "}
+            to use the LLM extractor.
+          </span>
+        ) : null}
       </label>
     </div>
   );

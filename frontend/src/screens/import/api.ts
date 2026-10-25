@@ -154,3 +154,45 @@ export async function pollClassifyJobNeedsReview(
   }
   return undefined;
 }
+
+export function useImportSettings() {
+  return useQuery({
+    queryKey: ["settings"],
+    queryFn: async () => {
+      const { data, error } = await apiClient.GET("/settings");
+      throwIfError(error);
+      return data;
+    },
+  });
+}
+
+export function useStatementPages(statementId: number | undefined, enabled: boolean) {
+  return useQuery({
+    queryKey: ["statement-pages", statementId],
+    enabled: enabled && statementId !== undefined,
+    queryFn: async () => {
+      const { data, error } = await apiClient.GET("/statements/{statement_id}/pages", {
+        params: { path: { statement_id: statementId as number } },
+      });
+      throwIfError(error);
+      return data ?? [];
+    },
+  });
+}
+
+/** Exactly what the LLM parser would send for `pages` (null = all). Fetched on demand. */
+export function useLlmPreview(statementId: number | undefined, pages: number[] | null, enabled: boolean) {
+  const pagesParam = pages === null ? undefined : pages.join(",");
+  return useQuery({
+    queryKey: ["llm-preview", statementId, pagesParam ?? "all"],
+    enabled: enabled && statementId !== undefined && pages?.length !== 0,
+    queryFn: async () => {
+      const { data, error } = await apiClient.GET("/statements/{statement_id}/llm-preview", {
+        params: { path: { statement_id: statementId as number }, query: { pages: pagesParam } },
+      });
+      throwIfError(error);
+      if (!data) throw new Error("preview returned no data");
+      return data;
+    },
+  });
+}
