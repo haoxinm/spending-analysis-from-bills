@@ -3140,6 +3140,354 @@
           }
         }
       }
+    },
+    "/net-worth/entries": {
+      "get": {
+        "tags": [
+          "net-worth"
+        ],
+        "summary": "List Entries",
+        "operationId": "list_entries_api_net_worth_entries_get",
+        "parameters": [
+          {
+            "name": "user_id",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "integer"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "User Id"
+            }
+          },
+          {
+            "name": "category",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "enum": [
+                    "checking",
+                    "savings",
+                    "investment",
+                    "credit_card"
+                  ],
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Category"
+            }
+          },
+          {
+            "name": "year",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "integer"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Year"
+            }
+          },
+          {
+            "name": "account_name",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Account Name"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/BalanceEntry"
+                  },
+                  "title": "Response List Entries Api Net Worth Entries Get"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      },
+      "post": {
+        "tags": [
+          "net-worth"
+        ],
+        "summary": "Upsert Entry",
+        "operationId": "upsert_entry_api_net_worth_entries_post",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/BalanceEntryUpsert"
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/BalanceEntry"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/net-worth/entries/{id}": {
+      "patch": {
+        "tags": [
+          "net-worth"
+        ],
+        "summary": "Patch Entry",
+        "operationId": "patch_entry_api_net_worth_entries__id__patch",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "title": "Id"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/BalanceEntryPatch"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/BalanceEntry"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      },
+      "delete": {
+        "tags": [
+          "net-worth"
+        ],
+        "summary": "Delete Entry",
+        "operationId": "delete_entry_api_net_worth_entries__id__delete",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "title": "Id"
+            }
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "Successful Response"
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/net-worth/summary": {
+      "get": {
+        "tags": [
+          "net-worth"
+        ],
+        "summary": "Summary",
+        "operationId": "summary_api_net_worth_summary_get",
+        "parameters": [
+          {
+            "name": "user_id",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "integer"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "User Id"
+            }
+          },
+          {
+            "name": "currency",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "default": "USD",
+              "title": "Currency"
+            }
+          },
+          {
+            "name": "period",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Period"
+            }
+          },
+          {
+            "name": "period_from",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Period From"
+            }
+          },
+          {
+            "name": "period_to",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Period To"
+            }
+          },
+          {
+            "name": "carry_forward",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "boolean",
+              "default": true,
+              "title": "Carry Forward"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/NetWorthSummary"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
     }
   },
   "components": {
@@ -3400,6 +3748,180 @@
         ],
         "title": "ApiKeyPut",
         "description": "`PUT /api/settings/api-key` body (I7: the key is written straight to the OS keychain via\n`config.set_api_key` \u2014 never to `config.toml`, the database, a response, or a log line).\nThe key is stored for `base_url`'s host (default: the saved `[llm] base_url`), so it is only\never sent to that host."
+      },
+      "BalanceEntry": {
+        "properties": {
+          "id": {
+            "type": "integer",
+            "title": "Id"
+          },
+          "user_id": {
+            "type": "integer",
+            "title": "User Id"
+          },
+          "category": {
+            "type": "string",
+            "enum": [
+              "checking",
+              "savings",
+              "investment",
+              "credit_card"
+            ],
+            "title": "Category"
+          },
+          "account_name": {
+            "type": "string",
+            "title": "Account Name"
+          },
+          "year": {
+            "type": "integer",
+            "title": "Year"
+          },
+          "month": {
+            "type": "integer",
+            "title": "Month"
+          },
+          "balance_minor": {
+            "type": "integer",
+            "title": "Balance Minor"
+          },
+          "currency": {
+            "type": "string",
+            "title": "Currency"
+          },
+          "note": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Note"
+          },
+          "created_at": {
+            "type": "string",
+            "title": "Created At"
+          },
+          "updated_at": {
+            "type": "string",
+            "title": "Updated At"
+          }
+        },
+        "type": "object",
+        "required": [
+          "id",
+          "user_id",
+          "category",
+          "account_name",
+          "year",
+          "month",
+          "balance_minor",
+          "currency",
+          "note",
+          "created_at",
+          "updated_at"
+        ],
+        "title": "BalanceEntry"
+      },
+      "BalanceEntryPatch": {
+        "properties": {
+          "balance_minor": {
+            "anyOf": [
+              {
+                "type": "integer",
+                "minimum": 0.0
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Balance Minor"
+          },
+          "note": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Note"
+          }
+        },
+        "type": "object",
+        "title": "BalanceEntryPatch"
+      },
+      "BalanceEntryUpsert": {
+        "properties": {
+          "user_id": {
+            "type": "integer",
+            "title": "User Id"
+          },
+          "category": {
+            "type": "string",
+            "enum": [
+              "checking",
+              "savings",
+              "investment",
+              "credit_card"
+            ],
+            "title": "Category"
+          },
+          "account_name": {
+            "type": "string",
+            "maxLength": 100,
+            "minLength": 1,
+            "title": "Account Name"
+          },
+          "year": {
+            "type": "integer",
+            "maximum": 2200.0,
+            "minimum": 1900.0,
+            "title": "Year"
+          },
+          "month": {
+            "type": "integer",
+            "maximum": 12.0,
+            "minimum": 1.0,
+            "title": "Month"
+          },
+          "balance_minor": {
+            "type": "integer",
+            "minimum": 0.0,
+            "title": "Balance Minor"
+          },
+          "currency": {
+            "type": "string",
+            "pattern": "^[A-Z]{3}$",
+            "title": "Currency",
+            "default": "USD"
+          },
+          "note": {
+            "anyOf": [
+              {
+                "type": "string",
+                "maxLength": 500
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Note"
+          }
+        },
+        "type": "object",
+        "required": [
+          "user_id",
+          "category",
+          "account_name",
+          "year",
+          "month",
+          "balance_minor"
+        ],
+        "title": "BalanceEntryUpsert"
       },
       "Body_upload_statement_api_statements_post": {
         "properties": {
@@ -4512,6 +5034,308 @@
           "into_id"
         ],
         "title": "MergeRequest"
+      },
+      "NetWorthAccountBalance": {
+        "properties": {
+          "user_id": {
+            "type": "integer",
+            "title": "User Id"
+          },
+          "category": {
+            "type": "string",
+            "enum": [
+              "checking",
+              "savings",
+              "investment",
+              "credit_card"
+            ],
+            "title": "Category"
+          },
+          "account_name": {
+            "type": "string",
+            "title": "Account Name"
+          },
+          "balance_minor": {
+            "type": "integer",
+            "title": "Balance Minor"
+          },
+          "signed_minor": {
+            "type": "integer",
+            "title": "Signed Minor"
+          },
+          "as_of": {
+            "type": "string",
+            "title": "As Of"
+          },
+          "carried": {
+            "type": "boolean",
+            "title": "Carried"
+          }
+        },
+        "type": "object",
+        "required": [
+          "user_id",
+          "category",
+          "account_name",
+          "balance_minor",
+          "signed_minor",
+          "as_of",
+          "carried"
+        ],
+        "title": "NetWorthAccountBalance"
+      },
+      "NetWorthAccountPoint": {
+        "properties": {
+          "period": {
+            "type": "string",
+            "title": "Period"
+          },
+          "balance_minor": {
+            "type": "integer",
+            "title": "Balance Minor"
+          },
+          "carried": {
+            "type": "boolean",
+            "title": "Carried"
+          }
+        },
+        "type": "object",
+        "required": [
+          "period",
+          "balance_minor",
+          "carried"
+        ],
+        "title": "NetWorthAccountPoint"
+      },
+      "NetWorthAccountSeries": {
+        "properties": {
+          "user_id": {
+            "type": "integer",
+            "title": "User Id"
+          },
+          "category": {
+            "type": "string",
+            "enum": [
+              "checking",
+              "savings",
+              "investment",
+              "credit_card"
+            ],
+            "title": "Category"
+          },
+          "account_name": {
+            "type": "string",
+            "title": "Account Name"
+          },
+          "points": {
+            "items": {
+              "$ref": "#/components/schemas/NetWorthAccountPoint"
+            },
+            "type": "array",
+            "title": "Points"
+          }
+        },
+        "type": "object",
+        "required": [
+          "user_id",
+          "category",
+          "account_name",
+          "points"
+        ],
+        "title": "NetWorthAccountSeries"
+      },
+      "NetWorthCategoryTotal": {
+        "properties": {
+          "category": {
+            "type": "string",
+            "enum": [
+              "checking",
+              "savings",
+              "investment",
+              "credit_card"
+            ],
+            "title": "Category"
+          },
+          "balance_minor": {
+            "type": "integer",
+            "title": "Balance Minor"
+          },
+          "signed_minor": {
+            "type": "integer",
+            "title": "Signed Minor"
+          }
+        },
+        "type": "object",
+        "required": [
+          "category",
+          "balance_minor",
+          "signed_minor"
+        ],
+        "title": "NetWorthCategoryTotal"
+      },
+      "NetWorthPoint": {
+        "properties": {
+          "period": {
+            "type": "string",
+            "title": "Period"
+          },
+          "by_category": {
+            "additionalProperties": {
+              "type": "integer"
+            },
+            "type": "object",
+            "title": "By Category"
+          },
+          "assets_minor": {
+            "type": "integer",
+            "title": "Assets Minor"
+          },
+          "liabilities_minor": {
+            "type": "integer",
+            "title": "Liabilities Minor"
+          },
+          "net_worth_minor": {
+            "type": "integer",
+            "title": "Net Worth Minor"
+          }
+        },
+        "type": "object",
+        "required": [
+          "period",
+          "by_category",
+          "assets_minor",
+          "liabilities_minor",
+          "net_worth_minor"
+        ],
+        "title": "NetWorthPoint"
+      },
+      "NetWorthSnapshot": {
+        "properties": {
+          "period": {
+            "type": "string",
+            "title": "Period"
+          },
+          "assets_minor": {
+            "type": "integer",
+            "title": "Assets Minor"
+          },
+          "liabilities_minor": {
+            "type": "integer",
+            "title": "Liabilities Minor"
+          },
+          "net_worth_minor": {
+            "type": "integer",
+            "title": "Net Worth Minor"
+          },
+          "previous_period": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Previous Period"
+          },
+          "change_minor": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Change Minor"
+          },
+          "categories": {
+            "items": {
+              "$ref": "#/components/schemas/NetWorthCategoryTotal"
+            },
+            "type": "array",
+            "title": "Categories"
+          },
+          "accounts": {
+            "items": {
+              "$ref": "#/components/schemas/NetWorthAccountBalance"
+            },
+            "type": "array",
+            "title": "Accounts"
+          }
+        },
+        "type": "object",
+        "required": [
+          "period",
+          "assets_minor",
+          "liabilities_minor",
+          "net_worth_minor",
+          "previous_period",
+          "change_minor",
+          "categories",
+          "accounts"
+        ],
+        "title": "NetWorthSnapshot"
+      },
+      "NetWorthSummary": {
+        "properties": {
+          "currency": {
+            "type": "string",
+            "title": "Currency"
+          },
+          "user_id": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "User Id"
+          },
+          "periods": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Periods"
+          },
+          "series": {
+            "items": {
+              "$ref": "#/components/schemas/NetWorthPoint"
+            },
+            "type": "array",
+            "title": "Series"
+          },
+          "account_series": {
+            "items": {
+              "$ref": "#/components/schemas/NetWorthAccountSeries"
+            },
+            "type": "array",
+            "title": "Account Series"
+          },
+          "snapshot": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/NetWorthSnapshot"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          }
+        },
+        "type": "object",
+        "required": [
+          "currency",
+          "user_id",
+          "periods",
+          "series",
+          "account_series",
+          "snapshot"
+        ],
+        "title": "NetWorthSummary"
       },
       "PiiTestRequest": {
         "properties": {

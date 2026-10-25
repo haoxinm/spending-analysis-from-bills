@@ -768,6 +768,59 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/net-worth/entries": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** List Entries */
+        get: operations["list_entries_api_net_worth_entries_get"];
+        put?: never;
+        /** Upsert Entry */
+        post: operations["upsert_entry_api_net_worth_entries_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/net-worth/entries/{id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        /** Delete Entry */
+        delete: operations["delete_entry_api_net_worth_entries__id__delete"];
+        options?: never;
+        head?: never;
+        /** Patch Entry */
+        patch: operations["patch_entry_api_net_worth_entries__id__patch"];
+        trace?: never;
+    };
+    "/net-worth/summary": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Summary */
+        get: operations["summary_api_net_worth_summary_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
 }
 export type webhooks = Record<string, never>;
 export interface components {
@@ -859,6 +912,66 @@ export interface components {
              * @default
              */
             base_url: string;
+        };
+        /** BalanceEntry */
+        BalanceEntry: {
+            /** Id */
+            id: number;
+            /** User Id */
+            user_id: number;
+            /**
+             * Category
+             * @enum {string}
+             */
+            category: "checking" | "savings" | "investment" | "credit_card";
+            /** Account Name */
+            account_name: string;
+            /** Year */
+            year: number;
+            /** Month */
+            month: number;
+            /** Balance Minor */
+            balance_minor: number;
+            /** Currency */
+            currency: string;
+            /** Note */
+            note: string | null;
+            /** Created At */
+            created_at: string;
+            /** Updated At */
+            updated_at: string;
+        };
+        /** BalanceEntryPatch */
+        BalanceEntryPatch: {
+            /** Balance Minor */
+            balance_minor?: number | null;
+            /** Note */
+            note?: string | null;
+        };
+        /** BalanceEntryUpsert */
+        BalanceEntryUpsert: {
+            /** User Id */
+            user_id: number;
+            /**
+             * Category
+             * @enum {string}
+             */
+            category: "checking" | "savings" | "investment" | "credit_card";
+            /** Account Name */
+            account_name: string;
+            /** Year */
+            year: number;
+            /** Month */
+            month: number;
+            /** Balance Minor */
+            balance_minor: number;
+            /**
+             * Currency
+             * @default USD
+             */
+            currency: string;
+            /** Note */
+            note?: string | null;
         };
         /** Body_upload_statement_api_statements_post */
         Body_upload_statement_api_statements_post: {
@@ -1283,6 +1396,109 @@ export interface components {
         MergeRequest: {
             /** Into Id */
             into_id: number;
+        };
+        /** NetWorthAccountBalance */
+        NetWorthAccountBalance: {
+            /** User Id */
+            user_id: number;
+            /**
+             * Category
+             * @enum {string}
+             */
+            category: "checking" | "savings" | "investment" | "credit_card";
+            /** Account Name */
+            account_name: string;
+            /** Balance Minor */
+            balance_minor: number;
+            /** Signed Minor */
+            signed_minor: number;
+            /** As Of */
+            as_of: string;
+            /** Carried */
+            carried: boolean;
+        };
+        /** NetWorthAccountPoint */
+        NetWorthAccountPoint: {
+            /** Period */
+            period: string;
+            /** Balance Minor */
+            balance_minor: number;
+            /** Carried */
+            carried: boolean;
+        };
+        /** NetWorthAccountSeries */
+        NetWorthAccountSeries: {
+            /** User Id */
+            user_id: number;
+            /**
+             * Category
+             * @enum {string}
+             */
+            category: "checking" | "savings" | "investment" | "credit_card";
+            /** Account Name */
+            account_name: string;
+            /** Points */
+            points: components["schemas"]["NetWorthAccountPoint"][];
+        };
+        /** NetWorthCategoryTotal */
+        NetWorthCategoryTotal: {
+            /**
+             * Category
+             * @enum {string}
+             */
+            category: "checking" | "savings" | "investment" | "credit_card";
+            /** Balance Minor */
+            balance_minor: number;
+            /** Signed Minor */
+            signed_minor: number;
+        };
+        /** NetWorthPoint */
+        NetWorthPoint: {
+            /** Period */
+            period: string;
+            /** By Category */
+            by_category: {
+                [key: string]: number;
+            };
+            /** Assets Minor */
+            assets_minor: number;
+            /** Liabilities Minor */
+            liabilities_minor: number;
+            /** Net Worth Minor */
+            net_worth_minor: number;
+        };
+        /** NetWorthSnapshot */
+        NetWorthSnapshot: {
+            /** Period */
+            period: string;
+            /** Assets Minor */
+            assets_minor: number;
+            /** Liabilities Minor */
+            liabilities_minor: number;
+            /** Net Worth Minor */
+            net_worth_minor: number;
+            /** Previous Period */
+            previous_period: string | null;
+            /** Change Minor */
+            change_minor: number | null;
+            /** Categories */
+            categories: components["schemas"]["NetWorthCategoryTotal"][];
+            /** Accounts */
+            accounts: components["schemas"]["NetWorthAccountBalance"][];
+        };
+        /** NetWorthSummary */
+        NetWorthSummary: {
+            /** Currency */
+            currency: string;
+            /** User Id */
+            user_id: number | null;
+            /** Periods */
+            periods: string[];
+            /** Series */
+            series: components["schemas"]["NetWorthPoint"][];
+            /** Account Series */
+            account_series: components["schemas"]["NetWorthAccountSeries"][];
+            snapshot: components["schemas"]["NetWorthSnapshot"] | null;
         };
         /**
          * PiiTestRequest
@@ -3338,6 +3554,173 @@ export interface operations {
                 };
                 content: {
                     "application/json": unknown;
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    list_entries_api_net_worth_entries_get: {
+        parameters: {
+            query?: {
+                user_id?: number | null;
+                category?: ("checking" | "savings" | "investment" | "credit_card") | null;
+                year?: number | null;
+                account_name?: string | null;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["BalanceEntry"][];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    upsert_entry_api_net_worth_entries_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["BalanceEntryUpsert"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["BalanceEntry"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    delete_entry_api_net_worth_entries__id__delete: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: number;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    patch_entry_api_net_worth_entries__id__patch: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: number;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["BalanceEntryPatch"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["BalanceEntry"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    summary_api_net_worth_summary_get: {
+        parameters: {
+            query?: {
+                user_id?: number | null;
+                currency?: string;
+                period?: string | null;
+                period_from?: string | null;
+                period_to?: string | null;
+                carry_forward?: boolean;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["NetWorthSummary"];
                 };
             };
             /** @description Validation Error */
