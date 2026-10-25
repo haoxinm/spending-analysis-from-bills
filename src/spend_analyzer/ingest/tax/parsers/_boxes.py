@@ -52,6 +52,18 @@ ACCOUNT_LABEL = compile_label(r"Account\s+(?:number|no\.?)")
 FED_WITHHELD_LABEL = compile_label(r"Federal\s+income\s+tax\s+withheld")
 STATE_TAX_WITHHELD_LABEL = compile_label(r"State\s+tax\s+withheld")
 
+#: Generic spellings of the payer-name / payer-TIN row labels used by software-generated and
+#: consolidated documents (``Payer: X``, ``Payer's name X``, ``Broker: X``, ``Payer EIN 99-...``).
+#: Anchored at the start of a row; a bare ``Payer`` / ``Broker`` / ``Issuer`` needs its colon.
+PAYER_NAME_LABELS = compile_label(
+    r"^(?:Payer(?:['\u2019]?s)?(?:\s*/\s*Broker)?\s+name\b|Filer['\u2019]?s\s+name\b"
+    r"|(?:Payer\s*/\s*Broker|Payer|Broker|Issuer)(?=\s*:))\s*:?"
+)
+PAYER_TIN_LABELS = compile_label(
+    r"^(?:Payer(?:['\u2019]?s)?\s+(?:TIN|EIN|federal\s+identification\s+number|federal\s+ID)\b"
+    r"|Payer\s+ID\b|EIN\b)\s*:?"
+)
+
 CORRECTED_WARNING = "Form is marked as corrected; it may replace a form imported earlier."
 STATE_CODE_WARNING = "A state tax amount was found but its state code could not be read."
 UNKNOWN_STATE = "XX"
@@ -309,3 +321,16 @@ def split_forms(doc: ExtractedDoc, heading_re: re.Pattern[str]) -> tuple[Extract
         )
         for group in groups
     )
+
+
+def payer_from_row(row_text: str) -> tuple[str | None, str | None]:
+    """``(name, tin_last4)`` read from one row when it is a payer-name or payer-TIN row, else
+    ``(None, None)``. The name is the raw (scrubbed) text after the label; the caller sanitises it."""
+    match = PAYER_NAME_LABELS.search(row_text)
+    if match is not None:
+        rest = scrub(row_text[match.end() :]).strip(" :\t")
+        return (rest or None), None
+    match = PAYER_TIN_LABELS.search(row_text)
+    if match is not None:
+        return None, mask_tin(row_text[match.end() :])
+    return None, None

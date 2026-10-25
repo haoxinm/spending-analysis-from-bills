@@ -1945,6 +1945,8 @@ export interface components {
             inserted_forms: number;
             /** Skipped Duplicate Forms */
             skipped_duplicate_forms: number;
+            /** Skipped From */
+            skipped_from: components["schemas"]["TaxSkippedFrom"][];
             /** Income Item Count */
             income_item_count: number;
             /** Tax Item Count */
@@ -2000,6 +2002,18 @@ export interface components {
             label: string;
             /** Amount Minor */
             amount_minor: number;
+        };
+        /**
+         * TaxSkippedFrom
+         * @description An earlier document whose form made this upload's form a skipped duplicate.
+         */
+        TaxSkippedFrom: {
+            /** Document Id */
+            document_id: number;
+            /** Original Name */
+            original_name: string;
+            /** Form Type */
+            form_type: string;
         };
         /** TaxYearSummary */
         TaxYearSummary: {

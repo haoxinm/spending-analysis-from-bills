@@ -20,7 +20,14 @@ from tests.ingest.tax_support import (
 )
 
 _ID = "tax_w2"
-_GOLDEN_VARIANTS = ("normal", "two_employers", "copies", "two_states", "corrected")
+_GOLDEN_VARIANTS = (
+    "normal",
+    "two_employers",
+    "copies",
+    "two_states",
+    "corrected",
+    "no_ein_identical",
+)
 _SSN_SHAPE = re.compile(r"\d{3}-\d{2}-\d{4}")
 _NINE_DIGITS = re.compile(r"\d{9}")
 
@@ -66,6 +73,16 @@ def test_two_employers_gives_two_forms() -> None:
 
 def test_three_copies_collapse_to_one_form() -> None:
     assert len(_parse("copies").forms) == 1
+
+
+def test_identical_w2_without_ein_or_copy_marker_is_not_collapsed() -> None:
+    """Nothing shows these two pages are copies of one form (no EIN read, no Copy marker)."""
+    parsed = _parse("no_ein_identical")
+    assert len(parsed.forms) == 2
+    assert all(f.payer_tin_last4 is None for f in parsed.forms)
+    assert parsed.warnings == (
+        "Two identical W-2 forms were found; if one is a duplicate copy, delete it.",
+    )
 
 
 def test_two_state_lines_emit_two_items() -> None:

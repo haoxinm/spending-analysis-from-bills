@@ -84,6 +84,7 @@ class TaxImportResult:
     tax_item_count: int
     warnings: tuple[str, ...]
     error: str | None
+    skipped_from: tuple[tuple[int, str, str], ...] = ()
 
 
 def _resolve(module_path: str, attr: str) -> Callable[..., Any]:

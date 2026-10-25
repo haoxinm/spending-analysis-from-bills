@@ -6911,6 +6911,13 @@
             "type": "integer",
             "title": "Skipped Duplicate Forms"
           },
+          "skipped_from": {
+            "items": {
+              "$ref": "#/components/schemas/TaxSkippedFrom"
+            },
+            "type": "array",
+            "title": "Skipped From"
+          },
           "income_item_count": {
             "type": "integer",
             "title": "Income Item Count"
@@ -6944,6 +6951,7 @@
           "status",
           "inserted_forms",
           "skipped_duplicate_forms",
+          "skipped_from",
           "income_item_count",
           "tax_item_count",
           "warnings",
@@ -7095,6 +7103,30 @@
         ],
         "title": "TaxMemoAmount",
         "description": "A memo line (not part of total income): `qualified_dividends` or `tax_exempt`."
+      },
+      "TaxSkippedFrom": {
+        "properties": {
+          "document_id": {
+            "type": "integer",
+            "title": "Document Id"
+          },
+          "original_name": {
+            "type": "string",
+            "title": "Original Name"
+          },
+          "form_type": {
+            "type": "string",
+            "title": "Form Type"
+          }
+        },
+        "type": "object",
+        "required": [
+          "document_id",
+          "original_name",
+          "form_type"
+        ],
+        "title": "TaxSkippedFrom",
+        "description": "An earlier document whose form made this upload's form a skipped duplicate."
       },
       "TaxYearSummary": {
         "properties": {

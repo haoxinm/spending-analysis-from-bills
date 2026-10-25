@@ -193,6 +193,22 @@ def test_duplicate_upload_is_a_noop(client: TestClient, user_id: int) -> None:
     assert len(client.get("/api/tax/documents").json()) == 1
 
 
+def test_skipped_duplicate_names_the_earlier_file(client: TestClient, user_id: int) -> None:
+    first = _upload(client, "tax_w2", "normal", user_id, filename="w2_first.pdf").json()
+    path = generated_pdf("tax_w2", "normal")
+    second = client.post(
+        "/api/tax/documents",
+        data={"user_id": str(user_id)},
+        files={"file": ("w2_again.pdf", path.read_bytes() + b"\n% again\n", "application/pdf")},
+    ).json()
+    assert second["skipped_duplicate_forms"] == 1
+    assert second["skipped_from"] == [
+        {"document_id": first["document"]["id"], "original_name": "w2_first.pdf", "form_type": "w2"}
+    ]
+    assert any('"w2_first.pdf"' in w for w in second["warnings"])
+    assert first["skipped_from"] == []
+
+
 def test_non_tax_pdf_is_unsupported_with_generic_message(client: TestClient, user_id: int) -> None:
     response = _upload(client, "layout_d_bank", "normal", user_id)
     assert response.status_code == 201, response.text

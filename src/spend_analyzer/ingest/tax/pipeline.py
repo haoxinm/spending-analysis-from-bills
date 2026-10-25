@@ -18,18 +18,26 @@ Idempotency: (`user_id`, `file_sha256`) is UNIQUE on `tax_documents` (re-importi
 the same user is a no-op, status ``duplicate``; another user may import the same PDF, and an existing
 row's owner is never changed); `tax_forms` additionally dedupe on (user_id, tax_year, fingerprint), so the same
 W-2 delivered in two different PDFs is stored once and reported as a skipped duplicate form.
+
+Only forms with a *strong* identity (at least one amount AND a payer TIN or account last four) are
+deduped across files. A *weak* form (nothing that tells it apart from another provider's form) gets
+the file hash and its position in the file mixed into its fingerprint, so it is never dropped as a
+duplicate of another file's form; a soft warning is added when it looks identical (same payer name
+and amounts) to a form of another document.
 """
 
 from __future__ import annotations
 
 import hashlib
 import json
+from collections import Counter
 from collections.abc import Sequence
 from dataclasses import dataclass
 from datetime import UTC, datetime
 from pathlib import Path
+from typing import Literal
 
-from sqlalchemy import select
+from sqlalchemy import func, select
 from sqlalchemy.dialects.sqlite import insert as sqlite_insert
 from sqlalchemy.orm import Session
 
@@ -67,6 +75,8 @@ class TaxImportResult:
     tax_item_count: int
     warnings: tuple[str, ...]
     error: str | None  # generic message, never document text
+    #: ``(document_id, original_name, form_type)`` of the earlier forms that caused a skip.
+    skipped_from: tuple[tuple[int, str, str], ...] = ()
 
 
 def _utcnow_iso() -> str:
@@ -97,24 +107,111 @@ def _keep_or_unstage(pdf_path: Path, file_sha256: str, *, keep: bool) -> str | N
     return None
 
 
-def _form_fingerprint(user_id: int, tax_year: int, form: ParsedTaxForm) -> str:
-    """Stable identity of a form's content (D9). Hashed, so nothing readable is stored."""
+def _form_fingerprint(
+    user_id: int, tax_year: int, form: ParsedTaxForm, *, doc_scope: str | None = None
+) -> str:
+    """Stable identity of a form's content (D9). Hashed, so nothing readable is stored.
+
+    With `doc_scope` (a file hash and form position) the fingerprint is unique to that spot in
+    that file; without it, it is the content-only identity shared across files.
+    """
     payer_key = " ".join((form.payer_name or "").lower().split())
     income = sorted(f"{i.category}:{i.amount_minor}:{int(i.is_memo)}" for i in form.income)
     taxes = sorted(f"{t.category}:{t.amount_minor}:{t.jurisdiction or ''}" for t in form.taxes)
-    material = "|".join(
-        [
-            str(user_id),
-            str(tax_year),
-            form.form_type,
-            payer_key,
-            form.payer_tin_last4 or "",
-            form.account_last4 or "",
-            ",".join(income),
-            ",".join(taxes),
-        ]
+    parts = [
+        str(user_id),
+        str(tax_year),
+        form.form_type,
+        payer_key,
+        form.payer_tin_last4 or "",
+        form.account_last4 or "",
+        ",".join(income),
+        ",".join(taxes),
+    ]
+    if doc_scope is not None:
+        parts += ["doc", doc_scope]
+    return hashlib.sha256("|".join(parts).encode("utf-8")).hexdigest()
+
+
+def _form_identity(
+    user_id: int, tax_year: int, form: ParsedTaxForm, *, file_sha256: str, ordinal: int
+) -> tuple[str, Literal["strong", "weak"]]:
+    """``(fingerprint, strength)``. Strong = at least one item AND a payer TIN or account last
+    four: the content fingerprint, shared across files (the same form delivered twice dedupes).
+    Weak = anything else: the fingerprint also includes the file hash and the form's position, so
+    it never matches a form of another file (and two weak forms of one file both stay)."""
+    strong = bool(form.income or form.taxes) and bool(form.payer_tin_last4 or form.account_last4)
+    if strong:
+        return _form_fingerprint(user_id, tax_year, form), "strong"
+    return (
+        _form_fingerprint(user_id, tax_year, form, doc_scope=f"{file_sha256}|{ordinal}"),
+        "weak",
     )
-    return hashlib.sha256(material.encode("utf-8")).hexdigest()
+
+
+def _skip_warning(skipped_from: list[tuple[int, str, str]], own_document_id: int) -> str | None:
+    """The warning for forms skipped as duplicates, naming the earlier file(s)."""
+    if not skipped_from:
+        return None
+    other = [(d, n) for d, n, _ in skipped_from if d != own_document_id]
+    same = len(skipped_from) - len(other)
+    parts: list[str] = []
+    if other:
+        names = list(dict.fromkeys(n for _, n in other))
+        shown = ", ".join(f'"{n}"' for n in names[:3]) + (", ..." if len(names) > 3 else "")
+        parts.append(
+            f"{len(other)} form(s) already imported from {shown} were skipped "
+            "(same payer or account identifier and identical amounts)."
+        )
+    if same:
+        parts.append(f"{same} identical form(s) within this file were skipped.")
+    return " ".join(parts)
+
+
+def _amount_multiset(session: Session, form_id: int) -> Counter[tuple[str, int]]:
+    rows = [
+        (c, a)
+        for c, a in session.execute(
+            select(IncomeItem.category, IncomeItem.amount_minor).where(
+                IncomeItem.form_id == form_id
+            )
+        )
+    ]
+    rows += [
+        (c, a)
+        for c, a in session.execute(
+            select(TaxItem.category, TaxItem.amount_minor).where(TaxItem.form_id == form_id)
+        )
+    ]
+    return Counter(rows)
+
+
+def _lookalike_warning(
+    session: Session, doc_id: int, user_id: int, tax_year: int, form_id: int, form: ParsedTaxForm
+) -> str | None:
+    """A soft warning when a (kept) weak form has the same payer name and amounts as a form of
+    another document of the same user and year; `None` otherwise."""
+    if not form.payer_name:
+        return None
+    mine = _amount_multiset(session, form_id)
+    candidates = session.execute(
+        select(TaxForm.id, TaxDocument.original_name)
+        .join(TaxDocument, TaxDocument.id == TaxForm.document_id)
+        .where(
+            TaxForm.user_id == user_id,
+            TaxForm.tax_year == tax_year,
+            TaxForm.form_type == form.form_type,
+            func.lower(TaxForm.payer_name) == form.payer_name.lower(),
+            TaxForm.document_id != doc_id,
+        )
+    ).all()
+    for other_id, name in candidates:
+        if _amount_multiset(session, other_id) == mine:
+            return (
+                f'Looks identical to a form in "{name}" (same payer name and amounts), but no '
+                "identifier could be read so it was kept. Delete one if it is a duplicate."
+            )
+    return None
 
 
 def _safe_message(exc: Exception) -> str:
@@ -349,8 +446,23 @@ def _import(
 
     inserted_forms = skipped = income_n = tax_n = 0
     inserted_types: list[str] = []
-    for form in parsed.forms:
-        fingerprint = _form_fingerprint(user_id, parsed.tax_year, form)
+    skipped_from: list[tuple[int, str, str]] = []
+    soft_warnings: list[str] = []
+    dropped_empty = 0
+    kept_forms: list[ParsedTaxForm] = []
+    for ordinal, form in enumerate(parsed.forms):
+        if not (
+            form.income
+            or form.taxes
+            or form.agi_minor is not None
+            or form.taxable_income_minor is not None
+        ):
+            dropped_empty += 1  # parsers no longer emit these; nothing to store or dedupe
+            continue
+        kept_forms.append(form)
+        fingerprint, strength = _form_identity(
+            user_id, parsed.tax_year, form, file_sha256=file_sha256, ordinal=ordinal
+        )
         form_id = session.execute(
             sqlite_insert(TaxForm)
             .values(
@@ -374,6 +486,18 @@ def _import(
         ).scalar_one_or_none()
         if form_id is None:
             skipped += 1
+            earlier = session.execute(
+                select(TaxDocument.id, TaxDocument.original_name)
+                .join(TaxForm, TaxForm.document_id == TaxDocument.id)
+                .where(
+                    TaxForm.user_id == user_id,
+                    TaxForm.tax_year == parsed.tax_year,
+                    TaxForm.fingerprint == fingerprint,
+                )
+                .limit(1)
+            ).first()
+            if earlier is not None:
+                skipped_from.append((earlier[0], earlier[1], form.form_type))
             continue
         inserted_forms += 1
         inserted_types.append(form.form_type)
@@ -420,16 +544,28 @@ def _import(
                 )
             )
             tax_n += len(form.taxes)
+        if strength == "weak":
+            session.flush()
+            note = _lookalike_warning(session, doc_row.id, user_id, parsed.tax_year, form_id, form)
+            if note is not None:
+                soft_warnings.append(note)
 
     warnings = list(parsed.warnings)
-    for form in parsed.forms:
+    for form in kept_forms:
         for w in form.warnings:
             if w not in warnings:
                 warnings.append(w)
+    if dropped_empty:
+        warnings.append(f"{dropped_empty} form(s) with no readable amounts were ignored.")
     if skipped:
+        note = _skip_warning(skipped_from, doc_row.id)
         warnings.append(
-            f"{skipped} form(s) in this file were already imported from another file and were skipped."
+            note
+            or f"{skipped} form(s) in this file were already imported from another file "
+            "and were skipped."
         )
+    for note in dict.fromkeys(soft_warnings):
+        warnings.append(note)
     doc_row.status = STATUS_PARSED
     doc_row.error_detail = None
     doc_row.tax_year = parsed.tax_year
@@ -451,13 +587,14 @@ def _import(
         document_id=doc_row.id,
         status=STATUS_PARSED,
         tax_year=parsed.tax_year,
-        form_types=tuple(f.form_type for f in parsed.forms),
+        form_types=tuple(f.form_type for f in kept_forms),
         inserted_forms=inserted_forms,
         skipped_duplicate_forms=skipped,
         income_item_count=income_n,
         tax_item_count=tax_n,
         warnings=tuple(warnings),
         error=None,
+        skipped_from=tuple(skipped_from),
     )
 
 

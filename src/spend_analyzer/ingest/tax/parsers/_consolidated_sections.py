@@ -42,38 +42,43 @@ class _Box:
     is_memo: bool = False
 
 
-_FED_WITHHELD_RE = compile_label(r"^Federal\s+income\s+tax\s+withheld\b")
+def _pat(label: str) -> re.Pattern[str]:
+    """A row-start box label that also accepts a ``Box n`` / ``1a`` prefix and a ``Total`` prefix
+    (``Box 1 Interest income``, ``1a Total ordinary dividends``); a trailing ``(Box n)`` is
+    skipped by the same-row amount reader."""
+    return compile_label(rf"^(?:Box\s*)?(?:\d{{1,2}}[a-z]?[.):]?\s+)?(?:Total\s+)?(?:{label})\b")
+
+
+_FED_WITHHELD_RE = _pat(r"Federal\s+income\s+tax\s+withheld")
 _STATE_ROW = re.compile(r"^State\s+([A-Z]{2})\s+State\s+income\s+tax\s+withheld\b")
 
 _INT_BOXES = (
-    _Box(compile_label(r"^Interest\s+income\b"), "interest", "1", "Interest income"),
+    _Box(_pat(r"Interest\s+income|Taxable\s+interest"), "interest", "1", "Interest income"),
     _Box(
-        compile_label(r"^Interest\s+on\s+U\.S\.\s+Savings\s+Bonds\b"),
+        _pat(r"Interest\s+on\s+U\.S\.\s+Savings\s+Bonds"),
         "interest",
         "3",
         "Interest on U.S. savings bonds and Treasury obligations",
     ),
-    _Box(compile_label(r"^Tax-exempt\s+interest\b"), "other", "8", "Tax-exempt interest", True),
+    _Box(_pat(r"Tax-exempt\s+interest"), "other", "8", "Tax-exempt interest", True),
 )
 _DIV_BOXES = (
+    _Box(_pat(r"Ordinary\s+dividends"), "ordinary_dividends", "1a", "Ordinary dividends"),
     _Box(
-        compile_label(r"^Ordinary\s+dividends\b"), "ordinary_dividends", "1a", "Ordinary dividends"
-    ),
-    _Box(
-        compile_label(r"^Qualified\s+dividends\b"),
+        _pat(r"Qualified\s+dividends"),
         "qualified_dividends",
         "1b",
         "Qualified dividends",
         True,
     ),
     _Box(
-        compile_label(r"^Capital\s+gain\s+distributions\b"),
+        _pat(r"Capital\s+gain\s+distributions"),
         "long_term_capital_gain",
         "2a",
         "Capital gain distributions",
     ),
     _Box(
-        compile_label(r"^Exempt-interest\s+dividends\b"),
+        _pat(r"Exempt-interest\s+dividends"),
         "other",
         "12",
         "Exempt-interest dividends",
@@ -81,9 +86,9 @@ _DIV_BOXES = (
     ),
 )
 _MISC_BOXES = (
-    _Box(compile_label(r"^Rents\b"), "other", "1", "Rents"),
-    _Box(compile_label(r"^Royalties\b"), "other", "2", "Royalties"),
-    _Box(compile_label(r"^Other\s+income\b"), "other", "3", "Other income"),
+    _Box(_pat(r"Rents"), "other", "1", "Rents"),
+    _Box(_pat(r"Royalties"), "other", "2", "Royalties"),
+    _Box(_pat(r"Other\s+income"), "other", "3", "Other income"),
 )
 
 

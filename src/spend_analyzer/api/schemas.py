@@ -768,11 +768,20 @@ class TaxDocumentDetail(TaxDocument):
     forms: list[TaxFormDetail]
 
 
+class TaxSkippedFrom(_Model):
+    """An earlier document whose form made this upload's form a skipped duplicate."""
+
+    document_id: int
+    original_name: str
+    form_type: str
+
+
 class TaxImportResponse(_Model):
     document: TaxDocument
     status: TaxImportStatus
     inserted_forms: int
     skipped_duplicate_forms: int
+    skipped_from: list[TaxSkippedFrom]
     income_item_count: int
     tax_item_count: int
     warnings: list[str]

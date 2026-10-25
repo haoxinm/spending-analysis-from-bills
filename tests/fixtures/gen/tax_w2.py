@@ -2,7 +2,8 @@
 
 Variants: ``normal`` (all boxes, state and local), ``two_employers`` (two W-2s on two pages),
 ``copies`` (Copy B / Copy C / Copy 2 on one page), ``two_states`` (two box 15-17 lines),
-``corrected`` (CORRECTED box checked), ``no_box1`` (box 1 blank: parse error) and ``no_year`` (no
+``corrected`` (CORRECTED box checked), ``no_ein_identical`` (the same W-2 on two pages with no EIN
+and no Copy marker: two forms are kept), ``no_box1`` (box 1 blank: parse error) and ``no_year`` (no
 year printed: parse error unless the year is supplied). All identities are invented (see
 `tax_common`).
 """
@@ -39,6 +40,7 @@ _SRC = "W-2"
 _PITCH = 19.0
 _X0, _X0_LAST, _X1, _X2 = 36.0, 190.0, 236.0, 400.0
 _W0, _W1, _W2 = 196.0, 160.0, 162.0
+_IDENTICAL_WARNING = "Two identical W-2 forms were found; if one is a duplicate copy, delete it."
 _CORRECTED_WARNING = "Form is marked as corrected; it may replace a form imported earlier."
 
 
@@ -190,7 +192,7 @@ def _expected_form(data: W2Data) -> ParsedTaxForm:
         form_type="w2",
         tax_year=_YEAR,
         payer_name=data.employer.name,
-        payer_tin_last4=last4(data.employer.ein),
+        payer_tin_last4=last4(data.employer.ein) if data.employer.ein else None,
         account_last4=None,
         is_corrected=data.corrected,
         filing_status=None,
@@ -243,6 +245,7 @@ class W2Builder:
         "corrected",
         "no_box1",
         "no_year",
+        "no_ein_identical",
     )
 
     def build(self, out_dir: Path, *, variant: str, seed: int) -> dict[str, Any]:
@@ -273,6 +276,17 @@ class W2Builder:
             data = W2Data(**{**_NORMAL.__dict__, "states": (_CA, _OR), "local": None})
             forms = [data]
             pages = [_w2_items(30.0, data)]
+        elif variant == "no_ein_identical":
+            data = W2Data(
+                **{
+                    **_NORMAL.__dict__,
+                    "employer": Entity(EMPLOYER_A.name, "", EMPLOYER_A.address_lines),
+                    "copy_label": "",
+                    "local": None,
+                }
+            )
+            forms = [data, data]
+            pages = [_w2_items(30.0, data), _w2_items(30.0, data)]
         elif variant == "corrected":
             data = W2Data(**{**_NORMAL.__dict__, "corrected": True})
             forms = [data]
@@ -290,11 +304,13 @@ class W2Builder:
         else:
             raise ValueError(f"unknown variant {variant!r}")
         render_boxes_pdf(pdf_path, pages)
+        doc_warnings = (_IDENTICAL_WARNING,) if variant == "no_ein_identical" else ()
         doc = ParsedTaxDocument(
             tax_year=_YEAR,
             forms=tuple(_expected_form(d) for d in forms),
+            warnings=doc_warnings,
         )
-        warnings = [w for f in doc.forms for w in f.warnings]
+        warnings = [w for f in doc.forms for w in f.warnings] + list(doc_warnings)
         return build_golden(doc, expected_warnings=warnings)
 
 

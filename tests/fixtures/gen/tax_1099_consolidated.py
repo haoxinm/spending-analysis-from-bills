@@ -8,6 +8,13 @@ single-form parsers halve their scores because other headings / the consolidated
 
 Variants: ``int_div_b``, ``int_div_b_misc`` (adds MISC and a state withholding row),
 ``div_only`` (shell with a single section), ``multi_account`` (two accounts, different sections).
+
+Identity / wording variants (dedupe regressions): ``alt_labels`` (``Payer:`` / ``Payer EIN:`` /
+``Account No.`` wording and ``Box n`` / ``1a Total ...`` amount labels), ``two_payers_one_file``
+(two payers' statements in one file), ``noid_a`` / ``noid_b`` (two different payers, identical
+amounts, no payer TIN and an account line the parser does not know), ``noid_anon`` (as ``noid_a``
+but no payer line at all) and ``no_amounts`` (sections whose amounts use unknown wording: no form
+is emitted, parse error).
 """
 
 from __future__ import annotations
@@ -251,11 +258,132 @@ def _summary_lines(accounts: list[tuple[str, list[_Section]]]) -> list[str]:
     ]
 
 
+def _alt_int(interest: str) -> _Section:
+    f, i = "1099-INT", money(interest)
+    lines = ["1099-INT  Interest Income", _row("Box 1 Interest income", i), ""]
+    return _Section(lines, [_item("interest", i, f, "1", "Interest income")], [])
+
+
+def _alt_div(ordinary: str, capgain: str) -> _Section:
+    f, o, g = "1099-DIV", money(ordinary), money(capgain)
+    lines = [
+        "1099-DIV  Dividends and Distributions",
+        _row("1a Total ordinary dividends", o),
+        _row("2a Total capital gain distributions", g),
+        "",
+    ]
+    income = [
+        _item("ordinary_dividends", o, f, "1a", "Ordinary dividends"),
+        _item("long_term_capital_gain", g, f, "2a", "Capital gain distributions"),
+    ]
+    return _Section(lines, income, [])
+
+
+_TWO_PAYERS = (
+    ("Alder Brokerage Group", "99-0000031", "SYN-0000002222", "1,100.00", "210.00"),
+    ("Birchwood Securities", "99-0000032", "SYN-0000004444", "640.25", "75.00"),
+)
+
+
+def _form(
+    payer: str | None,
+    tin: str | None,
+    account: str | None,
+    sections: Sequence[_Section],
+) -> ParsedTaxForm:
+    return ParsedTaxForm(
+        form_type="1099-consolidated",
+        tax_year=TAX_YEAR,
+        payer_name=payer,
+        payer_tin_last4=last4(tin) if tin else None,
+        account_last4=last4(account) if account else None,
+        is_corrected=False,
+        filing_status=None,
+        agi_minor=None,
+        taxable_income_minor=None,
+        income=tuple(i for sec in sections for i in sec.income),
+        taxes=tuple(t for sec in sections for t in sec.taxes),
+    )
+
+
+def _build_identity_variant(out_dir: Path, name: str, variant: str) -> dict[str, Any]:
+    """The wording / identity variants (see the module docstring)."""
+    header = ["Consolidated Form 1099 Tax Information", f"Tax Year {TAX_YEAR}"]
+    lines: list[str]
+    forms: list[ParsedTaxForm]
+    if variant == "alt_labels":
+        secs = [_alt_int("1,234.56"), _alt_div("2,450.75", "310.40")]
+        lines = [
+            *header,
+            f"Payer: {BROKER.name}",
+            f"Payer EIN: {BROKER.ein}",
+            f"Recipient's name: {RECIPIENT_NAME}",
+            f"Recipient's TIN: {RECIPIENT_SSN}",
+            "",
+            f"Account No. {ACCOUNT_NUMBER}",
+            "",
+            *[ln for sec in secs for ln in sec.lines],
+        ]
+        forms = [_form(BROKER.name, BROKER.ein, ACCOUNT_NUMBER, secs)]
+    elif variant == "two_payers_one_file":
+        lines = list(header)
+        forms = []
+        for payer, ein, account, interest, ordinary in _TWO_PAYERS:
+            secs = [_alt_int(interest), _alt_div(ordinary, "0.00")]
+            lines += [
+                f"Payer's name: {payer}",
+                f"Payer's TIN: {ein}",
+                f"Account number: {account}",
+                "",
+                *[ln for sec in secs for ln in sec.lines],
+            ]
+            forms.append(_form(payer, ein, account, secs))
+    elif variant in ("noid_a", "noid_b", "noid_anon"):
+        secs = [_alt_int("500.00"), _alt_div("120.00", "0.00")]
+        payer = {"noid_a": "Alder Brokerage Group", "noid_b": "Birchwood Securities"}.get(variant)
+        lines = [*header]
+        if payer:
+            lines.append(f"Payer: {payer}")
+        lines += ["Acct ref: QX-77", "", *[ln for sec in secs for ln in sec.lines]]
+        forms = [_form(payer, None, None, secs)]
+    elif variant == "no_amounts":
+        lines = [
+            *header,
+            f"Payer: {BROKER.name}",
+            f"Account No. {ACCOUNT_NUMBER}",
+            "",
+            "1099-INT  Interest Income",
+            "Interest paid to you during the year        10.00",
+            "1099-DIV  Dividends and Distributions",
+            "Dividends paid to you during the year       20.00",
+        ]
+        render_lines_pdf(out_dir / f"{name}_{variant}.pdf", [lines])
+        return {"expect_error": True}
+    else:
+        raise ValueError(variant)
+    render_lines_pdf(out_dir / f"{name}_{variant}.pdf", [lines])
+    doc = ParsedTaxDocument(tax_year=TAX_YEAR, forms=tuple(forms))
+    return build_golden(doc)
+
+
 class Tax1099ConsolidatedBuilder:
     layout_id = "tax_1099_consolidated"
-    variants: tuple[str, ...] = ("int_div_b", "int_div_b_misc", "div_only", "multi_account")
+    variants: tuple[str, ...] = (
+        "int_div_b",
+        "int_div_b_misc",
+        "div_only",
+        "multi_account",
+        "alt_labels",
+        "two_payers_one_file",
+        "noid_a",
+        "noid_b",
+        "noid_anon",
+        "no_amounts",
+    )
 
     def build(self, out_dir: Path, *, variant: str, seed: int) -> dict[str, Any]:
+        if variant in self.variants[4:]:
+            return _build_identity_variant(out_dir, self.layout_id, variant)
         accounts = _accounts(variant)
         lines = [
             BROKER.name,

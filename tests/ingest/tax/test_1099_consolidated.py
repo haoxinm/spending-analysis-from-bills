@@ -28,6 +28,8 @@ def _parse(variant: str) -> ParsedTaxDocument:
     return PARSER.parse(extract_doc(generated_pdf(LAYOUT, variant)))
 
 
+IDENTITY_VARIANTS = ("alt_labels", "two_payers_one_file", "noid_a", "noid_b", "noid_anon")
+
 _HEADER = [
     "Consolidated Form 1099 Tax Information",
     "Tax Year 2024",
@@ -40,6 +42,72 @@ _HEADER = [
 @pytest.mark.parametrize("variant", VARIANTS)
 def test_matches_golden(variant: str) -> None:
     assert_matches_golden(_parse(variant), load_golden(LAYOUT, variant))
+
+
+@pytest.mark.parametrize("variant", IDENTITY_VARIANTS)
+def test_identity_variants_match_golden(variant: str) -> None:
+    assert_matches_golden(_parse(variant), load_golden(LAYOUT, variant))
+
+
+def test_alt_labels_amounts_and_identity_are_read() -> None:
+    """`Payer:` / `Payer EIN:` / `Account No.` and `Box n` / `1a Total ...` wording."""
+    (form,) = _parse("alt_labels").forms
+    assert (form.payer_name, form.payer_tin_last4, form.account_last4) == (
+        "Copperfield Securities",
+        "0004",
+        "6789",
+    )
+    assert [(i.box, i.amount_minor) for i in form.income] == [
+        ("1", 123_456),
+        ("1a", 245_075),
+        ("2a", 31_040),
+    ]
+
+
+def test_two_payers_one_file_reads_payer_and_tin_per_account() -> None:
+    first, second = _parse("two_payers_one_file").forms
+    assert (first.payer_name, first.payer_tin_last4, first.account_last4) == (
+        "Alder Brokerage Group",
+        "0031",
+        "2222",
+    )
+    assert (second.payer_name, second.payer_tin_last4, second.account_last4) == (
+        "Birchwood Securities",
+        "0032",
+        "4444",
+    )
+
+
+def test_unknown_amount_wording_emits_no_empty_form() -> None:
+    with pytest.raises(ParserError) as err:
+        _parse("no_amounts")
+    assert not re.search(r"\d{6}", str(err.value))
+
+
+def test_account_without_amounts_is_not_emitted() -> None:
+    lines = [
+        *_HEADER,
+        "1099-INT  Interest Income",
+        "Interest income (Box 1)   25.00",
+        "Account number: SYN-000555555555",
+        "1099-DIV  Dividends and Distributions",
+        "Dividends received this year   9.00",
+    ]
+    parsed = PARSER.parse(doc_from_lines(lines))
+    assert [f.account_last4 for f in parsed.forms] == ["6789"]
+
+
+def test_payer_inferred_from_page_header_with_warning() -> None:
+    lines = [
+        "Maple Street Brokers",
+        "Consolidated Form 1099 Tax Information",
+        "Tax Year 2024",
+        "1099-INT  Interest Income",
+        "Interest income (Box 1)   25.00",
+    ]
+    form = PARSER.parse(doc_from_lines(lines)).forms[0]
+    assert form.payer_name == "Maple Street Brokers"
+    assert "Payer name was inferred from the page header." in form.warnings
 
 
 @pytest.mark.parametrize("variant", VARIANTS)

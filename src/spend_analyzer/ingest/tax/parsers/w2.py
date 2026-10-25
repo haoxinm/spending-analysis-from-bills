@@ -7,7 +7,9 @@ state code printed in box 15) and box 19 (``jurisdiction`` = the box 20 locality
 
 One file may hold several forms (two employers) or the same form repeated (Copy B / Copy C /
 Copy 2 on one page). A form starts at each "Employee's social security number" label; identical
-parsed forms are collapsed into one. The recipient's name, address and SSN are never read.
+parsed forms are collapsed into one, but only when the employer EIN was read or a "Copy B/C/2"
+marker is present in the file; otherwise identical forms are kept (with a warning) because nothing
+shows they are copies of one form. The recipient's name, address and SSN are never read.
 
 Raises `ParserError` (generic message) when no tax year can be determined (and none was given) or
 when a form has the box 1 label but no value (or no form with box 1 exists at all).
@@ -59,6 +61,8 @@ _SOURCE = "W-2"
 
 _TITLE = re.compile(r"Wage\s+and\s+Tax\s+Statement", re.IGNORECASE)
 _FORM_W2 = re.compile(r"(?:\bForm\s+W-?2\b|\bW-2\s+Wage\b)", re.IGNORECASE)
+_COPY_MARKER = re.compile(r"\bCopy\s+(?:A|B|C|D|1|2)\b", re.IGNORECASE)
+_IDENTICAL_WARNING = "Two identical W-2 forms were found; if one is a duplicate copy, delete it."
 _START = compile_label(r"Employee'?s\s+social\s+security\s+number")
 
 _EIN_LABEL = compile_label(r"Employer\s+identification\s+number")
@@ -215,14 +219,21 @@ class W2Parser:
         """
         year = require_year(doc, tax_year)
         blocks = split_blocks(doc, _START, keep_preamble=True) or (doc,)
+        has_copy_marker = doc_has(doc, _COPY_MARKER)
         forms: list[ParsedTaxForm] = []
+        warnings: list[str] = []
         for block in blocks:
             form = _parse_block(block, year)
-            if form is not None and form not in forms:
-                forms.append(form)
+            if form is None:
+                continue
+            if form in forms:
+                if form.payer_tin_last4 is not None or has_copy_marker:
+                    continue  # a Copy B/C/2 of a form already read
+                warnings.append(_IDENTICAL_WARNING)
+            forms.append(form)
         if not forms:
             raise ParserError("No W-2 form with a box 1 amount was found in this file.")
-        return build_document(forms)
+        return build_document(forms, warnings=warnings)
 
 
 PARSER = W2Parser()

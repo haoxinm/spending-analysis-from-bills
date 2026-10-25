@@ -159,6 +159,10 @@ async def upload_tax_document(
         status=result.status,
         inserted_forms=result.inserted_forms,
         skipped_duplicate_forms=result.skipped_duplicate_forms,
+        skipped_from=[
+            schemas.TaxSkippedFrom(document_id=d, original_name=n, form_type=t)
+            for d, n, t in result.skipped_from
+        ],
         income_item_count=result.income_item_count,
         tax_item_count=result.tax_item_count,
         warnings=list(result.warnings),

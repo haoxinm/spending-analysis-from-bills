@@ -122,6 +122,12 @@ def test_same_form_in_two_different_pdfs_dedupes_by_fingerprint(
     assert second.skipped_duplicate_forms == 1
     assert second.income_item_count == second.tax_item_count == 0
     assert any("already imported" in w for w in second.warnings)
+    # The warning names the earlier file; `skipped_from` carries the same facts structurally.
+    assert any(f'"{generated_pdf("tax_w2", "normal").name}"' in w for w in second.warnings)
+    assert second.skipped_from == (
+        (first.document_id, generated_pdf("tax_w2", "normal").name, "w2"),
+    )
+    assert first.skipped_from == ()
     assert session.scalar(select(func.count()).select_from(TaxForm)) == 1
     assert session.scalar(select(func.count()).select_from(IncomeItem)) == 1
     # Deleting the second (empty) document leaves the first document's data intact.
@@ -387,3 +393,94 @@ def test_parsed_document_with_no_forms_is_reimported(session: Session) -> None:
     assert again.document_id == first.document_id
     assert again.inserted_forms == 1
     assert session.scalar(select(func.count()).select_from(TaxForm)) == 1
+
+
+def _redelivered(src: Path, tmp_path: Path, name: str) -> Path:
+    """A byte-different copy of `src` (different file hash, same content)."""
+    out = tmp_path / name
+    out.write_bytes(src.read_bytes() + b"\n% re-delivered\n")
+    return out
+
+
+def _form_counts(session: Session) -> dict[int, int]:
+    rows = session.execute(
+        select(TaxForm.document_id, func.count()).group_by(TaxForm.document_id)
+    ).all()
+    return {int(doc_id): int(n) for doc_id, n in rows}
+
+
+def test_forms_without_identity_from_two_files_are_both_kept(session: Session) -> None:
+    """Two different payers, same amounts, no payer TIN and no readable account: weak identity,
+    so the second file's form is not dropped as a "duplicate" of the first."""
+    uid = _user(session)
+    first = _import(session, "tax_1099_consolidated", "noid_a", uid)
+    second = _import(session, "tax_1099_consolidated", "noid_b", uid)
+    assert (first.status, second.status) == ("parsed", "parsed")
+    assert (first.inserted_forms, second.inserted_forms) == (1, 1)
+    assert second.skipped_duplicate_forms == 0 and second.skipped_from == ()
+    assert not any("already imported" in w for w in second.warnings)
+    assert _form_counts(session) == {first.document_id: 1, second.document_id: 1}
+    assert set(session.scalars(select(TaxForm.payer_name))) == {
+        "Alder Brokerage Group",
+        "Birchwood Securities",
+    }
+
+
+def test_forms_with_no_payer_and_equal_amounts_in_two_files_are_both_kept(
+    session: Session, tmp_path: Path
+) -> None:
+    uid = _user(session)
+    src = generated_pdf("tax_1099_consolidated", "noid_anon")
+    first = import_tax_document(session, src, user_id=uid, original_name="anon_1.pdf")
+    other = _redelivered(src, tmp_path, "anon_2.pdf")
+    second = import_tax_document(session, other, user_id=uid, original_name=other.name)
+    assert (first.inserted_forms, second.inserted_forms) == (1, 1)
+    assert second.skipped_duplicate_forms == 0
+    assert session.scalar(select(func.count()).select_from(TaxForm)) == 2
+
+
+def test_weak_form_same_name_same_amounts_warns_but_keeps(session: Session, tmp_path: Path) -> None:
+    uid = _user(session)
+    src = generated_pdf("tax_1099_consolidated", "noid_a")
+    first = import_tax_document(session, src, user_id=uid, original_name="broker_a_1.pdf")
+    other = _redelivered(src, tmp_path, "broker_a_2.pdf")
+    second = import_tax_document(session, other, user_id=uid, original_name="broker_a_2.pdf")
+    assert (first.inserted_forms, second.inserted_forms) == (1, 1)
+    assert second.skipped_duplicate_forms == 0
+    (note,) = [w for w in second.warnings if w.startswith("Looks identical")]
+    assert '"broker_a_1.pdf"' in note and "Delete one" in note
+    assert not any(w.startswith("Looks identical") for w in first.warnings)
+    # Different payer names never trigger it.
+    third = _import(session, "tax_1099_consolidated", "noid_b", uid)
+    assert not any(w.startswith("Looks identical") for w in third.warnings)
+
+
+def test_multi_payer_consolidated_keeps_each_payer(session: Session) -> None:
+    uid = _user(session)
+    result = _import(session, "tax_1099_consolidated", "two_payers_one_file", uid)
+    assert (result.status, result.inserted_forms) == ("parsed", 2)
+    rows = session.execute(
+        select(TaxForm.payer_name, TaxForm.payer_tin_last4, TaxForm.account_last4).order_by(
+            TaxForm.id
+        )
+    ).all()
+    assert [tuple(r) for r in rows] == [
+        ("Alder Brokerage Group", "0031", "2222"),
+        ("Birchwood Securities", "0032", "4444"),
+    ]
+
+
+def test_consolidated_with_unreadable_amounts_inserts_no_empty_form(session: Session) -> None:
+    result = _import(session, "tax_1099_consolidated", "no_amounts", _user(session))
+    assert result.status == "error" and result.inserted_forms == 0
+    assert session.scalar(select(func.count()).select_from(TaxForm)) == 0
+
+
+def test_w2_identical_without_ein_is_not_collapsed(session: Session) -> None:
+    result = _import(session, "tax_w2", "no_ein_identical", _user(session))
+    assert (result.status, result.form_types, result.inserted_forms) == (
+        "parsed",
+        ("w2", "w2"),
+        2,
+    )
+    assert any("Two identical W-2 forms" in w for w in result.warnings)
