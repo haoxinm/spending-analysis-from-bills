@@ -70,6 +70,22 @@ class ClassifyResult:
     cost_usd: float
 
 
+@dataclass(frozen=True)
+class TaxImportResult:
+    """Mirrors `ingest.tax.pipeline.TaxImportResult`."""
+
+    document_id: int
+    status: str  # 'parsed' | 'duplicate' | 'error' | 'unsupported'
+    tax_year: int | None
+    form_types: tuple[str, ...]
+    inserted_forms: int
+    skipped_duplicate_forms: int
+    income_item_count: int
+    tax_item_count: int
+    warnings: tuple[str, ...]
+    error: str | None
+
+
 def _resolve(module_path: str, attr: str) -> Callable[..., Any]:
     """Import `module_path` and return its `attr`, raising the same errors an ordinary
     `from module import attr` would once the module exists.
@@ -254,3 +270,28 @@ def merge_subcategory(session: Session, subcategory_id: int, *, into_id: int) ->
     """
     fn = _resolve("spend_analyzer.classify.cascade", "merge_subcategory")
     fn(session, subcategory_id, into_id=into_id)
+
+
+# ---------------------------------------------------------------------------
+# ingest/tax/pipeline.py (income & tax analysis)
+# ---------------------------------------------------------------------------
+
+
+def import_tax_document(
+    session: Session,
+    pdf_path: Path,
+    *,
+    user_id: int,
+    original_name: str,
+    tax_year: int | None = None,
+) -> TaxImportResult:
+    """Import one W-2 / 1099 / 1040 PDF in a single step. Commits.
+
+    Raises:
+        ModuleNotFoundError: `ingest/tax/pipeline.py` is not present in this build.
+    """
+    fn = _resolve("spend_analyzer.ingest.tax.pipeline", "import_tax_document")
+    return cast(
+        TaxImportResult,
+        fn(session, pdf_path, user_id=user_id, original_name=original_name, tax_year=tax_year),
+    )

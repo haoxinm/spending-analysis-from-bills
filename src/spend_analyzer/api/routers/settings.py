@@ -108,12 +108,14 @@ def get_settings_route(settings: SettingsDep) -> schemas.Settings:
 
 
 @router.put("/settings", response_model=schemas.Settings)
-def put_settings(body: schemas.Settings) -> schemas.Settings:
+def put_settings(body: schemas.Settings, current: SettingsDep) -> schemas.Settings:
     new_settings = Settings(
         llm=_llm_config(body.llm),
         privacy=PrivacyConfig(
             store_pdf_copies=body.privacy.store_pdf_copies,
             store_extract_cache=body.privacy.store_extract_cache,
+            # config.toml-only: the Settings API must not reset it.
+            store_tax_pdf_copies=current.privacy.store_tax_pdf_copies,
             pii_terms=tuple(body.privacy.pii_terms),
         ),
         ingest=IngestConfig(

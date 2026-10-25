@@ -238,6 +238,15 @@ def test_extract_debug_cache_disabled_explicitly_writes_nothing(tmp_path: Path, 
     assert not cache_file.exists()
 
 
+def test_extract_write_cache_false_skips_cache_even_when_enabled(
+    tmp_path: Path, home: Path
+) -> None:
+    save_settings(Settings(privacy=PrivacyConfig(store_extract_cache=True)))
+    doc = extract(_text_pdf(tmp_path), write_cache=False)
+    cache_file = extract_cache_dir() / f"{doc.file_sha256}.txt"
+    assert not cache_file.exists()
+
+
 # --------------------------------------------------------------------------------------------
 # Performance budget
 # --------------------------------------------------------------------------------------------

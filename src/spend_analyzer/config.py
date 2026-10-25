@@ -156,6 +156,8 @@ class PrivacyConfig(BaseModel):
 
     store_pdf_copies: bool = True
     store_extract_cache: bool = False  # debugging only
+    #: Keep uploaded tax PDFs (they hold full SSNs). config.toml-only; not in the Settings API.
+    store_tax_pdf_copies: bool = False
     pii_terms: tuple[str, ...] = ()  # A11
 
 

@@ -64,6 +64,21 @@ def test_put_settings_round_trips(client: TestClient) -> None:
     assert refetched["llm"]["batch_size"] == 25
 
 
+def test_put_settings_preserves_config_toml_only_tax_pdf_flag(client: TestClient) -> None:
+    from spend_analyzer.config import load_settings, save_settings
+
+    saved = load_settings()
+    save_settings(
+        saved.model_copy(
+            update={"privacy": saved.privacy.model_copy(update={"store_tax_pdf_copies": True})}
+        )
+    )
+    body = client.get("/api/settings").json()
+    assert "store_tax_pdf_copies" not in body["privacy"]
+    assert client.put("/api/settings", json=body).status_code == 200
+    assert load_settings().privacy.store_tax_pdf_copies is True
+
+
 def test_test_llm_reports_disabled_when_mode_is_none(client: TestClient) -> None:
     response = client.post("/api/settings/test-llm")
     assert response.status_code == 200
