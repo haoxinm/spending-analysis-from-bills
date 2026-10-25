@@ -3910,6 +3910,503 @@
           }
         }
       }
+    },
+    "/tax/documents/manual": {
+      "post": {
+        "tags": [
+          "tax"
+        ],
+        "summary": "Create Manual Document",
+        "description": "A document with no file, to hold figures typed in by the user.",
+        "operationId": "create_manual_document_api_tax_documents_manual_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/TaxManualDocumentCreate"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/TaxDocument"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/tax/documents/{document_id}/forms": {
+      "post": {
+        "tags": [
+          "tax"
+        ],
+        "summary": "Create Form",
+        "description": "Add a form (with optional items) to a document. A document that was `error` /\n`unsupported` becomes `parsed`.",
+        "operationId": "create_form_api_tax_documents__document_id__forms_post",
+        "parameters": [
+          {
+            "name": "document_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "title": "Document Id"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/TaxFormCreate"
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/TaxFormDetail"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/tax/forms/{form_id}": {
+      "patch": {
+        "tags": [
+          "tax"
+        ],
+        "summary": "Patch Form",
+        "operationId": "patch_form_api_tax_forms__form_id__patch",
+        "parameters": [
+          {
+            "name": "form_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "title": "Form Id"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/TaxFormPatch"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/TaxFormDetail"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      },
+      "delete": {
+        "tags": [
+          "tax"
+        ],
+        "summary": "Delete Form",
+        "operationId": "delete_form_api_tax_forms__form_id__delete",
+        "parameters": [
+          {
+            "name": "form_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "title": "Form Id"
+            }
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "Successful Response"
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/tax/forms/{form_id}/confirm": {
+      "post": {
+        "tags": [
+          "tax"
+        ],
+        "summary": "Confirm Form",
+        "description": "Mark a reviewed form's AI-extracted items as confirmed (`origin` becomes `manual`).",
+        "operationId": "confirm_form_api_tax_forms__form_id__confirm_post",
+        "parameters": [
+          {
+            "name": "form_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "title": "Form Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/TaxFormDetail"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/tax/forms/{form_id}/income-items": {
+      "post": {
+        "tags": [
+          "tax"
+        ],
+        "summary": "Create Income Item",
+        "operationId": "create_income_item_api_tax_forms__form_id__income_items_post",
+        "parameters": [
+          {
+            "name": "form_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "title": "Form Id"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/IncomeItemIn"
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/IncomeItemOut"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/tax/income-items/{item_id}": {
+      "patch": {
+        "tags": [
+          "tax"
+        ],
+        "summary": "Patch Income Item",
+        "operationId": "patch_income_item_api_tax_income_items__item_id__patch",
+        "parameters": [
+          {
+            "name": "item_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "title": "Item Id"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/IncomeItemPatch"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/IncomeItemOut"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      },
+      "delete": {
+        "tags": [
+          "tax"
+        ],
+        "summary": "Delete Income Item",
+        "operationId": "delete_income_item_api_tax_income_items__item_id__delete",
+        "parameters": [
+          {
+            "name": "item_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "title": "Item Id"
+            }
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "Successful Response"
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/tax/forms/{form_id}/tax-items": {
+      "post": {
+        "tags": [
+          "tax"
+        ],
+        "summary": "Create Tax Item",
+        "operationId": "create_tax_item_api_tax_forms__form_id__tax_items_post",
+        "parameters": [
+          {
+            "name": "form_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "title": "Form Id"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/TaxItemIn"
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/TaxItemOut"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/tax/tax-items/{item_id}": {
+      "patch": {
+        "tags": [
+          "tax"
+        ],
+        "summary": "Patch Tax Item",
+        "operationId": "patch_tax_item_api_tax_tax_items__item_id__patch",
+        "parameters": [
+          {
+            "name": "item_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "title": "Item Id"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/TaxItemPatch"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/TaxItemOut"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      },
+      "delete": {
+        "tags": [
+          "tax"
+        ],
+        "summary": "Delete Tax Item",
+        "operationId": "delete_tax_item_api_tax_tax_items__item_id__delete",
+        "parameters": [
+          {
+            "name": "item_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "title": "Item Id"
+            }
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "Successful Response"
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
     }
   },
   "components": {
@@ -4729,6 +5226,67 @@
         "title": "IncomeCategoryEnum",
         "description": "Mirror of `core.tax_types.IncomeCategory`."
       },
+      "IncomeItemIn": {
+        "properties": {
+          "category": {
+            "$ref": "#/components/schemas/IncomeCategoryEnum"
+          },
+          "amount_minor": {
+            "type": "integer",
+            "maximum": 1000000000000.0,
+            "minimum": -1000000000000.0,
+            "title": "Amount Minor"
+          },
+          "box": {
+            "anyOf": [
+              {
+                "type": "string",
+                "maxLength": 8
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Box"
+          },
+          "label": {
+            "anyOf": [
+              {
+                "type": "string",
+                "maxLength": 80
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Label"
+          },
+          "is_memo": {
+            "type": "boolean",
+            "title": "Is Memo",
+            "default": false
+          },
+          "source_form": {
+            "anyOf": [
+              {
+                "type": "string",
+                "maxLength": 20
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Source Form"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "category",
+          "amount_minor"
+        ],
+        "title": "IncomeItemIn"
+      },
       "IncomeItemOut": {
         "properties": {
           "id": {
@@ -4775,6 +5333,15 @@
           "is_memo": {
             "type": "boolean",
             "title": "Is Memo"
+          },
+          "origin": {
+            "type": "string",
+            "enum": [
+              "parser",
+              "llm",
+              "manual"
+            ],
+            "title": "Origin"
           }
         },
         "type": "object",
@@ -4786,9 +5353,87 @@
           "source_form",
           "box",
           "label",
-          "is_memo"
+          "is_memo",
+          "origin"
         ],
         "title": "IncomeItemOut"
+      },
+      "IncomeItemPatch": {
+        "properties": {
+          "category": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/IncomeCategoryEnum"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "amount_minor": {
+            "anyOf": [
+              {
+                "type": "integer",
+                "maximum": 1000000000000.0,
+                "minimum": -1000000000000.0
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Amount Minor"
+          },
+          "box": {
+            "anyOf": [
+              {
+                "type": "string",
+                "maxLength": 8
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Box"
+          },
+          "label": {
+            "anyOf": [
+              {
+                "type": "string",
+                "maxLength": 80
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Label"
+          },
+          "is_memo": {
+            "anyOf": [
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Is Memo"
+          },
+          "source_form": {
+            "anyOf": [
+              {
+                "type": "string",
+                "maxLength": 20
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Source Form"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "title": "IncomeItemPatch"
       },
       "IngestSettings": {
         "properties": {
@@ -6748,6 +7393,133 @@
         ],
         "title": "TaxDocumentDetail"
       },
+      "TaxFormCreate": {
+        "properties": {
+          "form_type": {
+            "$ref": "#/components/schemas/TaxFormType"
+          },
+          "tax_year": {
+            "anyOf": [
+              {
+                "type": "integer",
+                "maximum": 2099.0,
+                "minimum": 2000.0
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Tax Year"
+          },
+          "payer_name": {
+            "anyOf": [
+              {
+                "type": "string",
+                "maxLength": 120
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Payer Name"
+          },
+          "payer_tin_last4": {
+            "anyOf": [
+              {
+                "type": "string",
+                "pattern": "^[0-9]{4}$"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Payer Tin Last4"
+          },
+          "account_last4": {
+            "anyOf": [
+              {
+                "type": "string",
+                "pattern": "^[0-9]{4}$"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Account Last4"
+          },
+          "is_corrected": {
+            "type": "boolean",
+            "title": "Is Corrected",
+            "default": false
+          },
+          "filing_status": {
+            "anyOf": [
+              {
+                "type": "string",
+                "enum": [
+                  "single",
+                  "mfj",
+                  "mfs",
+                  "hoh",
+                  "qss"
+                ]
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Filing Status"
+          },
+          "agi_minor": {
+            "anyOf": [
+              {
+                "type": "integer",
+                "maximum": 1000000000000.0,
+                "minimum": -1000000000000.0
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Agi Minor"
+          },
+          "taxable_income_minor": {
+            "anyOf": [
+              {
+                "type": "integer",
+                "maximum": 1000000000000.0,
+                "minimum": 0.0
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Taxable Income Minor"
+          },
+          "income_items": {
+            "items": {
+              "$ref": "#/components/schemas/IncomeItemIn"
+            },
+            "type": "array",
+            "maxItems": 200,
+            "title": "Income Items"
+          },
+          "tax_items": {
+            "items": {
+              "$ref": "#/components/schemas/TaxItemIn"
+            },
+            "type": "array",
+            "maxItems": 200,
+            "title": "Tax Items"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "form_type"
+        ],
+        "title": "TaxFormCreate"
+      },
       "TaxFormDetail": {
         "properties": {
           "id": {
@@ -6839,6 +7611,23 @@
             "type": "boolean",
             "title": "Is Corrected"
           },
+          "extraction_method": {
+            "type": "string",
+            "enum": [
+              "parser",
+              "llm",
+              "manual"
+            ],
+            "title": "Extraction Method"
+          },
+          "is_user_edited": {
+            "type": "boolean",
+            "title": "Is User Edited"
+          },
+          "needs_review": {
+            "type": "boolean",
+            "title": "Needs Review"
+          },
           "income_items": {
             "items": {
               "$ref": "#/components/schemas/IncomeItemOut"
@@ -6867,10 +7656,134 @@
           "agi_minor",
           "taxable_income_minor",
           "is_corrected",
+          "extraction_method",
+          "is_user_edited",
+          "needs_review",
           "income_items",
           "tax_items"
         ],
         "title": "TaxFormDetail"
+      },
+      "TaxFormPatch": {
+        "properties": {
+          "form_type": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/TaxFormType"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "tax_year": {
+            "anyOf": [
+              {
+                "type": "integer",
+                "maximum": 2099.0,
+                "minimum": 2000.0
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Tax Year"
+          },
+          "payer_name": {
+            "anyOf": [
+              {
+                "type": "string",
+                "maxLength": 120
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Payer Name"
+          },
+          "payer_tin_last4": {
+            "anyOf": [
+              {
+                "type": "string",
+                "pattern": "^[0-9]{4}$"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Payer Tin Last4"
+          },
+          "account_last4": {
+            "anyOf": [
+              {
+                "type": "string",
+                "pattern": "^[0-9]{4}$"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Account Last4"
+          },
+          "is_corrected": {
+            "anyOf": [
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Is Corrected"
+          },
+          "filing_status": {
+            "anyOf": [
+              {
+                "type": "string",
+                "enum": [
+                  "single",
+                  "mfj",
+                  "mfs",
+                  "hoh",
+                  "qss"
+                ]
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Filing Status"
+          },
+          "agi_minor": {
+            "anyOf": [
+              {
+                "type": "integer",
+                "maximum": 1000000000000.0,
+                "minimum": -1000000000000.0
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Agi Minor"
+          },
+          "taxable_income_minor": {
+            "anyOf": [
+              {
+                "type": "integer",
+                "maximum": 1000000000000.0,
+                "minimum": 0.0
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Taxable Income Minor"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "title": "TaxFormPatch"
       },
       "TaxFormType": {
         "type": "string",
@@ -7007,6 +7920,79 @@
         ],
         "title": "TaxIncomePayer"
       },
+      "TaxItemIn": {
+        "properties": {
+          "category": {
+            "$ref": "#/components/schemas/TaxCategoryEnum"
+          },
+          "amount_minor": {
+            "type": "integer",
+            "maximum": 1000000000000.0,
+            "minimum": 0.0,
+            "title": "Amount Minor"
+          },
+          "box": {
+            "anyOf": [
+              {
+                "type": "string",
+                "maxLength": 8
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Box"
+          },
+          "label": {
+            "anyOf": [
+              {
+                "type": "string",
+                "maxLength": 80
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Label"
+          },
+          "jurisdiction": {
+            "anyOf": [
+              {
+                "type": "string",
+                "maxLength": 64
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Jurisdiction"
+          },
+          "is_estimate": {
+            "type": "boolean",
+            "title": "Is Estimate",
+            "default": false
+          },
+          "source_form": {
+            "anyOf": [
+              {
+                "type": "string",
+                "maxLength": 20
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Source Form"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "category",
+          "amount_minor"
+        ],
+        "title": "TaxItemIn"
+      },
       "TaxItemOut": {
         "properties": {
           "id": {
@@ -7064,6 +8050,15 @@
           "is_estimate": {
             "type": "boolean",
             "title": "Is Estimate"
+          },
+          "origin": {
+            "type": "string",
+            "enum": [
+              "parser",
+              "llm",
+              "manual"
+            ],
+            "title": "Origin"
           }
         },
         "type": "object",
@@ -7076,9 +8071,132 @@
           "box",
           "label",
           "jurisdiction",
-          "is_estimate"
+          "is_estimate",
+          "origin"
         ],
         "title": "TaxItemOut"
+      },
+      "TaxItemPatch": {
+        "properties": {
+          "category": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/TaxCategoryEnum"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "amount_minor": {
+            "anyOf": [
+              {
+                "type": "integer",
+                "maximum": 1000000000000.0,
+                "minimum": 0.0
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Amount Minor"
+          },
+          "box": {
+            "anyOf": [
+              {
+                "type": "string",
+                "maxLength": 8
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Box"
+          },
+          "label": {
+            "anyOf": [
+              {
+                "type": "string",
+                "maxLength": 80
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Label"
+          },
+          "jurisdiction": {
+            "anyOf": [
+              {
+                "type": "string",
+                "maxLength": 64
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Jurisdiction"
+          },
+          "is_estimate": {
+            "anyOf": [
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Is Estimate"
+          },
+          "source_form": {
+            "anyOf": [
+              {
+                "type": "string",
+                "maxLength": 20
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Source Form"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "title": "TaxItemPatch"
+      },
+      "TaxManualDocumentCreate": {
+        "properties": {
+          "user_id": {
+            "type": "integer",
+            "title": "User Id"
+          },
+          "tax_year": {
+            "type": "integer",
+            "maximum": 2099.0,
+            "minimum": 2000.0,
+            "title": "Tax Year"
+          },
+          "original_name": {
+            "anyOf": [
+              {
+                "type": "string",
+                "maxLength": 200
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Original Name"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "user_id",
+          "tax_year"
+        ],
+        "title": "TaxManualDocumentCreate"
       },
       "TaxMemoAmount": {
         "properties": {

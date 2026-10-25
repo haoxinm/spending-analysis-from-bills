@@ -478,6 +478,8 @@ def _import(
                 agi_minor=form.agi_minor,
                 taxable_income_minor=form.taxable_income_minor,
                 fingerprint=fingerprint,
+                extraction_method="parser",
+                is_user_edited=False,
                 created_at=_utcnow_iso(),
             )
             .on_conflict_do_nothing(index_elements=["user_id", "tax_year", "fingerprint"])
@@ -515,6 +517,7 @@ def _import(
                             "box": i.box,
                             "label": i.label,
                             "is_memo": i.is_memo,
+                            "origin": "parser",
                         }
                         for i in form.income
                     ]
@@ -537,6 +540,7 @@ def _import(
                             "label": t.label,
                             "jurisdiction": t.jurisdiction,
                             "is_estimate": t.is_estimate,
+                            "origin": "parser",
                         }
                         for t in form.taxes
                     ]

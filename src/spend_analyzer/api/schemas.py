@@ -14,9 +14,9 @@ from __future__ import annotations
 
 from datetime import date, datetime
 from enum import StrEnum
-from typing import Any, Literal
+from typing import Annotated, Any, Literal
 
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel, ConfigDict, Field, StringConstraints
 
 from spend_analyzer.core.net_worth import BalanceCategory
 
@@ -707,6 +707,10 @@ TaxFormRole = Literal["source", "return"]
 TaxDocumentStatus = Literal["parsed", "error", "unsupported"]
 TaxImportStatus = Literal["parsed", "duplicate", "error", "unsupported"]
 TaxIncomeBasis = Literal["source_documents", "return", "none", "mixed"]
+#: Where a form's / item's figures came from (`manual` = typed or confirmed by the user).
+TaxExtractionMethod = Literal["parser", "llm", "manual"]
+TaxItemOrigin = Literal["parser", "llm", "manual"]
+TaxFilingStatus = Literal["single", "mfj", "mfs", "hoh", "qss"]
 
 
 class IncomeItemOut(_Model):
@@ -718,6 +722,7 @@ class IncomeItemOut(_Model):
     box: str | None
     label: str | None
     is_memo: bool
+    origin: TaxItemOrigin
 
 
 class TaxItemOut(_Model):
@@ -730,6 +735,7 @@ class TaxItemOut(_Model):
     label: str | None
     jurisdiction: str | None
     is_estimate: bool
+    origin: TaxItemOrigin
 
 
 class TaxFormOut(_Model):
@@ -744,6 +750,10 @@ class TaxFormOut(_Model):
     agi_minor: int | None
     taxable_income_minor: int | None
     is_corrected: bool
+    extraction_method: TaxExtractionMethod
+    is_user_edited: bool
+    #: True while any item is still AI-extracted and unreviewed (cleared by `confirm`).
+    needs_review: bool
 
 
 class TaxFormDetail(TaxFormOut):
@@ -766,6 +776,88 @@ class TaxDocument(_Model):
 
 class TaxDocumentDetail(TaxDocument):
     forms: list[TaxFormDetail]
+
+
+# Manual edits (request bodies). Unknown fields are rejected; for the PATCH models only the fields
+# actually sent are applied (`model_fields_set`), so an explicit `null` clears a nullable field.
+_MAX_MINOR = 10**12
+
+
+class _TaxInput(_Model):
+    model_config = ConfigDict(from_attributes=True, extra="forbid")
+
+
+class TaxManualDocumentCreate(_TaxInput):
+    user_id: int
+    tax_year: int = Field(ge=2000, le=2099)
+    original_name: str | None = Field(default=None, max_length=200)
+
+
+class IncomeItemIn(_TaxInput):
+    category: IncomeCategoryEnum
+    amount_minor: int = Field(ge=-_MAX_MINOR, le=_MAX_MINOR)
+    box: str | None = Field(default=None, max_length=8)
+    label: str | None = Field(default=None, max_length=80)
+    is_memo: bool = False
+    source_form: str | None = Field(default=None, max_length=20)
+
+
+class IncomeItemPatch(_TaxInput):
+    category: IncomeCategoryEnum | None = None
+    amount_minor: int | None = Field(default=None, ge=-_MAX_MINOR, le=_MAX_MINOR)
+    box: str | None = Field(default=None, max_length=8)
+    label: str | None = Field(default=None, max_length=80)
+    is_memo: bool | None = None
+    source_form: str | None = Field(default=None, max_length=20)
+
+
+class TaxItemIn(_TaxInput):
+    category: TaxCategoryEnum
+    amount_minor: int = Field(ge=0, le=_MAX_MINOR)
+    box: str | None = Field(default=None, max_length=8)
+    label: str | None = Field(default=None, max_length=80)
+    jurisdiction: str | None = Field(default=None, max_length=64)
+    is_estimate: bool = False
+    source_form: str | None = Field(default=None, max_length=20)
+
+
+class TaxItemPatch(_TaxInput):
+    category: TaxCategoryEnum | None = None
+    amount_minor: int | None = Field(default=None, ge=0, le=_MAX_MINOR)
+    box: str | None = Field(default=None, max_length=8)
+    label: str | None = Field(default=None, max_length=80)
+    jurisdiction: str | None = Field(default=None, max_length=64)
+    is_estimate: bool | None = None
+    source_form: str | None = Field(default=None, max_length=20)
+
+
+_Last4 = Annotated[str, StringConstraints(pattern=r"^[0-9]{4}$")]
+
+
+class TaxFormCreate(_TaxInput):
+    form_type: TaxFormType
+    tax_year: int | None = Field(default=None, ge=2000, le=2099)
+    payer_name: str | None = Field(default=None, max_length=120)
+    payer_tin_last4: _Last4 | None = None
+    account_last4: _Last4 | None = None
+    is_corrected: bool = False
+    filing_status: TaxFilingStatus | None = None
+    agi_minor: int | None = Field(default=None, ge=-_MAX_MINOR, le=_MAX_MINOR)
+    taxable_income_minor: int | None = Field(default=None, ge=0, le=_MAX_MINOR)
+    income_items: list[IncomeItemIn] = Field(default_factory=list, max_length=200)
+    tax_items: list[TaxItemIn] = Field(default_factory=list, max_length=200)
+
+
+class TaxFormPatch(_TaxInput):
+    form_type: TaxFormType | None = None
+    tax_year: int | None = Field(default=None, ge=2000, le=2099)
+    payer_name: str | None = Field(default=None, max_length=120)
+    payer_tin_last4: _Last4 | None = None
+    account_last4: _Last4 | None = None
+    is_corrected: bool | None = None
+    filing_status: TaxFilingStatus | None = None
+    agi_minor: int | None = Field(default=None, ge=-_MAX_MINOR, le=_MAX_MINOR)
+    taxable_income_minor: int | None = Field(default=None, ge=0, le=_MAX_MINOR)
 
 
 class TaxSkippedFrom(_Model):

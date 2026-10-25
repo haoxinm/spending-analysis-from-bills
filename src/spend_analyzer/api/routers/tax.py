@@ -11,9 +11,11 @@ from __future__ import annotations
 
 import json
 from collections.abc import Mapping
-from typing import Annotated
+from enum import StrEnum
+from typing import Annotated, Literal
 
 from fastapi import APIRouter, Form, HTTPException, Query, Response, UploadFile
+from pydantic import BaseModel
 
 from spend_analyzer.analytics import tax_query
 from spend_analyzer.analytics.tax_query import TaxQuery
@@ -32,6 +34,7 @@ from spend_analyzer.core.tax_types import (
     TaxCategory,
 )
 from spend_analyzer.db.models import IncomeItem, TaxDocument, TaxForm, TaxItem
+from spend_analyzer.ingest.tax import edit
 from spend_analyzer.ingest.tax.pipeline import delete_tax_document
 
 router = APIRouter(tags=["tax"])
@@ -52,6 +55,14 @@ def _warnings(doc: TaxDocument) -> list[str]:
     return [str(w) for w in loaded] if isinstance(loaded, list) else []
 
 
+def _origin(value: str) -> Literal["parser", "llm", "manual"]:
+    return "llm" if value == "llm" else "manual" if value == "manual" else "parser"
+
+
+def _method(value: str) -> Literal["parser", "llm", "manual"]:
+    return _origin(value)
+
+
 def _income_item(item: IncomeItem) -> schemas.IncomeItemOut:
     return schemas.IncomeItemOut(
         id=item.id,
@@ -62,6 +73,7 @@ def _income_item(item: IncomeItem) -> schemas.IncomeItemOut:
         box=item.box,
         label=item.label,
         is_memo=item.is_memo,
+        origin=_origin(item.origin),
     )
 
 
@@ -76,6 +88,7 @@ def _tax_item(item: TaxItem) -> schemas.TaxItemOut:
         label=item.label,
         jurisdiction=item.jurisdiction,
         is_estimate=item.is_estimate,
+        origin=_origin(item.origin),
     )
 
 
@@ -92,6 +105,10 @@ def _form_fields(form: TaxForm) -> dict[str, object]:
         "agi_minor": form.agi_minor,
         "taxable_income_minor": form.taxable_income_minor,
         "is_corrected": form.is_corrected,
+        "extraction_method": _method(form.extraction_method),
+        "is_user_edited": form.is_user_edited,
+        "needs_review": any(i.origin == "llm" for i in form.income_items)
+        or any(t.origin == "llm" for t in form.tax_items),
     }
 
 
@@ -112,14 +129,7 @@ def _document(doc: TaxDocument) -> schemas.TaxDocument:
 
 def _document_detail(doc: TaxDocument) -> schemas.TaxDocumentDetail:
     base = _document(doc)
-    forms = [
-        schemas.TaxFormDetail(
-            **_form_fields(f),
-            income_items=[_income_item(i) for i in f.income_items],
-            tax_items=[_tax_item(t) for t in f.tax_items],
-        )
-        for f in doc.forms
-    ]
+    forms = [_form_detail(f) for f in doc.forms]
     return schemas.TaxDocumentDetail(**base.model_dump(), forms=forms)
 
 
@@ -293,3 +303,190 @@ def income_by_payer(
         )
         for r in rows
     ]
+
+
+# --- manual edits ---------------------------------------------------------------------------------
+#
+# Figures can be typed in without a PDF, or corrected after an import. All writes go through
+# `ingest/tax/edit.py` (validation, provenance); errors map to HTTP status via `EditError.status`.
+# Summaries read the tables live, so an edit shows up in the next `/tax/summary` call.
+
+
+def _raise(exc: edit.EditError) -> HTTPException:
+    return HTTPException(status_code=exc.status, detail=str(exc))
+
+
+def _patch_values(model: BaseModel) -> dict[str, object]:
+    """The fields the client actually sent, as plain values (enums unwrapped)."""
+    out: dict[str, object] = {}
+    for name in model.model_fields_set:
+        value = getattr(model, name)
+        out[name] = value.value if isinstance(value, StrEnum) else value
+    return out
+
+
+def _form_detail(form: TaxForm) -> schemas.TaxFormDetail:
+    return schemas.TaxFormDetail(
+        **_form_fields(form),
+        income_items=[_income_item(i) for i in form.income_items],
+        tax_items=[_tax_item(t) for t in form.tax_items],
+    )
+
+
+def _income_data(body: schemas.IncomeItemIn) -> edit.IncomeItemData:
+    return edit.IncomeItemData(
+        category=body.category.value,
+        amount_minor=body.amount_minor,
+        box=body.box,
+        label=body.label,
+        is_memo=body.is_memo,
+        source_form=body.source_form,
+    )
+
+
+def _tax_data(body: schemas.TaxItemIn) -> edit.TaxItemData:
+    return edit.TaxItemData(
+        category=body.category.value,
+        amount_minor=body.amount_minor,
+        box=body.box,
+        label=body.label,
+        jurisdiction=body.jurisdiction,
+        is_estimate=body.is_estimate,
+        source_form=body.source_form,
+    )
+
+
+@router.post("/tax/documents/manual", response_model=schemas.TaxDocument, status_code=201)
+def create_manual_document(
+    body: schemas.TaxManualDocumentCreate, session: SessionDep
+) -> schemas.TaxDocument:
+    """A document with no file, to hold figures typed in by the user."""
+    try:
+        doc = edit.create_manual_document(session, body.user_id, body.tax_year, body.original_name)
+    except edit.EditError as exc:
+        raise _raise(exc) from None
+    return _document(doc)
+
+
+@router.post(
+    "/tax/documents/{document_id}/forms",
+    response_model=schemas.TaxFormDetail,
+    status_code=201,
+)
+def create_form(
+    document_id: int, body: schemas.TaxFormCreate, session: SessionDep
+) -> schemas.TaxFormDetail:
+    """Add a form (with optional items) to a document. A document that was `error` /
+    `unsupported` becomes `parsed`."""
+    data = edit.FormData(
+        form_type=body.form_type.value,
+        tax_year=body.tax_year,
+        payer_name=body.payer_name,
+        payer_tin_last4=body.payer_tin_last4,
+        account_last4=body.account_last4,
+        is_corrected=body.is_corrected,
+        filing_status=body.filing_status,
+        agi_minor=body.agi_minor,
+        taxable_income_minor=body.taxable_income_minor,
+        income_items=tuple(_income_data(i) for i in body.income_items),
+        tax_items=tuple(_tax_data(t) for t in body.tax_items),
+    )
+    try:
+        form = edit.add_form(session, document_id, data)
+    except edit.EditError as exc:
+        raise _raise(exc) from None
+    return _form_detail(form)
+
+
+@router.patch("/tax/forms/{form_id}", response_model=schemas.TaxFormDetail)
+def patch_form(
+    form_id: int, body: schemas.TaxFormPatch, session: SessionDep
+) -> schemas.TaxFormDetail:
+    try:
+        form = edit.update_form(session, form_id, _patch_values(body))
+    except edit.EditError as exc:
+        raise _raise(exc) from None
+    return _form_detail(form)
+
+
+@router.delete("/tax/forms/{form_id}", status_code=204)
+def delete_form(form_id: int, session: SessionDep) -> Response:
+    try:
+        edit.delete_form(session, form_id)
+    except edit.EditError as exc:
+        raise _raise(exc) from None
+    return Response(status_code=204)
+
+
+@router.post("/tax/forms/{form_id}/confirm", response_model=schemas.TaxFormDetail)
+def confirm_form(form_id: int, session: SessionDep) -> schemas.TaxFormDetail:
+    """Mark a reviewed form's AI-extracted items as confirmed (`origin` becomes `manual`)."""
+    try:
+        form = edit.confirm_form(session, form_id)
+    except edit.EditError as exc:
+        raise _raise(exc) from None
+    return _form_detail(form)
+
+
+@router.post(
+    "/tax/forms/{form_id}/income-items", response_model=schemas.IncomeItemOut, status_code=201
+)
+def create_income_item(
+    form_id: int, body: schemas.IncomeItemIn, session: SessionDep
+) -> schemas.IncomeItemOut:
+    try:
+        item = edit.add_income_item(session, form_id, _income_data(body))
+    except edit.EditError as exc:
+        raise _raise(exc) from None
+    return _income_item(item)
+
+
+@router.patch("/tax/income-items/{item_id}", response_model=schemas.IncomeItemOut)
+def patch_income_item(
+    item_id: int, body: schemas.IncomeItemPatch, session: SessionDep
+) -> schemas.IncomeItemOut:
+    try:
+        item = edit.update_income_item(session, item_id, _patch_values(body))
+    except edit.EditError as exc:
+        raise _raise(exc) from None
+    return _income_item(item)
+
+
+@router.delete("/tax/income-items/{item_id}", status_code=204)
+def delete_income_item(item_id: int, session: SessionDep) -> Response:
+    try:
+        edit.delete_income_item(session, item_id)
+    except edit.EditError as exc:
+        raise _raise(exc) from None
+    return Response(status_code=204)
+
+
+@router.post("/tax/forms/{form_id}/tax-items", response_model=schemas.TaxItemOut, status_code=201)
+def create_tax_item(
+    form_id: int, body: schemas.TaxItemIn, session: SessionDep
+) -> schemas.TaxItemOut:
+    try:
+        item = edit.add_tax_item(session, form_id, _tax_data(body))
+    except edit.EditError as exc:
+        raise _raise(exc) from None
+    return _tax_item(item)
+
+
+@router.patch("/tax/tax-items/{item_id}", response_model=schemas.TaxItemOut)
+def patch_tax_item(
+    item_id: int, body: schemas.TaxItemPatch, session: SessionDep
+) -> schemas.TaxItemOut:
+    try:
+        item = edit.update_tax_item(session, item_id, _patch_values(body))
+    except edit.EditError as exc:
+        raise _raise(exc) from None
+    return _tax_item(item)
+
+
+@router.delete("/tax/tax-items/{item_id}", status_code=204)
+def delete_tax_item(item_id: int, session: SessionDep) -> Response:
+    try:
+        edit.delete_tax_item(session, item_id)
+    except edit.EditError as exc:
+        raise _raise(exc) from None
+    return Response(status_code=204)

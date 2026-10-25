@@ -314,6 +314,35 @@ PDF may be imported for two different users: each user keeps their own copy, and
 document is never moved to another user. A form whose content is identical to one already
 stored (the same W-2 delivered as two different PDFs) is skipped and reported as a duplicate form.
 
+## Manual entry and corrections
+
+Figures can be typed in without a PDF, or corrected after an import. Everything is local and
+validated: last-four fields are exactly four digits, payer names that look like an SSN/EIN are
+rejected (an EIN inside a longer name is masked), categories come from the lists above, and
+amounts follow the parser rules (only short- and long-term capital gains may be negative; tax
+amounts are never negative). Amounts are integer cents.
+
+| Method and path | Body | Response |
+|---|---|---|
+| `POST /api/tax/documents/manual` | `{user_id, tax_year, original_name?}` | document (201) |
+| `POST /api/tax/documents/{id}/forms` | form fields plus optional `income_items[]`, `tax_items[]` | form detail (201) |
+| `PATCH /api/tax/forms/{id}` | any form fields (`null` clears) | form detail |
+| `DELETE /api/tax/forms/{id}` | | 204 |
+| `POST /api/tax/forms/{id}/income-items`, `.../tax-items` | item | item (201) |
+| `PATCH` / `DELETE /api/tax/income-items/{id}`, `/api/tax/tax-items/{id}` | item fields | item / 204 |
+| `POST /api/tax/forms/{id}/confirm` | | form detail |
+| `GET /api/tax/documents/{id}` | | document with forms and items |
+
+Adding a form to a document that failed (`error` / `unsupported`) turns it into a `parsed`
+document with the warning "Figures on this document were entered manually." A form whose year
+differs from the other forms of its document is rejected (400); changing a form's year moves its
+items too. Summaries read the tables live, so edits show up immediately.
+
+Provenance is stored per form (`extraction_method`: `parser`, `llm` or `manual`; `is_user_edited`)
+and per item (`origin`). Manual forms get a random fingerprint and never collide with imports.
+Editing an imported form keeps its fingerprint on purpose: uploading the original file again is
+still recognised as a duplicate and does not bring back the figures you changed.
+
 ## Where the data lives
 
 Imported figures are stored in the local database (`tax_documents`, `tax_forms`, `income_items`,

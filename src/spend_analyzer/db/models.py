@@ -430,6 +430,14 @@ class TaxForm(Base):
     agi_minor: Mapped[int | None] = mapped_column(Integer, nullable=True)
     taxable_income_minor: Mapped[int | None] = mapped_column(Integer, nullable=True)
     fingerprint: Mapped[str] = mapped_column(String, nullable=False)
+    #: How the figures got here: parser | llm | manual (validated in `ingest/tax/edit.py`, no DB
+    #: CHECK: see migration 0006).
+    extraction_method: Mapped[str] = mapped_column(
+        String, nullable=False, default="parser", server_default=text("'parser'")
+    )
+    is_user_edited: Mapped[bool] = mapped_column(
+        Boolean, nullable=False, default=False, server_default=text("0")
+    )
     created_at: Mapped[str] = mapped_column(Text, nullable=False, default=utcnow_iso)
 
     document: Mapped[TaxDocument] = relationship("TaxDocument", back_populates="forms")
@@ -467,6 +475,9 @@ class IncomeItem(Base):
     box: Mapped[str | None] = mapped_column(String, nullable=True)
     label: Mapped[str | None] = mapped_column(String, nullable=True)
     is_memo: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
+    origin: Mapped[str] = mapped_column(
+        String, nullable=False, default="parser", server_default=text("'parser'")
+    )  # parser | llm | manual
 
 
 class TaxItem(Base):
@@ -494,6 +505,9 @@ class TaxItem(Base):
     label: Mapped[str | None] = mapped_column(String, nullable=True)
     jurisdiction: Mapped[str | None] = mapped_column(String, nullable=True)  # NULL = federal/FICA
     is_estimate: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
+    origin: Mapped[str] = mapped_column(
+        String, nullable=False, default="parser", server_default=text("'parser'")
+    )  # parser | llm | manual
 
 
 class BalanceEntry(Base):
