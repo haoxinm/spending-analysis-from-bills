@@ -39,4 +39,20 @@ describe("Money", () => {
     render(<Money minorUnits={999} />);
     expect(screen.getByText("$9.99")).toHaveAttribute("aria-label", "outflow $9.99");
   });
+
+  it("neutral tone renders a balance without outflow/inflow colour", () => {
+    render(<Money minorUnits={123456} tone="neutral" />);
+    const el = screen.getByText("$1,234.56");
+    expect(el).toHaveAttribute("data-direction", "neutral");
+    expect(el).toHaveAttribute("aria-label", "balance $1,234.56");
+    expect(el.className).toContain("text-foreground");
+    expect(el.className).not.toContain("text-outflow");
+  });
+
+  it("neutral tone flags only negative values", () => {
+    render(<Money minorUnits={-5000} tone="neutral" />);
+    const el = screen.getByText("-$50.00");
+    expect(el).toHaveAttribute("aria-label", "balance -$50.00");
+    expect(el.className).toContain("text-outflow");
+  });
 });

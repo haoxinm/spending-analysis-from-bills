@@ -14,6 +14,7 @@ import { MonthOverMonth } from "./components/month-over-month";
 import { TopMerchants } from "./components/top-merchants";
 import { TrendLine } from "./components/trend-line";
 import { UserComparison } from "./components/user-comparison";
+import { NetWorthSection } from "./net-worth/net-worth-section";
 import {
   type DashboardFilters,
   useAccounts,
@@ -108,6 +109,8 @@ export default function DashboardScreen() {
       />
 
       <CurrencyBanner currencies={otherCurrencies} selectedCurrency={currency} />
+
+      {ready ? <NetWorthSection userId={sel.selectedUserId} users={users} currency={currency} /> : null}
 
       {anyError ? (
         <ErrorState description={anyError instanceof Error ? anyError.message : String(anyError)} />

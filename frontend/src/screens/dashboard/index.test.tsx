@@ -6,6 +6,7 @@ import { MemoryRouter } from "react-router-dom";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import { apiClient } from "@/api/client";
+import { ToastContextProvider } from "@/components/ui/toast-provider";
 
 import DashboardScreen from "./index";
 
@@ -37,17 +38,34 @@ function wrapper({ children }: { children: React.ReactNode }) {
         initialEntries={["/"]}
         future={{ v7_startTransition: true, v7_relativeSplatPath: true }}
       >
-        {children}
+        <ToastContextProvider>{children}</ToastContextProvider>
       </MemoryRouter>
     </QueryClientProvider>
   );
 }
 
-type Route = "/users" | "/accounts" | "/analytics/summary" | "/analytics/timeseries" | "/analytics/top-merchants";
+type Route =
+  | "/users"
+  | "/accounts"
+  | "/analytics/summary"
+  | "/analytics/timeseries"
+  | "/analytics/top-merchants"
+  | "/net-worth/summary"
+  | "/net-worth/entries";
+
+const EMPTY_NET_WORTH = {
+  currency: "USD",
+  user_id: null,
+  periods: [],
+  series: [],
+  account_series: [],
+  snapshot: null,
+};
 
 function mockGet(responses: Partial<Record<Route, unknown>>) {
   (apiClient.GET as ReturnType<typeof vi.fn>).mockImplementation((path: string) => {
-    const data = responses[path as Route] ?? [];
+    const fallback = path === "/net-worth/summary" ? EMPTY_NET_WORTH : [];
+    const data = responses[path as Route] ?? fallback;
     return Promise.resolve({ data, error: undefined });
   });
 }
@@ -174,5 +192,34 @@ describe("DashboardScreen", () => {
     const banner = await screen.findByTestId("currency-banner");
     expect(within(banner).getByText("EUR")).toBeInTheDocument();
     expect(within(banner).getByText(/Not included/)).toBeInTheDocument();
+  });
+
+  it("renders the net-worth section even with no spending data, and follows the user chip", async () => {
+    mockGet({
+      "/users": [
+        { id: 1, name: "Alex", is_default: true },
+        { id: 2, name: "Sam", is_default: false },
+      ],
+      "/accounts": [],
+      "/analytics/summary": [],
+      "/analytics/timeseries": [],
+      "/analytics/top-merchants": [],
+    });
+
+    render(<DashboardScreen />, { wrapper });
+
+    expect(await screen.findByText("No data yet")).toBeInTheDocument();
+    expect(await screen.findByTestId("net-worth-section")).toBeInTheDocument();
+    expect(await screen.findByText("No balances yet")).toBeInTheDocument();
+
+    await userEvent.click(screen.getByRole("radio", { name: "Sam" }));
+
+    await waitFor(() => {
+      const calls = (apiClient.GET as ReturnType<typeof vi.fn>).mock.calls.filter(
+        ([path]) => path === "/net-worth/summary",
+      );
+      const last = calls.at(-1)![1] as { params: { query: { user_id?: number } } };
+      expect(last.params.query.user_id).toBe(2);
+    });
   });
 });

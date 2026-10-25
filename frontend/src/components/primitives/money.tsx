@@ -14,6 +14,10 @@ export interface MoneyProps extends React.HTMLAttributes<HTMLSpanElement> {
    *  because a table cell should read as an amount, not as an amount plus an icon. */
   showGlyph?: boolean;
   locale?: string;
+  /** `flow` (default): positive = outflow (red-orange), negative = inflow. `neutral`: a balance
+   *  (net worth, account balance), not a flow. No direction colour; only a negative value is
+   *  flagged. Use this wherever a positive number is not "money leaving". */
+  tone?: "flow" | "neutral";
 }
 
 const formatterCache = new Map<string, Intl.NumberFormat>();
@@ -47,6 +51,7 @@ export function Money({
   showPlusForInflow = false,
   showGlyph = false,
   locale = "en-US",
+  tone = "flow",
   className,
   ...props
 }: MoneyProps) {
@@ -60,6 +65,20 @@ export function Money({
   const glyph = direction === "outflow" ? "▼" : direction === "inflow" ? "▲" : "";
   const directionLabel =
     direction === "outflow" ? "outflow" : direction === "inflow" ? "inflow" : "no change";
+
+  if (tone === "neutral") {
+    return (
+      <span
+        className={cn("tabular-nums", minorUnits < 0 ? "text-outflow" : "text-foreground", className)}
+        data-direction="neutral"
+        aria-label={`balance ${minorUnits < 0 ? "-" : ""}${magnitude}`}
+        {...props}
+      >
+        {minorUnits < 0 ? "-" : ""}
+        {magnitude}
+      </span>
+    );
+  }
 
   return (
     <span
