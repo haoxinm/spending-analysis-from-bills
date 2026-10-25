@@ -1,0 +1,7 @@
+# Fixture PDFs are compared byte-for-byte; goldens/specs must not get CRLF on Windows checkouts.
+*.pdf binary
+*.json text eol=lf
+*.yaml text eol=lf
+*.yml text eol=lf
+*.toml text eol=lf
+*.csv text eol=lf

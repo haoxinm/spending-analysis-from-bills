@@ -1,0 +1,26 @@
+{
+  "closing_balance_minor": 4500,
+  "opening_balance_minor": 0,
+  "transactions": [
+    {
+      "amount_minor": 5000,
+      "description": "GROCERY MART",
+      "posted_date": "2026-01-02"
+    },
+    {
+      "amount_minor": -1000,
+      "description": "REFUND GROCERY MART",
+      "posted_date": "2026-01-05"
+    },
+    {
+      "amount_minor": -2500,
+      "description": "PAYMENT THANK YOU",
+      "posted_date": "2026-01-10"
+    },
+    {
+      "amount_minor": 3000,
+      "description": "RESTAURANT",
+      "posted_date": "2026-01-15"
+    }
+  ]
+}

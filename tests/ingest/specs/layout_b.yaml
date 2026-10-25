@@ -1,0 +1,28 @@
+id: cross_check_layout_b
+version: 1
+account_type: credit
+currency: USD
+account_mask:
+  pattern: "ending in\\s+(\\d{4})"
+fx:
+  pattern: "FOREIGN CURRENCY AMOUNT\\s+([\\d,]+\\.\\d{2})\\s+([A-Z]{3})\\s+EXCH(?:ANGE)? RATE\\s+([\\d.]+)"
+  amount_group: 1
+  currency_group: 2
+  rate_group: 3
+detect:
+  all_of: ["ACCOUNT ACTIVITY"]
+  any_of: ["Merchant Name or Transaction Description"]
+  score: 0.85
+columns:
+  - {name: posted_date, x0: 45, x1: 165, type: date, formats: ["%m/%d"]}
+  - {name: description, x0: 165, x1: 420, type: text, multiline: true}
+  - {name: amount, x0: 420, x1: 495, type: money}
+sections:
+  mode: heading
+  patterns:
+    - {match: "PAYMENTS AND OTHER CREDITS", kind_hint: payment_or_refund}
+    - {match: "PURCHASES", outflow_kind_hint: purchase, inflow_kind_hint: adjustment}
+  exclude_tables: ["INTEREST CHARGED"]
+sign: {outflow: unsigned, inflow: leading_minus}
+year_inference: from_period
+totals: {section_totals: false}

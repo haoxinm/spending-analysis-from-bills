@@ -1,0 +1,31 @@
+# A16: the issuer's own category column, mapped to a (category, subcategory) pair — only where
+# a single pair is genuinely implied. Keyed by `parser_id`, then the issuer's label exactly as
+# printed (matched case-insensitively, whitespace-collapsed). A `"*"` parser_id entry applies to
+# every parser that does not have its own entry for that label.
+#
+# A label whose category is plausible but whose subcategory is not (e.g. a card issuer's
+# "Merchandise" or "Services" bucket, which could be almost anything) is deliberately absent: a
+# confident wrong subcategory is worse than one LLM call (§2b P2-B step 5).
+"*":
+  DINING: {category: restaurant, subcategory: dine_in}
+  RESTAURANTS: {category: restaurant, subcategory: dine_in}
+  GROCERIES: {category: grocery, subcategory: grocery_stores}
+  SUPERMARKETS: {category: grocery, subcategory: grocery_stores}
+  GASOLINE: {category: fuel, subcategory: gasoline}
+  GAS STATIONS: {category: fuel, subcategory: gasoline}
+  HOME IMPROVEMENT: {category: maintenance, subcategory: home_improvement}
+  AUTOMOTIVE: {category: maintenance, subcategory: auto_repair}
+  AIRFARE: {category: travel, subcategory: flights}
+  AIRLINES: {category: travel, subcategory: flights}
+  HOTELS: {category: travel, subcategory: hotels}
+  LODGING: {category: travel, subcategory: hotels}
+  RENTAL CARS: {category: travel, subcategory: rental_cars}
+  INTERNET: {category: utilities, subcategory: internet}
+  PHONE: {category: utilities, subcategory: phone}
+  ELECTRICITY: {category: utilities, subcategory: electricity}
+  MOVIES: {category: entertainment, subcategory: movies_theater}
+  ATM WITHDRAWAL: {category: cash, subcategory: atm_withdrawal}
+  CASH ADVANCE: {category: cash, subcategory: cash_advance}
+
+  # Deliberately absent (fall through to the LLM, §2b step 5): "MERCHANDISE" and "SERVICES" —
+  # both cover too many plausible categories/subcategories for a coarse issuer label to decide.

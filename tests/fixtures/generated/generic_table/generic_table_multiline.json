@@ -1,0 +1,26 @@
+{
+  "closing_balance_minor": 6200,
+  "opening_balance_minor": 0,
+  "transactions": [
+    {
+      "amount_minor": 4000,
+      "description": "GYM MEMBERSHIP auto-renew monthly plan",
+      "posted_date": "2026-01-02"
+    },
+    {
+      "amount_minor": 1825,
+      "description": "PHARMACY DOWNTOWN",
+      "posted_date": "2026-01-04"
+    },
+    {
+      "amount_minor": -1825,
+      "description": "REFUND PHARMACY return processed",
+      "posted_date": "2026-01-10"
+    },
+    {
+      "amount_minor": 2200,
+      "description": "GROCERY MART",
+      "posted_date": "2026-01-14"
+    }
+  ]
+}

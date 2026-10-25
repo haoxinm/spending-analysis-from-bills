@@ -1,0 +1,108 @@
+# Store aliases (§3.6 step 4, P1-C).
+#
+# A seeded, community-editable map applied to `description_clean` *after* redaction and
+# boilerplate-prefix stripping, and *before* the LLM is ever consulted, so a human reviewing
+# `merchant_canonical` sees the same brand the classifier will see.
+#
+# Each entry's `pattern` is a case-insensitive regular expression matched anywhere in the
+# in-progress description; only the matched substring is replaced with `canonical`. Entries are
+# tried in order and at most one alias is applied per description (the first one that matches),
+# so list more specific patterns before broader ones that could also match their text.
+#
+# Keep patterns anchored to a real payment-descriptor fragment (not a bare brand word) to avoid
+# false positives on unrelated merchants that merely contain the same letters.
+
+- pattern: 'AMZN\s*MKTP(\s*US)?'
+  canonical: Amazon
+- pattern: 'AMAZON\.COM\*?'
+  canonical: Amazon
+- pattern: 'AMZN\s*DIGITAL'
+  canonical: Amazon
+- pattern: 'AMAZON\s+PRIME'
+  canonical: Amazon Prime
+- pattern: 'WM\s+SUPERCENTER'
+  canonical: Walmart
+- pattern: 'WAL[\s-]?MART'
+  canonical: Walmart
+- pattern: 'WALMART\.COM'
+  canonical: Walmart
+- pattern: 'TARGET\.COM'
+  canonical: Target
+- pattern: 'TARGET\s+T-?\d+'
+  canonical: Target
+- pattern: 'COSTCO\s+WHSE'
+  canonical: Costco
+- pattern: 'COSTCO\.COM'
+  canonical: Costco
+- pattern: "SAM'?S\\s*CLUB"
+  canonical: Sam's Club
+- pattern: 'WHOLEFDS'
+  canonical: Whole Foods
+- pattern: 'WHOLE\s+FOODS'
+  canonical: Whole Foods
+- pattern: "TRADER\\s+JOE'?S"
+  canonical: Trader Joe's
+- pattern: 'CVS/PHARM(ACY)?'
+  canonical: CVS
+- pattern: 'WALGREENS'
+  canonical: Walgreens
+- pattern: 'KROGER'
+  canonical: Kroger
+- pattern: 'SAFEWAY'
+  canonical: Safeway
+- pattern: 'EBAY'
+  canonical: eBay
+- pattern: 'ETSY'
+  canonical: Etsy
+- pattern: 'WAYFAIR'
+  canonical: Wayfair
+- pattern: 'UBER\s*\*?\s*EATS'
+  canonical: Uber Eats
+- pattern: 'UBER\s*\*?\s*TRIP'
+  canonical: Uber
+- pattern: 'LYFT\s*\*?RIDE'
+  canonical: Lyft
+- pattern: 'DOORDASH'
+  canonical: DoorDash
+- pattern: 'GRUBHUB'
+  canonical: Grubhub
+- pattern: 'INSTACART'
+  canonical: Instacart
+- pattern: 'POSTMATES'
+  canonical: Postmates
+- pattern: 'NETFLIX\.COM'
+  canonical: Netflix
+- pattern: 'HULU\s*\*?PLUS'
+  canonical: Hulu
+- pattern: 'DISNEY\s*PLUS'
+  canonical: Disney+
+- pattern: 'SPOTIFY\s*USA'
+  canonical: Spotify
+- pattern: 'HBO\s*MAX'
+  canonical: HBO Max
+- pattern: 'APPLE\.COM/BILL'
+  canonical: Apple
+- pattern: 'APL\s*\*?ITUNES'
+  canonical: Apple
+- pattern: 'GOOGLE\s*\*?\s*YOUTUBE'
+  canonical: YouTube
+- pattern: 'GOOGLE\s*\*?\s*PLAY'
+  canonical: Google Play
+- pattern: 'VENMO'
+  canonical: Venmo
+- pattern: 'CASH\s*APP'
+  canonical: Cash App
+- pattern: 'AIRBNB'
+  canonical: Airbnb
+- pattern: 'BOOKING\.COM'
+  canonical: Booking.com
+- pattern: 'EXPEDIA'
+  canonical: Expedia
+- pattern: 'SQUARESPACE'
+  canonical: Squarespace
+- pattern: 'ALIEXPRESS'
+  canonical: AliExpress
+- pattern: 'SHEIN'
+  canonical: Shein
+- pattern: 'TEMU\.COM'
+  canonical: Temu

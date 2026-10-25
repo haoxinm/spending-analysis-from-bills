@@ -1,0 +1,68 @@
+{
+  "account_hint": {
+    "account_type": "credit",
+    "currency": "USD",
+    "mask": "4321"
+  },
+  "closing_balance_minor": 17250,
+  "opening_balance_minor": 50000,
+  "period_end": "2026-02-15",
+  "period_start": "2026-01-16",
+  "section_totals": [],
+  "stated_total_minor": null,
+  "transactions": [
+    {
+      "amount_minor": -30000,
+      "currency": "USD",
+      "description": "ONLINE PAYMENT THANK YOU",
+      "fx_amount_minor": null,
+      "fx_currency": null,
+      "fx_rate": null,
+      "issuer_category": null,
+      "kind_hint": "payment_or_refund",
+      "posted_date": "2026-01-20",
+      "section": "PAYMENTS AND OTHER CREDITS",
+      "transaction_date": null
+    },
+    {
+      "amount_minor": -2500,
+      "currency": "USD",
+      "description": "MERCHANT REFUND CREDIT CO",
+      "fx_amount_minor": null,
+      "fx_currency": null,
+      "fx_rate": null,
+      "issuer_category": null,
+      "kind_hint": "payment_or_refund",
+      "posted_date": "2026-01-21",
+      "section": "PAYMENTS AND OTHER CREDITS",
+      "transaction_date": null
+    },
+    {
+      "amount_minor": 1250,
+      "currency": "USD",
+      "description": "COFFEE ROASTERS DOWNTOWN",
+      "fx_amount_minor": null,
+      "fx_currency": null,
+      "fx_rate": null,
+      "issuer_category": null,
+      "kind_hint": "purchase",
+      "posted_date": "2026-01-18",
+      "section": "PURCHASES",
+      "transaction_date": null
+    },
+    {
+      "amount_minor": -1500,
+      "currency": "USD",
+      "description": "HARDWARE SUPPLY RETURN",
+      "fx_amount_minor": null,
+      "fx_currency": null,
+      "fx_rate": null,
+      "issuer_category": null,
+      "kind_hint": "adjustment",
+      "posted_date": "2026-01-30",
+      "section": "PURCHASES",
+      "transaction_date": null
+    }
+  ],
+  "warnings": []
+}

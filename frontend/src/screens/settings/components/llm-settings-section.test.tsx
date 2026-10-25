@@ -1,0 +1,193 @@
+import { render, screen, waitFor } from "@testing-library/react";
+import userEvent from "@testing-library/user-event";
+import { afterEach, describe, expect, it, vi } from "vitest";
+
+import { ToastContextProvider } from "@/components/ui/toast-provider";
+
+import { isLocalAddress, resolveUrl } from "../lib/llm-address";
+import { LlmSettingsSection } from "./llm-settings-section";
+import type { Settings } from "../lib/hooks";
+
+const setApiKeyMutate = vi.fn();
+const clearApiKeyMutate = vi.fn();
+const testLlmMutate = vi.fn();
+
+vi.mock("../lib/hooks", () => ({
+  useSetApiKey: () => ({ mutate: setApiKeyMutate, isPending: false }),
+  useClearApiKey: () => ({ mutate: clearApiKeyMutate, isPending: false }),
+  useTestLlm: () => ({ mutate: testLlmMutate, isPending: false, isError: false, error: null }),
+}));
+
+const offSettings: Settings = {
+  llm: {
+    enabled: false,
+    base_url: "",
+    api_format: "openai_chat",
+    path: "",
+    model: "",
+    temperature: null,
+    max_tokens: null,
+    reasoning_effort: "",
+    extra_body: {},
+    extra_headers: {},
+    structured_output: true,
+    batch_size: 50,
+    timeout_s: 120,
+    confidence_threshold: 0.7,
+    parse_pages_per_request: 0,
+    mode: "none",
+    resolved_url: "",
+    has_key: false,
+  },
+  privacy: { store_pdf_copies: true, store_extract_cache: false, pii_terms: [] },
+  ingest: { always_confirm_extractor: false, default_extractor: "auto", date_format_hints: [], default_currency: "USD" },
+  server: { port: 8756 },
+};
+
+const remoteSettings: Settings = {
+  ...offSettings,
+  llm: {
+    ...offSettings.llm,
+    enabled: true,
+    base_url: "https://api.anthropic.com",
+    api_format: "anthropic_messages",
+    model: "claude",
+    mode: "remote",
+    has_key: true,
+  },
+};
+
+function renderSection(settings: Settings, onSave = vi.fn()) {
+  return render(
+    <ToastContextProvider>
+      <LlmSettingsSection settings={settings} onSave={onSave} saving={false} />
+    </ToastContextProvider>,
+  );
+}
+
+describe("address helpers", () => {
+  it("classifies local vs remote like the backend", () => {
+    expect(isLocalAddress("http://localhost:11434")).toBe(true);
+    expect(isLocalAddress("http://127.0.0.1:1234/v1")).toBe(true);
+    expect(isLocalAddress("http://[::1]:8000")).toBe(true);
+    expect(isLocalAddress("http://foo.localhost")).toBe(true);
+    expect(isLocalAddress("https://api.openai.com")).toBe(false);
+    expect(isLocalAddress("")).toBe(false);
+  });
+
+  it("resolves the URL without doubling /v1", () => {
+    expect(resolveUrl("https://api.openai.com/", "openai_chat", "")).toBe("https://api.openai.com/v1/chat/completions");
+    expect(resolveUrl("http://x/v1", "openai_chat", "")).toBe("http://x/v1/chat/completions");
+    expect(resolveUrl("http://x", "anthropic_messages", "/custom")).toBe("http://x/custom");
+  });
+});
+
+describe("LlmSettingsSection", () => {
+  afterEach(() => {
+    vi.clearAllMocks();
+  });
+
+  it("hides fields when off and shows them when the toggle is on", async () => {
+    const user = userEvent.setup();
+    renderSection(offSettings);
+    expect(screen.queryByLabelText("Address")).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: /test connection/i })).not.toBeInTheDocument();
+    await user.click(screen.getByRole("checkbox", { name: /use an llm/i }));
+    expect(screen.getByLabelText("Address")).toBeInTheDocument();
+    expect(screen.getByLabelText("API format")).toBeInTheDocument();
+    expect(screen.getByLabelText("Path")).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: /test connection/i })).toBeInTheDocument();
+    expect(screen.getByText(/no restart needed/i)).toBeInTheDocument();
+  });
+
+  it("a preset fills address and API format and updates the badge", async () => {
+    const user = userEvent.setup();
+    renderSection({ ...offSettings, llm: { ...offSettings.llm, enabled: true } });
+    await user.click(screen.getByRole("button", { name: "Ollama" }));
+    expect(screen.getByLabelText("Address")).toHaveValue("http://localhost:11434");
+    expect(screen.getByLabelText("API format")).toHaveValue("openai_chat");
+    expect(screen.getByTestId("locality-badge")).toHaveTextContent("Local — nothing leaves this computer");
+    expect(screen.getByText("http://localhost:11434/v1/chat/completions")).toBeInTheDocument();
+
+    await user.click(screen.getByRole("button", { name: "Anthropic" }));
+    expect(screen.getByLabelText("API format")).toHaveValue("anthropic_messages");
+    expect(screen.getByTestId("locality-badge")).toHaveTextContent("Remote — data is sent to api.anthropic.com");
+    expect(screen.getByLabelText("Path")).toHaveAttribute("placeholder", "/v1/messages");
+  });
+
+  it("Test connection posts the unsaved draft", async () => {
+    const user = userEvent.setup();
+    testLlmMutate.mockImplementation(
+      (_draft, opts: { onSuccess?: (r: unknown) => void }) =>
+        opts.onSuccess?.({ ok: false, detail: "boom", mode: "local", resolved_url: "http://localhost:1234/v1/chat/completions", latency_ms: 12 }),
+    );
+    renderSection(remoteSettings);
+    await user.clear(screen.getByLabelText("Address"));
+    await user.type(screen.getByLabelText("Address"), "http://localhost:1234");
+    await user.click(screen.getByRole("button", { name: /test connection/i }));
+
+    expect(testLlmMutate).toHaveBeenCalledTimes(1);
+    const draft = testLlmMutate.mock.calls[0]?.[0] as Settings["llm"];
+    expect(draft).toMatchObject({ enabled: true, base_url: "http://localhost:1234", api_format: "anthropic_messages" });
+    expect(await screen.findByTestId("test-result")).toHaveTextContent("boom");
+    expect(screen.getByTestId("test-result")).toHaveTextContent("12 ms");
+  });
+
+  it("invalid extra body JSON shows an error and blocks save", async () => {
+    const user = userEvent.setup();
+    const onSave = vi.fn();
+    renderSection(remoteSettings, onSave);
+    const textarea = screen.getByLabelText("Extra request body");
+    await user.click(textarea);
+    await user.paste("[1, 2]");
+    expect(screen.getByRole("alert")).toHaveTextContent(/must be a json object/i);
+    expect(screen.getByRole("button", { name: /save llm settings/i })).toBeDisabled();
+
+    await user.clear(textarea);
+    await user.paste('{"top_p": 0.5}');
+    expect(screen.queryByRole("alert")).not.toBeInTheDocument();
+    await user.click(screen.getByRole("button", { name: /save llm settings/i }));
+    expect(onSave).toHaveBeenCalledWith(expect.objectContaining({ extra_body: { top_p: 0.5 } }), "auto");
+  });
+
+  it("saves the default-extractor checkbox together with the LLM settings", async () => {
+    const user = userEvent.setup();
+    const onSave = vi.fn();
+    renderSection(remoteSettings, onSave);
+    expect(screen.getByRole("button", { name: /save llm settings/i })).toBeDisabled();
+    await user.click(screen.getByRole("checkbox", { name: /parse statements with the llm by default/i }));
+    await user.click(screen.getByRole("button", { name: /save llm settings/i }));
+    expect(onSave).toHaveBeenCalledWith(expect.objectContaining({ model: "claude" }), "llm");
+  });
+
+  it("never displays the existing API key, only whether one is on file", () => {
+    renderSection(remoteSettings);
+    expect(screen.getByText("Key on file")).toBeInTheDocument();
+    expect(screen.getByLabelText("New API key")).toHaveValue("");
+    expect(screen.getByLabelText("New API key")).toHaveAttribute("type", "password");
+  });
+
+  it("saves a new API key for the draft address and clears the input", async () => {
+    const user = userEvent.setup();
+    const onSave = vi.fn();
+    setApiKeyMutate.mockImplementation((_vars, opts: { onSuccess?: () => void }) => opts.onSuccess?.());
+    renderSection(remoteSettings, onSave);
+
+    await user.type(screen.getByLabelText("New API key"), "sk-new-secret");
+    await user.click(screen.getByRole("button", { name: /save key/i }));
+
+    expect(setApiKeyMutate).toHaveBeenCalledWith(
+      { baseUrl: "https://api.anthropic.com", apiKey: "sk-new-secret" },
+      expect.anything(),
+    );
+    expect(onSave).not.toHaveBeenCalled();
+    await waitFor(() => expect(screen.getByLabelText("New API key")).toHaveValue(""));
+  });
+
+  it("disables key save without an address", async () => {
+    const user = userEvent.setup();
+    renderSection({ ...offSettings, llm: { ...offSettings.llm, enabled: true } });
+    await user.type(screen.getByLabelText("New API key"), "k");
+    expect(screen.getByRole("button", { name: /save key/i })).toBeDisabled();
+  });
+});

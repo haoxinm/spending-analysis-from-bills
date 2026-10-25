@@ -1,0 +1,29 @@
+{
+  "account_hint": {
+    "account_type": "checking",
+    "currency": "USD",
+    "mask": null
+  },
+  "closing_balance_minor": 42000,
+  "opening_balance_minor": 50000,
+  "period_end": "2026-03-31",
+  "period_start": "2026-03-01",
+  "section_totals": [],
+  "stated_total_minor": null,
+  "transactions": [
+    {
+      "amount_minor": 8000,
+      "currency": "USD",
+      "description": "ONLINE BILL PAY XYZ CORP REF 998877 CONFIRMATION 4421",
+      "fx_amount_minor": null,
+      "fx_currency": null,
+      "fx_rate": null,
+      "issuer_category": null,
+      "kind_hint": "purchase",
+      "posted_date": "2026-03-12",
+      "section": "electronic withdrawals",
+      "transaction_date": null
+    }
+  ],
+  "warnings": []
+}

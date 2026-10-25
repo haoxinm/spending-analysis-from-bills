@@ -1,0 +1,213 @@
+import * as React from "react";
+
+import { usePatchTransaction, useTaxonomy } from "@/api/hooks";
+import { EmptyState, ErrorState, LoadingState } from "@/components/primitives/states";
+import { Button } from "@/components/ui/button";
+import { useToast } from "@/components/ui/use-toast";
+import { useSpendQueryParams } from "@/hooks/use-spend-query-params";
+
+import { downloadTransactionsExport, useAllMatchingIds, useBulkUpdateTransactions, useTransactionsGrid } from "./api";
+import { BulkBar } from "./bulk-bar";
+import type { ColumnsContext } from "./columns";
+import { EditPopover } from "./edit-popover";
+import { FiltersBar } from "./filters";
+import { TransactionsTable } from "./table";
+import type { Transaction } from "./types";
+
+/**
+ * The Transactions screen (P3-C): a virtualized grid of every transaction matching the URL's
+ * `SpendQuery`-shaped filters, with inline single-row edit, bulk relabel over the filtered
+ * selection, and a full CSV/JSON export. See `use-virtual-rows.ts` for why the "virtualized"
+ * part is a hand-rolled windowing hook rather than `@tanstack/react-virtual` (not yet a
+ * dependency — flagged in the P3-C report).
+ */
+export default function TransactionsScreen() {
+  const [filters, setFilters] = useSpendQueryParams();
+  const { toast } = useToast();
+
+  const grid = useTransactionsGrid(filters);
+  const taxonomy = useTaxonomy();
+  const categories = React.useMemo(() => taxonomy.data ?? [], [taxonomy.data]);
+
+  const patchTransaction = usePatchTransaction();
+  const bulkUpdate = useBulkUpdateTransactions();
+  const allMatchingIds = useAllMatchingIds();
+
+  const [selectedIds, setSelectedIds] = React.useState<Set<number>>(new Set());
+  const [editing, setEditing] = React.useState<Transaction | null>(null);
+  const [exporting, setExporting] = React.useState(false);
+
+  const rows = React.useMemo(
+    () => grid.data?.pages.flatMap((page) => page.items) ?? [],
+    [grid.data],
+  );
+  const total = grid.data?.pages.at(-1)?.total ?? 0;
+
+  const toggleRow = React.useCallback((id: number) => {
+    setSelectedIds((prev) => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      return next;
+    });
+  }, []);
+
+  const columnsContext: ColumnsContext = React.useMemo(
+    () => ({
+      categories,
+      selectedIds,
+      onToggleRow: toggleRow,
+      onEdit: setEditing,
+    }),
+    [categories, selectedIds, toggleRow],
+  );
+
+  async function handleSelectAllMatching() {
+    try {
+      const ids = await allMatchingIds.mutateAsync({ filters, total });
+      setSelectedIds(new Set(ids));
+    } catch (error) {
+      toast({
+        title: "Could not select all matching transactions",
+        description: error instanceof Error ? error.message : undefined,
+        variant: "destructive",
+      });
+    }
+  }
+
+  async function handleBulkApply(patch: { categoryKey: string; subcategoryKey: string }) {
+    try {
+      const result = await bulkUpdate.mutateAsync({
+        transactionIds: Array.from(selectedIds),
+        categoryKey: patch.categoryKey,
+        subcategoryKey: patch.subcategoryKey,
+      });
+      toast({ title: `Updated ${result.updated} transaction${result.updated === 1 ? "" : "s"}` });
+      setSelectedIds(new Set());
+    } catch (error) {
+      toast({
+        title: "Bulk update failed",
+        description: error instanceof Error ? error.message : undefined,
+        variant: "destructive",
+      });
+    }
+  }
+
+  async function handleSaveEdit(patch: { categoryKey: string; subcategoryKey: string; kind: Transaction["kind"] }) {
+    if (!editing) return;
+    try {
+      await patchTransaction.mutateAsync({
+        id: editing.id,
+        body: {
+          category_key: patch.categoryKey,
+          subcategory_key: patch.subcategoryKey,
+          kind: patch.kind,
+          create_rule: false,
+        },
+      });
+      setEditing(null);
+    } catch (error) {
+      toast({
+        title: "Could not save transaction",
+        description: error instanceof Error ? error.message : undefined,
+        variant: "destructive",
+      });
+    }
+  }
+
+  async function handleExport(format: "csv" | "json") {
+    setExporting(true);
+    try {
+      await downloadTransactionsExport(format);
+    } catch (error) {
+      toast({
+        title: "Export failed",
+        description: error instanceof Error ? error.message : undefined,
+        variant: "destructive",
+      });
+    } finally {
+      setExporting(false);
+    }
+  }
+
+  return (
+    <div className="flex flex-col gap-4">
+      <div className="flex items-center justify-between">
+        <div>
+          <h1 className="text-xl font-semibold tracking-tight">Transactions</h1>
+          <p className="text-sm text-muted-foreground">
+            {grid.isLoading ? "Loading…" : `${total.toLocaleString()} transaction${total === 1 ? "" : "s"}`}
+          </p>
+        </div>
+        <div className="flex gap-2">
+          <Button type="button" variant="outline" size="sm" disabled={exporting} onClick={() => void handleExport("csv")}>
+            Export CSV
+          </Button>
+          <Button type="button" variant="outline" size="sm" disabled={exporting} onClick={() => void handleExport("json")}>
+            Export JSON
+          </Button>
+        </div>
+      </div>
+
+      <FiltersBar filters={filters} categories={categories} onChange={setFilters} />
+
+      <BulkBar
+        selectedCount={selectedIds.size}
+        totalMatching={total}
+        loadedCount={rows.length}
+        categories={categories}
+        onSelectAllMatching={() => void handleSelectAllMatching()}
+        onClear={() => setSelectedIds(new Set())}
+        onApply={(patch) => void handleBulkApply(patch)}
+        applying={bulkUpdate.isPending}
+        selectingAll={allMatchingIds.isPending}
+      />
+
+      {grid.isLoading ? (
+        <LoadingState rows={8} />
+      ) : grid.isError ? (
+        <ErrorState
+          description={grid.error instanceof Error ? grid.error.message : undefined}
+          onRetry={() => void grid.refetch()}
+        />
+      ) : rows.length === 0 ? (
+        <EmptyState
+          title="No transactions match these filters"
+          description="Try widening the date range or clearing a filter."
+        />
+      ) : (
+        <>
+          <TransactionsTable
+            rows={rows}
+            context={columnsContext}
+            onRowClick={setEditing}
+            onNearEnd={() => {
+              if (grid.hasNextPage && !grid.isFetchingNextPage) void grid.fetchNextPage();
+            }}
+          />
+          {grid.isFetchingNextPage ? (
+            <p className="text-center text-xs text-muted-foreground">Loading more…</p>
+          ) : grid.hasNextPage ? (
+            <div className="flex justify-center">
+              <Button type="button" variant="outline" size="sm" onClick={() => void grid.fetchNextPage()}>
+                Load more ({rows.length} of {total})
+              </Button>
+            </div>
+          ) : null}
+        </>
+      )}
+
+      {editing ? (
+        <EditPopover
+          transaction={editing}
+          categories={categories}
+          onSave={(patch) => void handleSaveEdit(patch)}
+          onClose={() => setEditing(null)}
+          saving={patchTransaction.isPending}
+        />
+      ) : null}
+    </div>
+  );
+}
+
+export const screenMeta = { path: "/transactions", title: "Transactions" };

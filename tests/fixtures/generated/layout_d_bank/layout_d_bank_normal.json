@@ -1,0 +1,81 @@
+{
+  "account_hint": {
+    "account_type": "checking",
+    "currency": "USD",
+    "mask": null
+  },
+  "closing_balance_minor": 305800,
+  "opening_balance_minor": 100000,
+  "period_end": "2026-03-31",
+  "period_start": "2026-03-01",
+  "section_totals": [],
+  "stated_total_minor": null,
+  "transactions": [
+    {
+      "amount_minor": -250000,
+      "currency": "USD",
+      "description": "DIRECT DEPOSIT PAYROLL ACME CORP",
+      "fx_amount_minor": null,
+      "fx_currency": null,
+      "fx_rate": null,
+      "issuer_category": null,
+      "kind_hint": "transfer",
+      "posted_date": "2026-03-02",
+      "section": "deposits and additions",
+      "transaction_date": null
+    },
+    {
+      "amount_minor": 20000,
+      "currency": "USD",
+      "description": "ATM WITHDRAWAL MAIN ST BRANCH",
+      "fx_amount_minor": null,
+      "fx_currency": null,
+      "fx_rate": null,
+      "issuer_category": null,
+      "kind_hint": "purchase",
+      "posted_date": "2026-03-05",
+      "section": "atm & debit card withdrawals",
+      "transaction_date": null
+    },
+    {
+      "amount_minor": 8000,
+      "currency": "USD",
+      "description": "ELECTRIC COMPANY UTILITY BILL",
+      "fx_amount_minor": null,
+      "fx_currency": null,
+      "fx_rate": null,
+      "issuer_category": null,
+      "kind_hint": "purchase",
+      "posted_date": "2026-03-10",
+      "section": "electronic withdrawals",
+      "transaction_date": null
+    },
+    {
+      "amount_minor": 15000,
+      "currency": "USD",
+      "description": "CHECK #1042",
+      "fx_amount_minor": null,
+      "fx_currency": null,
+      "fx_rate": null,
+      "issuer_category": null,
+      "kind_hint": "purchase",
+      "posted_date": "2026-03-15",
+      "section": "checks paid",
+      "transaction_date": null
+    },
+    {
+      "amount_minor": 1200,
+      "currency": "USD",
+      "description": "MONTHLY MAINTENANCE FEE",
+      "fx_amount_minor": null,
+      "fx_currency": null,
+      "fx_rate": null,
+      "issuer_category": null,
+      "kind_hint": "fee",
+      "posted_date": "2026-03-20",
+      "section": "fees",
+      "transaction_date": null
+    }
+  ],
+  "warnings": []
+}

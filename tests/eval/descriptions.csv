@@ -1,0 +1,375 @@
+description,category,subcategory
+DELTA AIR LINES,travel,flights
+UNITED AIRLINES,travel,flights
+ALASKA AIRLINES 0271234,travel,flights
+SOUTHWEST AIRLINES,travel,flights
+AMERICAN AIRLINES RES,travel,flights
+JETBLUE AIRWAYS,travel,flights
+MARRIOTT HOTELS SEATTLE,travel,hotels
+HILTON GARDEN INN PORTLAND,travel,hotels
+HYATT REGENCY DENVER,travel,hotels
+BEST WESTERN PLUS TACOMA,travel,hotels
+HOLIDAY INN EXPRESS BEND,travel,hotels
+HERTZ RENT A CAR SEA,travel,rental_cars
+ENTERPRISE RENT-A-CAR,travel,rental_cars
+AVIS RENT A CAR PDX,travel,rental_cars
+BUDGET CAR RENTAL,travel,rental_cars
+NATIONAL CAR RENTAL SFO,travel,rental_cars
+VIATOR TOURS AND ACTIVITIES,travel,activities
+GETYOURGUIDE CITY TOUR,travel,activities
+GRAND CANYON GUIDED HIKE TOUR,travel,activities
+WHALE WATCHING EXCURSION SEATTLE,travel,activities
+COSTCO WHSE #0123 BELLEVUE WA,grocery,wholesale_clubs
+COSTCO.COM,grocery,wholesale_clubs
+SAM'S CLUB #4455 RENTON WA,grocery,wholesale_clubs
+TRADER JOES #456 SEATTLE WA,grocery,grocery_stores
+WHOLE FOODS MARKET SEATTLE WA,grocery,grocery_stores
+SAFEWAY STORE 1122 SEATTLE WA,grocery,grocery_stores
+KROGER #331 DENVER CO,grocery,grocery_stores
+PUBLIX SUPER MARKET #221,grocery,grocery_stores
+ALDI 4310 CHICAGO IL,grocery,grocery_stores
+SPROUTS FARMERS MARKET #55,grocery,grocery_stores
+COMCAST XFINITY INTERNET,utilities,internet
+SPECTRUM INTERNET BILL,utilities,internet
+CENTURYLINK INTERNET,utilities,internet
+T-MOBILE MONTHLY BILL,utilities,phone
+VERIZON WIRELESS PAYMENT,utilities,phone
+AT&T MOBILITY BILL PAY,utilities,phone
+SEATTLE CITY LIGHT PAYMENT,utilities,electricity
+PACIFIC POWER ELECTRIC BILL,utilities,electricity
+PGE ELECTRIC PAYMENT,utilities,electricity
+PUGET SOUND ENERGY GAS BILL,utilities,gas
+NW NATURAL GAS PAYMENT,utilities,gas
+SEATTLE PUBLIC UTILITIES WATER,utilities,water
+AQUA WATER SERVICE BILL,utilities,water
+WASTE MANAGEMENT TRASH SERVICE,utilities,trash
+REPUBLIC SERVICES TRASH BILL,utilities,trash
+KING COUNTY SEWER UTILITY BILL,utilities,sewer
+CITY SEWER SERVICE PAYMENT,utilities,sewer
+SHELL OIL 12345678 SEATTLE WA,fuel,gasoline
+CHEVRON STATION 0891 KENT WA,fuel,gasoline
+EXXON MOBIL SEATTLE,fuel,gasoline
+ARCO AMPM 771 RENTON WA,fuel,gasoline
+CONOCO FUEL SPOKANE WA,fuel,gasoline
+76 GAS STATION SEATTLE,fuel,gasoline
+7 ELEVEN FUEL PUMP SEATTLE,fuel,gasoline
+TESLA SUPERCHARGER SEATTLE WA,fuel,ev_charging
+CHARGEPOINT CHARGING SESSION,fuel,ev_charging
+ELECTRIFY AMERICA CHARGING,fuel,ev_charging
+GEICO AUTO INSURANCE PMT,insurance,auto
+PROGRESSIVE AUTO INSURANCE,insurance,auto
+STATE FARM AUTO INS PAYMENT,insurance,auto
+ALLSTATE HOMEOWNERS INSURANCE,insurance,home
+FARMERS HOME INSURANCE PAYMENT,insurance,home
+BLUE CROSS HEALTH INS PREMIUM,insurance,health
+KAISER PERMANENTE INSURANCE PMT,insurance,health
+AETNA HEALTH INSURANCE BILL,insurance,health
+NORTHWESTERN MUTUAL LIFE INS,insurance,life
+PRUDENTIAL LIFE INSURANCE PMT,insurance,life
+USAA PET INSURANCE PREMIUM,insurance,other_insurance
+TRAVEL GUARD TRIP INSURANCE,insurance,other_insurance
+STARBUCKS STORE #1234 SEATTLE WA,restaurant,dine_in
+MCDONALDS F1234 PORTLAND OR,restaurant,dine_in
+CHIPOTLE MEXICAN GRILL #221,restaurant,dine_in
+OLIVE GARDEN ITALIAN REST,restaurant,dine_in
+THE CHEESECAKE FACTORY #12,restaurant,dine_in
+PANDA EXPRESS #781 SEATTLE WA,restaurant,dine_in
+DOORDASH*RESTAURANT NAME,restaurant,delivery
+GRUBHUB*THAI KITCHEN,restaurant,delivery
+UBER EATS*BURGER PLACE,restaurant,delivery
+POSTMATES*SUSHI DELIVERY,restaurant,delivery
+AMTRAK TRAIN TICKET,transportation,train
+SOUNDER TRAIN FARE ORCA,transportation,train
+SOUND TRANSIT LINK LIGHT RAIL,transportation,subway
+MTA SUBWAY FARE NYC,transportation,subway
+BART SUBWAY FARE,transportation,subway
+SEATTLE PARKING METER PAYMENT,transportation,parking
+SPOTHERO PARKING GARAGE,transportation,parking
+ACE PARKING DOWNTOWN,transportation,parking
+UBER *TRIP HELP.UBER.COM,transportation,rideshare
+LYFT *RIDE THU 8PM,transportation,rideshare
+UBER *TRIP SEATTLE WA,transportation,rideshare
+WSDOT GOOD TO GO TOLL,transportation,tolls
+EZPASS TOLL CHARGE,transportation,tolls
+GREYHOUND BUS TICKET,transportation,bus
+KING COUNTY METRO BUS FARE,transportation,bus
+HOME DEPOT #4477 RENOVATION,maintenance,home_improvement
+LOWES HOME IMPROVEMENT #221,maintenance,home_improvement
+MIDAS AUTO REPAIR SEATTLE,maintenance,auto_repair
+JIFFY LUBE OIL CHANGE #1122,maintenance,auto_repair
+FIRESTONE COMPLETE AUTO CARE,maintenance,auto_repair
+ROTO-ROOTER PLUMBING SERVICE,maintenance,home_services
+ABC PEST CONTROL SERVICE,maintenance,home_services
+ACME HANDYMAN SERVICES LLC,maintenance,other_maintenance
+GENERAL CONTRACTOR REPAIR SVC,maintenance,other_maintenance
+AMZN MKTP US*A12BC34D,online_shopping,amazon
+AMAZON.COM*ORDER 998234,online_shopping,amazon
+ETSY.COM HANDMADE GOODS,online_shopping,other_online
+WAYFAIR.COM FURNITURE ORDER,online_shopping,other_online
+TEMU.COM ONLINE ORDER,online_shopping,other_online
+SHEIN ONLINE ORDER,online_shopping,other_online
+EBAY.COM PURCHASE,online_shopping,other_online
+TICKETMASTER CONCERT TICKETS,entertainment,concerts
+LIVE NATION CONCERT VENUE,entertainment,concerts
+AMC THEATRES #1234 SEATTLE,entertainment,movies_theater
+REGAL CINEMAS TICKET PURCHASE,entertainment,movies_theater
+SIX FLAGS THEME PARK TICKETS,entertainment,theme_parks
+DISNEYLAND RESORT TICKETS,entertainment,theme_parks
+LUCKY STRIKE KARAOKE LOUNGE,entertainment,karaoke
+SING SING KARAOKE BAR,entertainment,karaoke
+NETFLIX.COM,entertainment,streaming
+SPOTIFY USA,entertainment,streaming
+HULU SUBSCRIPTION,entertainment,streaming
+DISNEY PLUS MONTHLY,entertainment,streaming
+AMAZON PRIME MEMBERSHIP,entertainment,other_entertainment
+TOPGOLF ENTERTAINMENT VENUE,entertainment,other_entertainment
+BOWLERO BOWLING ALLEY,entertainment,other_entertainment
+ATM WITHDRAWAL #4521 SEATTLE,cash,atm_withdrawal
+BANK OF THE WEST ATM WITHDRAWAL,cash,atm_withdrawal
+ATM CASH WITHDRAWAL FEE,cash,atm_withdrawal
+CASH ADVANCE FEE,cash,cash_advance
+CASH ADVANCE TRANSACTION FEE,cash,cash_advance
+UNKNOWN MERCHANT CHARGE 88213,others,uncategorized
+MISC PURCHASE TERMINAL 002,others,uncategorized
+ANNUAL MEMBERSHIP FEE,others,fees_charges
+LATE PAYMENT FEE,others,fees_charges
+FOREIGN TRANSACTION FEE,others,fees_charges
+CVS PHARMACY #4455 SEATTLE WA,others,medical
+WALGREENS PHARMACY #221,others,medical
+URGENT CARE CLINIC VISIT,others,medical
+UNIVERSITY BOOKSTORE TEXTBOOKS,others,education
+COURSERA ONLINE COURSE FEE,others,education
+UDEMY COURSE PURCHASE,others,education
+GREAT CLIPS HAIRCUT SEATTLE,others,personal_care
+SUPERCUTS HAIR SALON #221,others,personal_care
+MASSAGE ENVY SPA SESSION,others,personal_care
+GOFUNDME DONATION,others,gifts_donations
+RED CROSS CHARITABLE DONATION,others,gifts_donations
+LOCAL FOOD BANK DONATION,others,gifts_donations
+亚米网 YAMIBUY,online_shopping,other_online
+京东JD.COM 网上购物,online_shopping,other_online
+淘宝网 TAOBAO ORDER,online_shopping,other_online
+全家便利店 FAMILYMART TAIPEI,grocery,grocery_stores
+7-ELEVEN セブンイレブン TOKYO,grocery,grocery_stores
+イオン AEON スーパー,grocery,grocery_stores
+味千拉面 AJISEN RAMEN,restaurant,dine_in
+吉野家 YOSHINOYA 東京店,restaurant,dine_in
+스타벅스 강남점 STARBUCKS SEOUL,restaurant,dine_in
+이마트 EMART 서울점,grocery,grocery_stores
+배달의민족 BAEMIN DELIVERY,restaurant,delivery
+메가박스 MEGABOX 영화관,entertainment,movies_theater
+CARREFOUR MARKET PARIS,grocery,grocery_stores
+MONOPRIX PARIS 8EME,grocery,grocery_stores
+SNCF BILLET DE TRAIN,travel,flights
+RATP METRO PARIS TICKET,transportation,subway
+PHARMACIE DU CENTRE PARIS,others,medical
+EDEKA SUPERMARKT BERLIN,grocery,grocery_stores
+REWE MARKT MUENCHEN,grocery,grocery_stores
+DEUTSCHE BAHN FAHRKARTE,transportation,train
+STADTWERKE STROMRECHNUNG,utilities,electricity
+MERCADONA SUPERMERCADO MADRID,grocery,grocery_stores
+RENFE BILLETE DE TREN,transportation,train
+FARMACIA SAN PABLO CDMX,others,medical
+OXXO TIENDA DE CONVENIENCIA,grocery,grocery_stores
+UBER *VIAJE CIUDAD DE MEXICO,transportation,rideshare
+PEMEX GASOLINERA 4021,fuel,gasoline
+RISTORANTE DA LUIGI ROMA,restaurant,dine_in
+ESSELUNGA SUPERMERCATO MILANO,grocery,grocery_stores
+TRENITALIA BIGLIETTO TRENO,travel,flights
+PÃO DE AÇÚCAR SUPERMERCADO,grocery,grocery_stores
+NETFLIX.COM BRASIL ASSINATURA,entertainment,streaming
+POSTO IPIRANGA COMBUSTIVEL,fuel,gasoline
+MAGAZIT ONLINE МАГАЗИН МОСКВА,online_shopping,other_online
+АПТЕКА РИГЛА МОСКВА,others,medical
+AL BAIK RESTAURANT JEDDAH,restaurant,dine_in
+مطعم الطازج جدة,restaurant,dine_in
+صيدلية النهدي جدة,others,medical
+BIG C SUPERCENTER BANGKOK,grocery,grocery_stores
+ร้านกาแฟคาเฟ่ อเมซอน,restaurant,dine_in
+GRAB *RIDE BANGKOK THAILAND,transportation,rideshare
+FLIPKART.COM ONLINE ORDER,online_shopping,other_online
+BIG BAZAAR SUPERMARKET DELHI,grocery,grocery_stores
+ओला कैब सवारी दिल्ली,transportation,rideshare
+INDOMARET MINIMARKET JAKARTA,grocery,grocery_stores
+GOJEK *RIDE JAKARTA,transportation,rideshare
+VINMART SIEU THI HA NOI,grocery,grocery_stores
+GRAB *FOOD DELIVERY HANOI,restaurant,delivery
+SOUTHWEST AIR CONFIRM #509,travel,flights
+SOUTHWEST AIR CONFIRM #4112,travel,flights
+FRONTIER AIRLINES FLT 2386,travel,flights
+FRONTIER AIRLINES FLT 9035,travel,flights
+EXTENDED STAY AMERICA PORTLAND OR,travel,hotels
+EXTENDED STAY AMERICA MIAMI FL,travel,hotels
+LA QUINTA INN SEATTLE WA,travel,hotels
+LA QUINTA INN AUSTIN TX,travel,hotels
+ZIPCAR RENTAL ATLANTA GA,travel,rental_cars
+ZIPCAR RENTAL SEATTLE WA,travel,rental_cars
+TURO CAR RENTAL AUSTIN TX,travel,rental_cars
+TURO CAR RENTAL MIAMI FL,travel,rental_cars
+CITY WALKING TOUR PHOENIX AZ,travel,activities
+CITY WALKING TOUR CHICAGO IL,travel,activities
+SNORKEL EXCURSION BOOKING,travel,activities
+SNORKEL EXCURSION BOOKING,travel,activities
+NEW SEASONS MARKET DENVER CO,grocery,grocery_stores
+NEW SEASONS MARKET BOSTON MA,grocery,grocery_stores
+WINCO FOODS #6324 PORTLAND OR,grocery,grocery_stores
+WINCO FOODS #5981 PORTLAND OR,grocery,grocery_stores
+BJS WHOLESALE CLUB #9991,grocery,wholesale_clubs
+BJS WHOLESALE CLUB #811,grocery,wholesale_clubs
+XFINITY MOBILE BILL PAY,utilities,phone
+XFINITY MOBILE BILL PAY,utilities,phone
+GOOGLE FI WIRELESS BILL,utilities,phone
+GOOGLE FI WIRELESS BILL,utilities,phone
+DUKE ENERGY ELECTRIC BILL,utilities,electricity
+DUKE ENERGY ELECTRIC BILL,utilities,electricity
+CON EDISON ELECTRIC PAYMENT,utilities,electricity
+CON EDISON ELECTRIC PAYMENT,utilities,electricity
+ATMOS ENERGY GAS BILL,utilities,gas
+ATMOS ENERGY GAS BILL,utilities,gas
+AMERICAN WATER UTILITY BILL,utilities,water
+AMERICAN WATER UTILITY BILL,utilities,water
+WM TRASH PICKUP SERVICE,utilities,trash
+WM TRASH PICKUP SERVICE,utilities,trash
+METRO SEWER DISTRICT BILL,utilities,sewer
+METRO SEWER DISTRICT BILL,utilities,sewer
+COSTCO GAS #4522 MIAMI FL,fuel,gasoline
+COSTCO GAS #3698 ATLANTA GA,fuel,gasoline
+SPEEDWAY FUEL STATION BOSTON MA,fuel,gasoline
+SPEEDWAY FUEL STATION AUSTIN TX,fuel,gasoline
+EVGO CHARGING STATION BOSTON MA,fuel,ev_charging
+EVGO CHARGING STATION CHICAGO IL,fuel,ev_charging
+VOLTA CHARGING SESSION,fuel,ev_charging
+VOLTA CHARGING SESSION,fuel,ev_charging
+LIBERTY MUTUAL AUTO INS PMT,insurance,auto
+LIBERTY MUTUAL AUTO INS PMT,insurance,auto
+ESURANCE AUTO INSURANCE PMT,insurance,auto
+ESURANCE AUTO INSURANCE PMT,insurance,auto
+LEMONADE HOME INSURANCE PMT,insurance,home
+LEMONADE HOME INSURANCE PMT,insurance,home
+CIGNA HEALTH INSURANCE BILL,insurance,health
+CIGNA HEALTH INSURANCE BILL,insurance,health
+METLIFE LIFE INSURANCE PMT,insurance,life
+METLIFE LIFE INSURANCE PMT,insurance,life
+NATIONWIDE PET INSURANCE PMT,insurance,other_insurance
+NATIONWIDE PET INSURANCE PMT,insurance,other_insurance
+FIVE GUYS BURGERS MIAMI FL,restaurant,dine_in
+FIVE GUYS BURGERS PORTLAND OR,restaurant,dine_in
+IN-N-OUT BURGER MIAMI FL,restaurant,dine_in
+IN-N-OUT BURGER PHOENIX AZ,restaurant,dine_in
+SUBWAY SANDWICHES #9164,restaurant,dine_in
+SUBWAY SANDWICHES #1976,restaurant,dine_in
+CHICK-FIL-A #4471 ATLANTA GA,restaurant,dine_in
+CHICK-FIL-A #1927 BOSTON MA,restaurant,dine_in
+SEAMLESS*DELIVERY ORDER,restaurant,delivery
+SEAMLESS*DELIVERY ORDER,restaurant,delivery
+CAVIAR*RESTAURANT DELIVERY,restaurant,delivery
+CAVIAR*RESTAURANT DELIVERY,restaurant,delivery
+VIA RAIL TICKET PURCHASE,transportation,train
+VIA RAIL TICKET PURCHASE,transportation,train
+CALTRAIN FARE DALLAS TX,transportation,train
+CALTRAIN FARE DENVER CO,transportation,train
+WMATA METRO FARE DC,transportation,subway
+WMATA METRO FARE DC,transportation,subway
+CTA TRAIN FARE CHICAGO,transportation,subway
+CTA TRAIN FARE CHICAGO,transportation,subway
+DIAMOND PARKING LOT PORTLAND OR,transportation,parking
+DIAMOND PARKING LOT CHICAGO IL,transportation,parking
+PARKWHIZ GARAGE SEATTLE WA,transportation,parking
+PARKWHIZ GARAGE DALLAS TX,transportation,parking
+VIA RIDESHARE PORTLAND OR,transportation,rideshare
+VIA RIDESHARE PORTLAND OR,transportation,rideshare
+MTA BRIDGE TOLL,transportation,tolls
+MTA BRIDGE TOLL,transportation,tolls
+FASTRAK TOLL CHARGE,transportation,tolls
+FASTRAK TOLL CHARGE,transportation,tolls
+MEGABUS TICKET PURCHASE,transportation,bus
+MEGABUS TICKET PURCHASE,transportation,bus
+FLIXBUS TICKET MIAMI FL,transportation,bus
+FLIXBUS TICKET PHOENIX AZ,transportation,bus
+ACE HARDWARE #2082 PHOENIX AZ,maintenance,home_improvement
+ACE HARDWARE #3781 AUSTIN TX,maintenance,home_improvement
+MENARDS HOME IMPROVEMENT,maintenance,home_improvement
+MENARDS HOME IMPROVEMENT,maintenance,home_improvement
+VALVOLINE INSTANT OIL CHANGE,maintenance,auto_repair
+VALVOLINE INSTANT OIL CHANGE,maintenance,auto_repair
+PEP BOYS AUTO SERVICE SEATTLE WA,maintenance,auto_repair
+PEP BOYS AUTO SERVICE SEATTLE WA,maintenance,auto_repair
+TERMINIX PEST CONTROL SVC,maintenance,home_services
+TERMINIX PEST CONTROL SVC,maintenance,home_services
+MR ROOTER PLUMBING SERVICE,maintenance,home_services
+MR ROOTER PLUMBING SERVICE,maintenance,home_services
+LOCAL HANDYMAN SERVICES AUSTIN TX,maintenance,other_maintenance
+LOCAL HANDYMAN SERVICES DENVER CO,maintenance,other_maintenance
+NEWEGG.COM ONLINE ORDER,online_shopping,other_online
+NEWEGG.COM ONLINE ORDER,online_shopping,other_online
+AMZN MKTP US*3219,online_shopping,amazon
+AMZN MKTP US*1688,online_shopping,amazon
+AMAZON.COM*5904,online_shopping,amazon
+AMAZON.COM*6835,online_shopping,amazon
+ALIEXPRESS.COM ORDER,online_shopping,other_online
+ALIEXPRESS.COM ORDER,online_shopping,other_online
+STUBHUB TICKET PURCHASE,entertainment,concerts
+STUBHUB TICKET PURCHASE,entertainment,concerts
+CINEMARK THEATRES #3216,entertainment,movies_theater
+CINEMARK THEATRES #7450,entertainment,movies_theater
+KNOTTS BERRY FARM TICKETS,entertainment,theme_parks
+KNOTTS BERRY FARM TICKETS,entertainment,theme_parks
+VOICEBOX KARAOKE PHOENIX AZ,entertainment,karaoke
+VOICEBOX KARAOKE PORTLAND OR,entertainment,karaoke
+HBO MAX SUBSCRIPTION,entertainment,streaming
+HBO MAX SUBSCRIPTION,entertainment,streaming
+YOUTUBE PREMIUM MEMBERSHIP,entertainment,streaming
+YOUTUBE PREMIUM MEMBERSHIP,entertainment,streaming
+DAVE AND BUSTERS MIAMI FL,entertainment,other_entertainment
+DAVE AND BUSTERS PHOENIX AZ,entertainment,other_entertainment
+WELLS ATM WITHDRAWAL MIAMI FL,cash,atm_withdrawal
+WELLS ATM WITHDRAWAL DENVER CO,cash,atm_withdrawal
+CHASE ATM CASH WITHDRAWAL,cash,atm_withdrawal
+CHASE ATM CASH WITHDRAWAL,cash,atm_withdrawal
+CASH ADVANCE INTEREST FEE,cash,cash_advance
+CASH ADVANCE INTEREST FEE,cash,cash_advance
+UNRECOGNIZED CHARGE 3211,others,uncategorized
+UNRECOGNIZED CHARGE 3666,others,uncategorized
+POS PURCHASE TERMINAL 9589,others,uncategorized
+POS PURCHASE TERMINAL 1098,others,uncategorized
+OVERDRAFT PROTECTION FEE,others,fees_charges
+OVERDRAFT PROTECTION FEE,others,fees_charges
+WIRE TRANSFER FEE,others,fees_charges
+WIRE TRANSFER FEE,others,fees_charges
+RITE AID PHARMACY #8420,others,medical
+RITE AID PHARMACY #3144,others,medical
+QUEST DIAGNOSTICS LAB VISIT,others,medical
+QUEST DIAGNOSTICS LAB VISIT,others,medical
+KHAN ACADEMY DONATION,others,education
+KHAN ACADEMY DONATION,others,education
+SKILLSHARE CLASS SUBSCRIPTION,others,education
+SKILLSHARE CLASS SUBSCRIPTION,others,education
+EUROPEAN WAX CENTER MIAMI FL,others,personal_care
+EUROPEAN WAX CENTER DALLAS TX,others,personal_care
+DRYBAR BLOWOUT SALON BOSTON MA,others,personal_care
+DRYBAR BLOWOUT SALON AUSTIN TX,others,personal_care
+UNICEF DONATION ONLINE,others,gifts_donations
+UNICEF DONATION ONLINE,others,gifts_donations
+ST JUDE CHILDRENS DONATION,others,gifts_donations
+ST JUDE CHILDRENS DONATION,others,gifts_donations
+家乐福超市 CARREFOUR SHANGHAI,grocery,grocery_stores
+盒马鲜生 HEMA FRESH,grocery,grocery_stores
+滴滴出行 DIDI RIDE BEIJING,transportation,rideshare
+肯德基 KFC 北京店,restaurant,dine_in
+必胜客 PIZZA HUT SHANGHAI,restaurant,dine_in
+美团外卖 MEITUAN DELIVERY,restaurant,delivery
+国家电网 电费缴纳,utilities,electricity
+中国石油 加油站,fuel,gasoline
+LOTTE MART SEOUL BRANCH,grocery,grocery_stores
+CGV 영화관 서울,entertainment,movies_theater
+카카오택시 KAKAO TAXI SEOUL,transportation,rideshare
+한국전력 전기요금,utilities,electricity
+ローソン LAWSON OSAKA,grocery,grocery_stores
+ユニクロ UNIQLO ONLINE STORE,online_shopping,other_online
+東京電力 電気料金,utilities,electricity
+BILLA SUPERMARKT WIEN,grocery,grocery_stores
+WIENER LINIEN TICKET,transportation,subway
+ALBERT HEIJN SUPERMARKT,grocery,grocery_stores
+NS TREIN KAARTJE,transportation,train
+ICA SUPERMARKET STOCKHOLM,grocery,grocery_stores
+SL BILJETT STOCKHOLM,transportation,subway
