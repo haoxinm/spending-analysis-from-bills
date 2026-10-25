@@ -14,6 +14,7 @@ from __future__ import annotations
 
 import contextlib
 import json
+import threading
 from dataclasses import dataclass
 from pathlib import Path
 
@@ -25,6 +26,11 @@ from spend_analyzer.core.errors import SpendAnalyzerError
 from spend_analyzer.core.types import Word
 from spend_analyzer.db.models import User
 from spend_analyzer.ingest.extract import extract
+
+#: pdfium (behind `pdfplumber.Page.to_image`, via `pypdfium2`) is not thread-safe: the Import
+#: screen requests every page thumbnail at once and FastAPI serves them from its threadpool, and
+#: concurrent renders segfault the whole server process. Serialise every render behind this lock.
+_PDFIUM_LOCK = threading.Lock()
 
 
 class PagePreviewNotFound(SpendAnalyzerError):
@@ -84,7 +90,7 @@ def render_page_png(pdf_path: Path, page_number: int, width: int) -> bytes:
     """
     import io
 
-    with pdfplumber.open(pdf_path) as pdf:
+    with _PDFIUM_LOCK, pdfplumber.open(pdf_path) as pdf:
         if page_number < 1 or page_number > len(pdf.pages):
             raise PagePreviewNotFound(
                 f"page {page_number} does not exist (this statement has {len(pdf.pages)} page(s))"

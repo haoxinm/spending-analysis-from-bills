@@ -165,3 +165,30 @@ def test_extract_and_reparse_pass_pages_through(
     assert seen["confirm"]["pages"] == [1, 3]  # type: ignore[index]
     assert seen["confirm"]["parser_id"] == "llm"  # type: ignore[index]
     assert seen["reparse"]["pages"] == [2]  # type: ignore[index]
+
+
+def test_concurrent_page_renders_do_not_crash(tmp_path: Path) -> None:
+    """pdfium is not thread-safe; the Import screen fires every thumbnail request at once and
+    unserialised renders segfaulted the server (the e2e job's flaky 'Import is disabled')."""
+    import threading
+
+    from spend_analyzer.api.services import statement_preview
+
+    pdf = tmp_path / "c.pdf"
+    render_lines_pdf(pdf, [["Page one " * 4], ["Page two " * 4], ["Page three " * 4]])
+    errors: list[BaseException] = []
+
+    def render(page: int) -> None:
+        try:
+            for _ in range(15):
+                assert statement_preview.render_page_png(pdf, page, 160).startswith(b"\x89PNG")
+        except BaseException as exc:
+            errors.append(exc)
+
+    threads = [threading.Thread(target=render, args=(n,)) for n in (1, 2, 3, 1, 2, 3)]
+    for t in threads:
+        t.start()
+    for t in threads:
+        t.join(120)
+    assert not errors
+    assert not any(t.is_alive() for t in threads)
