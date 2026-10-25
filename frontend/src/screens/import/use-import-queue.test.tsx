@@ -258,13 +258,72 @@ describe("useImportQueue", () => {
         statement: makeStatement({ status: "unsupported_layout", error_detail: "no parser matched" }),
       });
     });
-    expect(result.current.items[0]?.status).toBe("unsupported_layout");
-    expect(result.current.items[0]?.errorMessage).toBe("no parser matched");
+    // A failed parse is a retryable warning, not a terminal state: the item goes back to
+    // awaiting_extractor (picker + Import stay available) with the detail kept in `failure`.
+    expect(result.current.items[0]?.status).toBe("awaiting_extractor");
+    expect(result.current.items[0]?.failure).toEqual({ detail: "no parser matched", llm: false });
+    expect(result.current.items[0]?.errorMessage).toBeUndefined();
 
     act(() => {
       result.current.dispatch({ type: "needs_review_counted", clientId, count: 4 });
     });
     expect(result.current.items[0]?.needsReviewCount).toBe(4);
+  });
+});
+
+describe("built-in parser failure", () => {
+  function failedItem(llmConfigured: boolean, attemptLlm = false) {
+    const { result } = renderHook(() => useImportQueue());
+    let clientId = "";
+    act(() => {
+      clientId = result.current.queueFiles([new File(["a"], "a.pdf")], 1)[0] ?? "";
+    });
+    act(() => {
+      result.current.dispatch({
+        type: "upload_succeeded",
+        clientId,
+        statement: makeStatement(),
+        proposal: makeProposal(),
+      });
+    });
+    if (attemptLlm) {
+      act(() => {
+        result.current.dispatch({ type: "extractor_selected", clientId, extractorChoice: { kind: "parser", parserId: "llm" } });
+      });
+    }
+    act(() => {
+      result.current.dispatch({ type: "extract_started", clientId, jobId: "job-1" });
+    });
+    act(() => {
+      result.current.dispatch({
+        type: "statement_refreshed",
+        clientId,
+        statement: makeStatement({ status: "error", error_detail: "boom" }),
+        llmConfigured,
+      });
+    });
+    return result.current.items[0];
+  }
+
+  it("preselects the LLM (without importing) when one is configured", () => {
+    const item = failedItem(true);
+    expect(item?.status).toBe("awaiting_extractor");
+    expect(item?.extractorChoice).toEqual({ kind: "parser", parserId: "llm" });
+  });
+
+  it("keeps the proposed parser when no LLM is configured", () => {
+    expect(failedItem(false)?.extractorChoice?.kind).toBe("parser");
+    expect(failedItem(false)?.extractorChoice).not.toEqual({ kind: "parser", parserId: "llm" });
+  });
+
+  it("flags a failure of the LLM attempt itself as such", () => {
+    expect(failedItem(true, true)?.failure).toEqual({ detail: "boom", llm: true });
+  });
+
+  it("never auto-confirms an item whose built-in parse already failed", () => {
+    setSkipConfirmForIssuer(3, true);
+    expect(shouldAutoConfirm(makeItem({ failure: { detail: "x", llm: false } }))).toBe(false);
+    window.localStorage.clear();
   });
 });
 

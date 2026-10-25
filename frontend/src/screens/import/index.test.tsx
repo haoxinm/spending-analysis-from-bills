@@ -239,4 +239,107 @@ describe("ImportScreen", () => {
       expect(screen.getByRole("status")).toHaveTextContent("1 statement imported · 40 new transactions"),
     );
   });
+
+  it("shows a failed built-in parse as a warning, keeps the picker, preselects the LLM, and retries with parser_id llm", async () => {
+    const extractBodies: unknown[] = [];
+    let statementGets = 0;
+    const fetchMock = vi.fn<typeof fetch>(async (input) => {
+      const { url, method } = describeRequest(input);
+      if (url.includes("/api/users")) return jsonResponse([USER]);
+      if (url.includes("/api/issuers")) return jsonResponse([ISSUER]);
+      if (url.includes("/api/layout-specs")) return jsonResponse([]);
+      if (url.includes("/api/settings")) return jsonResponse({ llm: { mode: "remote", base_url: "https://x" } });
+      if (url.includes("/api/statements/7/extract") && method === "POST") {
+        const request = input as Request;
+        extractBodies.push(await request.clone().json());
+        return jsonResponse({ job_id: `job-${extractBodies.length}` }, 202);
+      }
+      if (url.includes("/api/statements/7/") ) return jsonResponse({ detail: "n/a" }, 404);
+      if (url.includes("/api/statements/7") && method === "GET") {
+        statementGets += 1;
+        return jsonResponse(
+          statementGets === 1
+            ? {
+                ...STATEMENT_AWAITING,
+                status: "error",
+                error_detail: "layout_a_credit: could not locate the column header row",
+              }
+            : STATEMENT_PARSED,
+        );
+      }
+      if (url.includes("/api/statements") && method === "POST") {
+        return jsonResponse(
+          {
+            statement: STATEMENT_AWAITING,
+            proposal: {
+              issuer_id: 3,
+              parser_id: "layout_a_credit",
+              layout_spec_id: null,
+              confidence: 0.92,
+              auto_confirmed: false,
+            },
+          },
+          201,
+        );
+      }
+      if (url.includes("/api/transactions")) return jsonResponse({ items: [], total: 0 });
+      return jsonResponse({ detail: `unhandled request: ${method} ${url}` }, 404);
+    });
+    await renderScreen(fetchMock);
+    await waitFor(() => expect(screen.getByText("Alex (default)")).toBeInTheDocument());
+
+    const pdf = new File(["%PDF-1.4"], "fees.pdf", { type: "application/pdf" });
+    await userEvent.upload(screen.getByLabelText("Choose statement PDFs"), pdf);
+    await waitFor(() => expect(screen.getByRole("button", { name: "Import" })).toBeEnabled());
+    await userEvent.click(screen.getByRole("button", { name: "Import" }));
+    expect(extractBodies[0]).toMatchObject({ parser_id: "layout_a_credit" });
+
+    await waitFor(() => expect(MockEventSource.instances).toHaveLength(1));
+    MockEventSource.instances[0]?.onmessage?.({ data: JSON.stringify({ status: "error", progress: 1 }) });
+
+    const warning = await screen.findByTestId("parser-warning");
+    expect(warning).toHaveTextContent(
+      "The built-in parser couldn't read this statement: layout_a_credit: could not locate the column header row. Choose the LLM parser (or another extractor) and import again.",
+    );
+    expect(screen.getByRole("link", { name: "Map this layout" })).toBeInTheDocument();
+    // Picker and Import stay available, with the LLM preselected (but nothing sent yet).
+    await waitFor(() => expect(screen.getByLabelText(/Extractor/)).toHaveValue("parser:llm"));
+    expect(extractBodies).toHaveLength(1);
+    expect(screen.getByRole("button", { name: "Import" })).toBeEnabled();
+
+    await userEvent.click(screen.getByRole("button", { name: "Import" }));
+    expect(extractBodies).toHaveLength(2);
+    expect(extractBodies[1]).toMatchObject({ parser_id: "llm", layout_spec_id: null, issuer_id: 3 });
+  });
+
+  it("shows a re-uploaded, previously failed statement as an informational warning with the picker open", async () => {
+    const fetchMock = vi.fn<typeof fetch>(async (input) => {
+      await Promise.resolve();
+      const { url, method } = describeRequest(input);
+      if (url.includes("/api/users")) return jsonResponse([USER]);
+      if (url.includes("/api/issuers")) return jsonResponse([ISSUER]);
+      if (url.includes("/api/layout-specs")) return jsonResponse([]);
+      if (url.includes("/api/settings")) return jsonResponse({ llm: { mode: "remote", base_url: "https://x" } });
+      if (url.includes("/api/statements") && method === "POST") {
+        return jsonResponse(
+          {
+            statement: { ...STATEMENT_AWAITING, error_detail: "The LLM could not parse this statement: timed out" },
+            proposal: { issuer_id: 3, parser_id: "layout_a_credit", layout_spec_id: null, confidence: 0.92, auto_confirmed: false },
+          },
+          201,
+        );
+      }
+      return jsonResponse({ detail: "n/a" }, 404);
+    });
+    await renderScreen(fetchMock);
+    await waitFor(() => expect(screen.getByText("Alex (default)")).toBeInTheDocument());
+    await userEvent.upload(screen.getByLabelText("Choose statement PDFs"), new File(["%PDF-1.4"], "again.pdf", { type: "application/pdf" }));
+
+    expect(await screen.findByTestId("parser-warning")).toHaveTextContent(
+      "A previous attempt to import this statement failed: The LLM could not parse this statement: timed out",
+    );
+    expect(screen.getByRole("button", { name: "Import" })).toBeEnabled();
+    // Re-uploading never auto-runs the extractor that failed.
+    expect(fetchMock.mock.calls.some(([i]) => describeRequest(i as Request).url.includes("/extract"))).toBe(false);
+  });
 });

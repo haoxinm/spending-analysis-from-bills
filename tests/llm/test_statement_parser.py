@@ -239,8 +239,9 @@ def test_unparseable_reply_and_zero_transactions(monkeypatch: pytest.MonkeyPatch
     with pytest.raises(ParserError):
         sp.LLMStatementParser(remote_cfg()).parse(_doc("t"))
     fake.queue(_reply([]))
-    with pytest.raises(ParserError, match="any transactions"):
-        sp.LLMStatementParser(remote_cfg()).parse(_doc("t"))
+    empty = sp.LLMStatementParser(remote_cfg()).parse(_doc("t"))
+    assert empty.transactions == ()
+    assert any("no transactions" in w for w in empty.warnings)
 
 
 def test_parser_identity() -> None:

@@ -52,4 +52,12 @@ export interface ImportItem {
   needsReviewCount?: number;
 
   errorMessage?: string;
+
+  /** Whether the extractor of the in-flight/last import attempt was the LLM (decides the wording
+   * of a failure warning and whether to preselect the LLM afterwards). */
+  attemptedLlm?: boolean;
+
+  /** A failed parse is a warning, not a dead end (the staged PDF is kept server-side): the item
+   * goes back to `awaiting_extractor` with the failure detail here, the picker still available. */
+  failure?: { detail: string; llm: boolean; previous?: boolean };
 }

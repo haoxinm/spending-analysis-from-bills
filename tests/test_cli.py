@@ -5,6 +5,7 @@ import io
 import json
 from pathlib import Path
 
+import pytest
 from typer.testing import CliRunner
 
 from spend_analyzer.cli import app
@@ -313,3 +314,48 @@ def test_gate2_registering_an_issuer_first_makes_a_later_import_auto_confirm(hom
     assert second_result.exit_code == 0, second_result.output
     assert "imported" in second_result.output, second_result.output
     assert "awaiting_extractor" not in second_result.output, second_result.output
+
+
+def test_import_builtin_failure_warns_and_prints_llm_retry_command(
+    home: Path, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """A built-in parser that raises is a warning with a copy-pasteable `--parser-id llm`
+    retry; the staged PDF is kept so that retry succeeds."""
+    import re
+    import shlex
+
+    from tests.ingest.test_pipeline import _build_bank_pdf
+    from tests.llm_fakes import install
+
+    monkeypatch.setenv("SPEND_ANALYZER_PRIVACY__STORE_PDF_COPIES", "false")
+    pdf = tmp_path / "both.pdf"
+    _build_bank_pdf(
+        pdf,
+        [
+            ("01/02/2026", "PAYCHECK DEPOSIT", "", "300.00", "1,300.00"),
+            ("01/03/2026", "ATM WITHDRAWAL", "40.00", "", "1,260.00"),
+            ("01/04/2026", "MIXED ROW", "20.00", "5.00", "1,245.00"),
+            ("01/25/2026", "ONLINE SHOPPING", "60.00", "", "1,185.00"),
+        ],
+        opening="1,000.00",
+        closing="1,185.00",
+    )
+    runner.invoke(app, ["migrate"], catch_exceptions=False)
+    failed = runner.invoke(
+        app, ["import", str(pdf), "--parser-id", "generic_table"], catch_exceptions=False
+    )
+    assert failed.exit_code == 1, failed.output
+    assert "both the debit and credit" in failed.output
+    assert "warning" in failed.output
+    match = re.search(r"spend-analyzer (import .*--parser-id llm.*)", failed.output)
+    assert match is not None, failed.output
+
+    monkeypatch.setenv("SPEND_ANALYZER_LLM__ENABLED", "true")
+    monkeypatch.setenv("SPEND_ANALYZER_LLM__BASE_URL", "https://api.example.com")
+    monkeypatch.setenv("SPEND_ANALYZER_LLM__MODEL", "m")
+    install(monkeypatch).queue(
+        json.dumps({"account_type": "checking", "transactions": []})  # empty is fine too
+    )
+    retried = runner.invoke(app, shlex.split(match.group(1)), catch_exceptions=False)
+    assert retried.exit_code == 0, retried.output
+    assert "imported 0 transaction" in retried.output

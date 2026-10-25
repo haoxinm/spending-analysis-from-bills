@@ -176,7 +176,9 @@ def propose_import(
     Idempotency (I9): if a statement with this file's SHA-256 already exists, nothing is
     re-extracted or re-scored. A `status='parsed'` row is reported back as `status='duplicate'`
     (this upload is a no-op); its staged PDF, if any, is no longer needed and is left alone. Any
-    other existing status (including `'awaiting_extractor'` itself) is reported as-is, and the
+    other existing status (including `'awaiting_extractor'` itself) is reported as-is (a failed
+    `'error'`/`'unsupported_layout'` row is reopened as `'awaiting_extractor'`, keeping its
+    `error_detail`, and is never `confident`), and the
     file is (re-)staged and `user_id` refreshed on the existing row — the recovery path for a
     statement whose Phase 2 previously failed, or whose staged copy was deleted because
     `[privacy] store_pdf_copies` is off: re-proposing the same bytes makes `confirm_import`/
@@ -204,9 +206,15 @@ def propose_import(
         .first()
     )
     if existing is not None:
+        retry_after_failure = existing.status in (STATUS_UNSUPPORTED_LAYOUT, STATUS_ERROR)
         if existing.status != STATUS_PARSED:
             _stage_pdf(pdf_path, file_sha256)
             existing.user_id = user_id
+            if retry_after_failure:
+                # A failed built-in parse is retryable: re-proposing reopens the statement
+                # (the failure message stays in `error_detail` as a warning) and it is never
+                # reported as confident, so nothing auto-confirms the parser that just failed.
+                existing.status = STATUS_AWAITING_EXTRACTOR
             session.commit()
         status = "duplicate" if existing.status == STATUS_PARSED else existing.status
         return ImportProposal(
@@ -216,7 +224,8 @@ def propose_import(
             parser_id=existing.parser_id,
             layout_spec_id=existing.layout_spec_id,
             detect_score=existing.detect_score,
-            confident=_is_confident(existing.issuer_id, existing.detect_score, existing.status),
+            confident=not retry_after_failure
+            and _is_confident(existing.issuer_id, existing.detect_score, existing.status),
         )
 
     doc = extract(pdf_path)
@@ -385,9 +394,12 @@ def confirm_import(
             or its staged PDF is no longer on disk (re-propose the same file to restage it).
         ValueError: neither or both of `parser_id`/`layout_spec_id` were given.
         UnsupportedLayoutError: the generic parser found too few transactions to be usable.
-            `statements.status` is set to `'unsupported_layout'` before this is re-raised.
+            `statements.status` is set to `'unsupported_layout'` (message in `error_detail`)
+            before this is re-raised. The staged PDF is kept and the statement stays
+            confirmable: calling this again with another `parser_id` (e.g. ``"llm"``) works.
         ParserError: the parser could not otherwise parse the statement (e.g. an unresolvable
-            year-less date). `statements.status` is set to `'error'` before this is re-raised.
+            year-less date). `statements.status` is set to `'error'` before this is re-raised;
+            the staged PDF is kept and the statement can be confirmed again.
     """
     statement = session.get(Statement, statement_id)
     if statement is None:
@@ -418,12 +430,13 @@ def confirm_import(
     try:
         parsed = parser.parse(doc)
     except UnsupportedLayoutError as exc:
+        # A failing parser is a warning, not a dead end: the staged PDF is kept so the user can
+        # confirm again with another extractor (e.g. the LLM). A statement never retried keeps its
+        # staged copy (small, local; deleted once a retry reaches a terminal outcome).
         _mark_failed(session, statement, STATUS_UNSUPPORTED_LAYOUT, str(exc))
-        _unstage_pdf_if_not_kept(statement.file_sha256, settings)
         raise
     except ParserError as exc:
         _mark_failed(session, statement, STATUS_ERROR, str(exc))
-        _unstage_pdf_if_not_kept(statement.file_sha256, settings)
         raise
 
     result = _persist_parsed_statement(

@@ -112,6 +112,30 @@ export function StatementCard({
 
         {item.status === "awaiting_extractor" ? (
           <div className="flex flex-col gap-3">
+            {item.failure ? (
+              <div
+                role="alert"
+                data-testid="parser-warning"
+                className="flex flex-col gap-2 rounded-md border border-amber-500/50 bg-amber-500/10 p-3 text-sm text-foreground"
+              >
+                <p>
+                  {item.failure.previous
+                    ? `A previous attempt to import this statement failed: ${item.failure.detail}. Choose an extractor (change your settings first if needed) and import again.`
+                    : item.failure.llm
+                    ? `The LLM parser couldn't read this statement: ${item.failure.detail}. Adjust the selected pages or choose another extractor, then import again.`
+                    : `The built-in parser couldn't read this statement: ${item.failure.detail}. Choose the LLM parser (or another extractor) and import again.`}
+                </p>
+                <Link
+                  to={`/layout-mapper?statement_id=${item.statementId ?? ""}`}
+                  className="self-start text-xs underline"
+                >
+                  Map this layout
+                </Link>
+              </div>
+            ) : null}
+            {item.errorMessage ? (
+              <p className="text-sm text-destructive">{item.errorMessage}</p>
+            ) : null}
             {item.proposal ? (
               <p className="text-xs text-muted-foreground">
                 Detected confidence: {Math.round(item.proposal.confidence * 100)}%

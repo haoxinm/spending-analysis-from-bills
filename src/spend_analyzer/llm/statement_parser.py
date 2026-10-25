@@ -263,7 +263,13 @@ class LLMStatementParser:
                 )
                 data = client.extract_json(response.text)
             except LLMError as exc:
-                raise ParserError(f"The LLM could not parse this statement: {exc}") from exc
+                hint = ""
+                if "timed out" in str(exc):
+                    hint = (
+                        " -- raise Timeout in Settings -> LLM (Advanced), or lower 'Pages per "
+                        "request' so each request is smaller, then import again"
+                    )
+                raise ParserError(f"The LLM could not parse this statement: {exc}{hint}") from exc
             if isinstance(data, list):  # a bare list of transactions
                 data = {"transactions": data}
             if not isinstance(data, dict):
@@ -311,15 +317,12 @@ class LLMStatementParser:
             else:
                 transactions.append(txn)
 
-        if not transactions:
-            raise ParserError(
-                "The LLM did not find any transactions in the selected pages. Check that the "
-                "page selection includes the transaction tables, or try another model."
-            )
-
         warnings: tuple[str, ...] = ()
+        if not transactions and not skipped:
+            # A statement with no activity is legitimate: import it as 0 transactions.
+            warnings = ("The LLM found no transactions in the selected pages",)
         if skipped:
-            warnings = (f"{skipped} row(s) returned by the LLM were invalid and skipped",)
+            warnings += (f"{skipped} row(s) returned by the LLM were invalid and skipped",)
 
         digits = re.sub(r"\D", "", _s(meta.get("account_last4")) or "")
         mask = digits[-4:] if digits else None

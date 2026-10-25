@@ -5,7 +5,7 @@ import { useUsers } from "@/api/hooks";
 import { ErrorState, LoadingState } from "@/components/primitives/states";
 import type { JobEvent } from "@/hooks/use-job-progress";
 
-import { useExtractStatement, useUploadStatement } from "./api";
+import { useExtractStatement, useImportSettings, useUploadStatement } from "./api";
 import { FileDropZone } from "./file-drop-zone";
 import { IssuerExtractorPicker } from "./issuer-extractor-picker";
 import { getStickyUserId, setStickyUserId } from "./storage";
@@ -29,6 +29,9 @@ function ImportScreen() {
   const { items, queueFiles, dispatch } = useImportQueue();
   const uploadStatement = useUploadStatement();
   const extractStatement = useExtractStatement();
+  const settingsQuery = useImportSettings();
+  const llmMode = settingsQuery.data?.llm.mode;
+  const llmConfigured = llmMode !== undefined && llmMode !== "none";
 
   const users = usersQuery.data ?? [];
   const [selectedUserId, setSelectedUserId] = React.useState<number | null>(null);
@@ -87,6 +90,7 @@ function ImportScreen() {
               clientId,
               statement: response.statement,
               proposal: response.proposal,
+              llmConfigured,
             });
             const updatedItem: ImportItem = {
               clientId,
@@ -100,8 +104,15 @@ function ImportScreen() {
               extractorChoice: extractorChoiceFromProposal(response.proposal),
               remember: true,
               selectedPages: response.statement.selected_pages ?? null,
+              // A re-uploaded statement whose built-in parse already failed must not auto-run it.
+              failure: response.statement.error_detail
+                ? { detail: response.statement.error_detail, llm: false, previous: true }
+                : undefined,
             };
-            if (response.statement.status === "awaiting_extractor" && shouldAutoConfirm(updatedItem)) {
+            if (
+              response.statement.status === "awaiting_extractor" &&
+              shouldAutoConfirm(updatedItem)
+            ) {
               confirmImport(updatedItem);
             }
           },
@@ -115,7 +126,7 @@ function ImportScreen() {
         },
       );
     },
-    [uploadStatement, dispatch, confirmImport],
+    [uploadStatement, dispatch, confirmImport, llmConfigured],
   );
 
   const handleFiles = React.useCallback(
@@ -142,9 +153,16 @@ function ImportScreen() {
       const dedupeKey = `${clientId}:${item.jobId}`;
       if (refreshedJobIds.current.has(dedupeKey)) return;
       refreshedJobIds.current.add(dedupeKey);
-      void refreshAfterJob(clientId, item.statementId, item.jobId, dispatch, queryClient);
+      void refreshAfterJob(
+        clientId,
+        item.statementId,
+        item.jobId,
+        dispatch,
+        queryClient,
+        llmConfigured,
+      );
     },
-    [items, dispatch, queryClient],
+    [items, dispatch, queryClient, llmConfigured],
   );
 
   if (usersQuery.isLoading) return <LoadingState rows={3} />;

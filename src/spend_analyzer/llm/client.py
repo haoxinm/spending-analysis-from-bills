@@ -73,6 +73,10 @@ def complete(
         if use_schema and status in _SCHEMA_REJECTED_STATUSES:
             status, body = _post(cfg, _build_body(cfg, system, user, None, schema_name))
             schema_mode = "text_fallback"
+    except httpx.TimeoutException as exc:
+        raise LLMError(
+            f"LLM request to {cfg.resolved_url} failed: timed out after {cfg.timeout_s}s"
+        ) from exc
     except (httpx.HTTPError, OSError) as exc:
         raise LLMError(f"LLM request to {cfg.resolved_url} failed: {exc}") from exc
     latency_ms = int((time.monotonic() - started) * 1000)

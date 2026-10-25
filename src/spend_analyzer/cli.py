@@ -311,12 +311,13 @@ def import_cmd(
                 # (below) lets a later import of the same bank's statements match confidently.
                 resolved_issuer_id = crud.unknown_issuer_id(session)
 
+            used_parser_id = parser_id if parser_id is not None else proposal.parser_id
             try:
                 result = gateway.confirm_import(
                     session,
                     proposal.statement_id,
                     issuer_id=resolved_issuer_id,
-                    parser_id=parser_id if parser_id is not None else proposal.parser_id,
+                    parser_id=used_parser_id,
                     layout_spec_id=(
                         layout_spec_id if layout_spec_id is not None else proposal.layout_spec_id
                     ),
@@ -327,6 +328,32 @@ def import_cmd(
             except SpendAnalyzerError as exc:
                 typer.echo(f"{raw_path}: statement #{proposal.statement_id} -> {exc}", err=True)
                 any_error = True
+                if used_parser_id != "llm" and layout_spec_id is None:
+                    # A failing built-in parser is a warning, not a dead end: the PDF is still
+                    # staged, so the same statement can be confirmed with the LLM parser.
+                    stmt_row = crud.get_statement(session, proposal.statement_id)
+                    last_page = (stmt_row.page_count if stmt_row else None) or 1
+                    retry_cmd = join_command(
+                        [
+                            "spend-analyzer",
+                            "import",
+                            raw_path,
+                            "--user-id",
+                            str(resolved_user_id),
+                            "--issuer-id",
+                            str(resolved_issuer_id),
+                            "--parser-id",
+                            "llm",
+                            "--pages",
+                            f"1-{last_page}",
+                        ]
+                    )
+                    typer.echo(
+                        f"{raw_path}: warning: the built-in parser couldn't read this statement. "
+                        "Retry with the LLM parser (edit --pages to choose which pages are "
+                        f"sent):\n  {retry_cmd}",
+                        err=True,
+                    )
                 continue
 
             typer.echo(

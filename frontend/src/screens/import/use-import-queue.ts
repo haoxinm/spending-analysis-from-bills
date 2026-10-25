@@ -60,9 +60,51 @@ function statusFromStatement(statement: Statement): ImportItemStatus {
   }
 }
 
+const LLM_CHOICE: ExtractorChoice = { kind: "parser", parserId: "llm" };
+
+/** Applies a (re)loaded statement to `item`. A statement that failed to parse — or one re-proposed
+ * after such a failure, which the server reopens as `awaiting_extractor` with its `error_detail`
+ * kept — is a retryable warning: the item stays importable, and after a built-in failure the LLM
+ * is preselected when one is configured (it is never *run* without the user clicking Import). */
+function applyStatement(item: ImportItem, statement: Statement, llmConfigured: boolean): ImportItem {
+  const failed =
+    statement.status === "unsupported_layout" ||
+    statement.status === "error" ||
+    (statement.status === "awaiting_extractor" && Boolean(statement.error_detail));
+  if (!failed) {
+    return {
+      ...item,
+      statement,
+      status: statusFromStatement(statement),
+      errorMessage: statement.error_detail ?? undefined,
+      failure: undefined,
+    };
+  }
+  const llm = item.attemptedLlm === true;
+  return {
+    ...item,
+    statement,
+    status: "awaiting_extractor",
+    errorMessage: undefined,
+    failure: {
+      detail: statement.error_detail ?? "unknown error",
+      llm,
+      // Reopened server-side by a re-upload: the failure is from an earlier session/attempt.
+      ...(statement.status === "awaiting_extractor" ? { previous: true } : {}),
+    },
+    extractorChoice: !llm && llmConfigured ? LLM_CHOICE : item.extractorChoice,
+  };
+}
+
 export type Action =
   | { type: "files_queued"; items: ImportItem[] }
-  | { type: "upload_succeeded"; clientId: string; statement: Statement; proposal: ImportItem["proposal"] }
+  | {
+      type: "upload_succeeded";
+      clientId: string;
+      statement: Statement;
+      proposal: ImportItem["proposal"];
+      llmConfigured?: boolean;
+    }
   | { type: "upload_failed"; clientId: string; message: string }
   | { type: "issuer_selected"; clientId: string; issuerId: number | null; extractorChoice: ExtractorChoice | null }
   | { type: "extractor_selected"; clientId: string; extractorChoice: ExtractorChoice }
@@ -71,7 +113,7 @@ export type Action =
   | { type: "extract_started"; clientId: string; jobId: string }
   | { type: "extract_failed"; clientId: string; message: string }
   | { type: "job_event"; clientId: string; event: JobEvent }
-  | { type: "statement_refreshed"; clientId: string; statement: Statement }
+  | { type: "statement_refreshed"; clientId: string; statement: Statement; llmConfigured?: boolean }
   | { type: "needs_review_counted"; clientId: string; count: number | undefined };
 
 function reducer(items: ImportItem[], action: Action): ImportItem[] {
@@ -90,17 +132,20 @@ function reducer(items: ImportItem[], action: Action): ImportItem[] {
       }));
 
     case "upload_succeeded":
-      return patch(action.clientId, (item) => ({
-        ...item,
-        statementId: action.statement.id,
-        statement: action.statement,
-        proposal: action.proposal,
-        selectedPages: action.statement.selected_pages ?? null,
-        issuerId: action.proposal?.issuer_id ?? null,
-        extractorChoice: action.proposal ? extractorChoiceFromProposal(action.proposal) : null,
-        status: statusFromStatement(action.statement),
-        errorMessage: action.statement.error_detail ?? undefined,
-      }));
+      return patch(action.clientId, (item) =>
+        applyStatement(
+          {
+            ...item,
+            statementId: action.statement.id,
+            proposal: action.proposal,
+            selectedPages: action.statement.selected_pages ?? null,
+            issuerId: action.proposal?.issuer_id ?? null,
+            extractorChoice: action.proposal ? extractorChoiceFromProposal(action.proposal) : null,
+          },
+          action.statement,
+          action.llmConfigured ?? false,
+        ),
+      );
 
     case "issuer_selected":
       return patch(action.clientId, (item) => ({
@@ -124,6 +169,8 @@ function reducer(items: ImportItem[], action: Action): ImportItem[] {
         status: "extracting",
         jobId: action.jobId,
         errorMessage: undefined,
+        failure: undefined,
+        attemptedLlm: isLlmChoice(item.extractorChoice),
       }));
 
     case "extract_failed":
@@ -137,12 +184,9 @@ function reducer(items: ImportItem[], action: Action): ImportItem[] {
       return patch(action.clientId, (item) => ({ ...item, jobEvent: action.event }));
 
     case "statement_refreshed":
-      return patch(action.clientId, (item) => ({
-        ...item,
-        statement: action.statement,
-        status: statusFromStatement(action.statement),
-        errorMessage: action.statement.error_detail ?? undefined,
-      }));
+      return patch(action.clientId, (item) =>
+        applyStatement(item, action.statement, action.llmConfigured ?? false),
+      );
 
     case "needs_review_counted":
       return patch(action.clientId, (item) => ({ ...item, needsReviewCount: action.count }));
@@ -206,7 +250,14 @@ export function isConfidentProposal(item: ImportItem): boolean {
 export function shouldAutoConfirm(item: ImportItem): boolean {
   // Never auto-import with the LLM: it sends statement text off-device (or to a local model) and
   // its output always needs a human look first.
-  return !isLlmChoice(item.extractorChoice) && isConfidentProposal(item) && item.issuerId !== null && isSkipConfirmForIssuer(item.issuerId);
+  // Nor re-run a built-in parser that already failed on this statement.
+  return (
+    !isLlmChoice(item.extractorChoice) &&
+    item.failure === undefined &&
+    isConfidentProposal(item) &&
+    item.issuerId !== null &&
+    isSkipConfirmForIssuer(item.issuerId)
+  );
 }
 
 /** Refreshes a statement after its extract job reaches a terminal state, then — once parsed —
@@ -227,10 +278,11 @@ export async function refreshAfterJob(
   jobId: string,
   dispatch: React.Dispatch<Action>,
   queryClient: QueryClient,
+  llmConfigured = false,
 ): Promise<void> {
   const statement = await fetchStatement(statementId);
   if (statement === null) return;
-  dispatch({ type: "statement_refreshed", clientId, statement });
+  dispatch({ type: "statement_refreshed", clientId, statement, llmConfigured });
 
   if (statement.status === "parsed") {
     const count =
