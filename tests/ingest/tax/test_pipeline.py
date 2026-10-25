@@ -45,6 +45,10 @@ _PARSE_CASES = [
     ("tax_1099_nec_misc", "nec_normal", ("1099-nec",)),
     ("tax_1099_consolidated", "int_div_b", None),
     ("tax_1040", "with_investment_income", ("1040",)),
+    ("tax_w2", "side_by_side_2up", ("w2", "w2")),
+    ("tax_1099_int", "two_payers_stacked", ("1099-int", "1099-int")),
+    ("tax_1099_broker", "two_up", ("1099-consolidated",)),
+    ("tax_mixed_package", "w2_int_div", ("w2", "1099-int", "1099-div")),
 ]
 
 
@@ -339,16 +343,7 @@ def test_unexpected_exception_is_recorded_unstaged_and_not_raised(
     if where == "extract":
         monkeypatch.setattr(pipeline, "extract", boom)
     else:
-        real = pipeline.select_tax_parser
-
-        class _Broken:
-            def __init__(self, parser: object) -> None:
-                self.id = getattr(parser, "id", "x")
-                self.version = getattr(parser, "version", "1")
-
-            parse = staticmethod(boom)
-
-        monkeypatch.setattr(pipeline, "select_tax_parser", lambda ex: _Broken(real(ex)))
+        monkeypatch.setattr(pipeline, "parse_document", boom)
     caplog.set_level(logging.DEBUG)
     staged = _stage(generated_pdf("tax_w2", "normal"))
     uid = _user(session)
@@ -484,3 +479,44 @@ def test_w2_identical_without_ein_is_not_collapsed(session: Session) -> None:
         2,
     )
     assert any("Two identical W-2 forms" in w for w in result.warnings)
+
+
+def test_partial_success_keeps_the_readable_form_and_warns(session: Session) -> None:
+    uid = _user(session)
+    result = _import(session, "tax_1099_int", "second_form_blank_box1", uid)
+    assert result.status == "parsed" and result.error is None
+    assert result.form_types == ("1099-int",) and result.inserted_forms == 1
+    assert any("skipped" in w and "box 1" in w for w in result.warnings)
+    doc = session.get(TaxDocument, result.document_id)
+    assert doc is not None and doc.status == "parsed"
+    assert doc.warnings is not None and "skipped" in doc.warnings
+
+
+def test_file_with_nothing_readable_is_still_an_error(session: Session) -> None:
+    uid = _user(session)
+    result = _import(session, "tax_w2", "no_box1", uid)
+    assert result.status == "error" and result.inserted_forms == 0
+    assert result.error is not None and not re.search(r"\d{6}", result.error)
+
+
+def test_mixed_package_records_one_form_per_parser_and_multi_parser_id(session: Session) -> None:
+    uid = _user(session)
+    result = _import(session, "tax_mixed_package", "w2_int_div", uid)
+    assert result.status == "parsed" and result.inserted_forms == 3
+    doc = session.get(TaxDocument, result.document_id)
+    assert doc is not None and doc.parser_id == "multi"
+
+
+def test_broker_statement_with_two_up_forms_imports_as_one_consolidated_form(
+    session: Session,
+) -> None:
+    uid = _user(session)
+    result = _import(session, "tax_1099_broker", "two_up", uid)
+    assert result.status == "parsed" and result.form_types == ("1099-consolidated",)
+    assert result.income_item_count == 13 and result.tax_item_count == 4
+    form = session.scalars(select(TaxForm)).one()
+    assert (form.payer_name, form.payer_tin_last4, form.account_last4) == (
+        "Copperfield Securities",
+        "0004",
+        "7731",
+    )

@@ -291,14 +291,28 @@ def clean_jurisdiction(raw: str | None) -> str | None:
     return cleaned[:MAX_JURISDICTION_LEN].rstrip()
 
 
+_CONTINUATION = r"\bcont(?:inued|'d)\b|\bpage\s+(?:[2-9]|\d{2,})\s+of\s+\d+\b"
+
+
+def without_continuations(heading_re: re.Pattern[str]) -> re.Pattern[str]:
+    """`heading_re`, but a row that also says "continued" / "page 2 of 3" is not a heading: it is
+    the repeated running heading of a form that spans pages, not the start of a new form."""
+    return re.compile(
+        rf"^(?!.*(?:{_CONTINUATION}))(?=.*(?:{heading_re.pattern}))",
+        heading_re.flags | re.IGNORECASE,
+    )
+
+
 def split_forms(doc: ExtractedDoc, heading_re: re.Pattern[str]) -> tuple[ExtractedDoc, ...]:
     """Split a file into one document per form for single-form 1099 parsers.
 
     Zero or one heading row: the whole document. Several headings, at most one per page: one
     document per heading page (following pages without a heading stay with the previous form).
     Several headings on one page: `split_blocks` at each heading row (rows above the first
-    heading are kept with the first form).
+    heading are kept with the first form). A heading row that says "continued" or "page 2 of 3"
+    does not start a new form.
     """
+    heading_re = without_continuations(heading_re)
     per_page = [
         sum(1 for row in cluster_rows(page.words) if heading_re.search(row.text))
         for page in doc.pages
@@ -308,9 +322,14 @@ def split_forms(doc: ExtractedDoc, heading_re: re.Pattern[str]) -> tuple[Extract
     if max(per_page) > 1:
         return split_blocks(doc, heading_re, keep_preamble=True) or (doc,)
     groups: list[list[PageText]] = []
+    lead: list[PageText] = []  # pages before the first heading stay with the first form
     for page, count in zip(doc.pages, per_page, strict=True):
+        if not groups and not count:
+            lead.append(page)
+            continue
         if count or not groups:
-            groups.append([])
+            groups.append(lead)
+            lead = []
         groups[-1].append(page)
     return tuple(
         ExtractedDoc(

@@ -37,6 +37,7 @@ from spend_analyzer.core.types import ExtractedDoc
 from spend_analyzer.ingest.tax.common import (
     build_document,
     check_warning,
+    collect,
     halve_if_other_1099,
     require_year,
     sanitize_payer_name,
@@ -218,8 +219,12 @@ class Form1099DivParser:
             ParserError: tax year undeterminable, or a form without a box 1a value.
         """
         year = require_year(doc, tax_year)
-        forms = [parse_div_section(block, year) for block in split_forms(doc, _HEADING)]
-        return build_document(forms)
+        got = collect(
+            split_forms(doc, _HEADING),
+            lambda block: parse_div_section(block, year),
+            kind="1099-DIV",
+        )
+        return build_document(got.forms, warnings=got.warnings, unparsed=got.unparsed)
 
 
 PARSER = Form1099DivParser()

@@ -31,6 +31,7 @@ from spend_analyzer.core.types import ExtractedDoc
 from spend_analyzer.ingest.tax.common import (
     build_document,
     check_warning,
+    collect,
     halve_if_other_1099,
     require_year,
     sanitize_payer_name,
@@ -200,8 +201,10 @@ class Form1099NecMiscParser:
             ParserError: tax year undeterminable, no heading, or a form without a primary box.
         """
         year = require_year(doc, tax_year)
-        forms = [_parse_form(block, year) for block in split_forms(doc, _HEADING)]
-        return build_document(forms)
+        got = collect(
+            split_forms(doc, _HEADING), lambda block: _parse_form(block, year), kind="1099-NEC/MISC"
+        )
+        return build_document(got.forms, warnings=got.warnings, unparsed=got.unparsed)
 
 
 PARSER = Form1099NecMiscParser()

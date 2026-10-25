@@ -7,10 +7,11 @@ Helper module: exposes no object with `id`/`version`/`form_types`/`detect`/`pars
 from __future__ import annotations
 
 import re
-from collections.abc import Collection, Iterable, Sequence
+from collections.abc import Callable, Collection, Iterable, Sequence
+from dataclasses import dataclass
 
 from spend_analyzer.core.errors import ParserError
-from spend_analyzer.core.tax_types import ParsedTaxDocument, ParsedTaxForm
+from spend_analyzer.core.tax_types import ParsedTaxDocument, ParsedTaxForm, UnparsedRegion
 from spend_analyzer.core.types import ExtractedDoc
 from spend_analyzer.ingest.tax.tin import contains_ssn_shape, has_long_digit_run, scrub
 from spend_analyzer.ingest.tax.year import detect_tax_year
@@ -74,7 +75,10 @@ def check_warning(message: str) -> str:
 
 
 def build_document(
-    forms: Sequence[ParsedTaxForm], *, warnings: Iterable[str] = ()
+    forms: Sequence[ParsedTaxForm],
+    *,
+    warnings: Iterable[str] = (),
+    unparsed: Iterable[UnparsedRegion] = (),
 ) -> ParsedTaxDocument:
     """Assemble a `ParsedTaxDocument` from parsed forms.
 
@@ -99,7 +103,67 @@ def build_document(
         for message in form.warnings:
             check_warning(message)
     doc_warnings = tuple(dict.fromkeys(check_warning(w) for w in warnings))
-    return ParsedTaxDocument(tax_year=years.pop(), forms=tuple(forms), warnings=doc_warnings)
+    return ParsedTaxDocument(
+        tax_year=years.pop(),
+        forms=tuple(forms),
+        warnings=doc_warnings,
+        unparsed=tuple(unparsed),
+    )
+
+
+@dataclass(frozen=True, slots=True)
+class Collected:
+    """Outcome of `collect`: the forms that parsed, plus a warning and an `UnparsedRegion` for each
+    block that did not."""
+
+    forms: tuple[ParsedTaxForm, ...]
+    warnings: tuple[str, ...]
+    unparsed: tuple[UnparsedRegion, ...]
+
+
+def collect(
+    blocks: Sequence[ExtractedDoc],
+    parse_one: Callable[[ExtractedDoc], ParsedTaxForm | None],
+    *,
+    kind: str,
+) -> Collected:
+    """Parse each block independently so one unreadable form does not discard the others.
+
+    `parse_one` returns a form, `None` (the block is not a form of this kind: ignored), or raises
+    `ParserError`. Each `ParserError` becomes a warning (its generic message plus a fixed
+    suffix) and an `UnparsedRegion(kind, pages)`. When EVERY block failed and nothing parsed, the
+    first error is re-raised unchanged so a file with a single unreadable form still fails with
+    that form's message.
+
+    Raises:
+        ParserError: every block raised (the first block's error).
+    """
+    forms: list[ParsedTaxForm] = []
+    warnings: list[str] = []
+    unparsed: list[UnparsedRegion] = []
+    first_error: ParserError | None = None
+    for block in blocks:
+        try:
+            form = parse_one(block)
+        except ParserError as exc:
+            first_error = first_error or exc
+            message = str(exc).rstrip(".")
+            warnings.append(
+                check_warning(f"{message}; that form was skipped. Enter its figures manually.")
+            )
+            unparsed.append(
+                UnparsedRegion(
+                    kind=kind,
+                    pages=tuple(p.page_number for p in block.pages),
+                    reason="unreadable",
+                )
+            )
+            continue
+        if form is not None:
+            forms.append(form)
+    if not forms and first_error is not None:
+        raise first_error
+    return Collected(tuple(forms), tuple(dict.fromkeys(warnings)), tuple(unparsed))
 
 
 def distinct_1099_sections(doc: ExtractedDoc) -> frozenset[str]:

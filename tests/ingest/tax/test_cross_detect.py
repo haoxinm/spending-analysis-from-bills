@@ -29,7 +29,11 @@ def _pdfs(*, tax: bool) -> list[Path]:
     return found
 
 
-TAX_PDFS = _pdfs(tax=True)
+ALL_TAX_PDFS = _pdfs(tax=True)
+_PARSER_IDS = {p.id for p in tax_registry.discover_tax_parsers()}
+#: Fixtures that exist for exactly one parser. The statement / mixed-package fixtures exercise
+#: segmentation across parsers (see `test_orchestrator.py`) and have no single owner.
+TAX_PDFS = [p for p in ALL_TAX_PDFS if p.parent.name in _PARSER_IDS]
 BANK_PDFS = _pdfs(tax=False)
 
 
@@ -72,7 +76,7 @@ def test_bank_fixture_scores_low_on_every_tax_parser(pdf: Path) -> None:
         assert parser.detect(doc) <= THRESHOLD, parser.id
 
 
-@pytest.mark.parametrize("pdf", TAX_PDFS, ids=_id)
+@pytest.mark.parametrize("pdf", ALL_TAX_PDFS, ids=_id)
 def test_tax_fixture_scores_low_on_every_bank_parser(pdf: Path) -> None:
     doc = _doc(pdf)
     parsers = bank_registry.discover_builtin_parsers()

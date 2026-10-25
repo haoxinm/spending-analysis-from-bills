@@ -33,6 +33,28 @@ Requirements:
 A file may hold several forms (two employers' W-2s, a consolidated 1099 with several accounts).
 Each is stored separately.
 
+### Layouts the importer copes with
+
+The importer does not assume one form per file or any one broker's layout. Before parsing, it
+cleans the text (glyph placeholders, dot leaders between a label and its amount, letter-spaced
+headings such as `Form 1 0 9 9 - D I V`, detached signs and parentheses, the page header repeated
+on every page, instruction pages that name every form but carry no amounts) and then cuts each
+page into regions by form headings and word positions:
+
+- two forms side by side on a landscape page (2-up) or four in a grid (4-up), and forms stacked
+  on one page;
+- one form that continues on the next page (`(continued)`, `Page 2 of 3`), a 1099-B transaction
+  table over many pages (net gain per holding term is taken from the broker's own term totals,
+  else its covered and noncovered subtotals, else the trades; subtotals are never added to
+  totals);
+- different form types in one PDF (a W-2, a 1099-INT and a 1099-DIV page; a 1040 with attached
+  W-2s).
+
+A part of a file that cannot be read does not fail the whole file: the readable forms are
+imported and an **import warning** says which kind of form was skipped. Only a file from which
+nothing at all could be read ends as an error. Sections whose boxes are all zero are recognised
+(their zero items are stored), not treated as unreadable.
+
 ## Supported forms
 
 | Form | Parser id | Role | Notes |
@@ -42,12 +64,12 @@ Each is stored separately.
 | 1099-DIV | `tax_1099_div` | source | |
 | 1099-B | `tax_1099_b` | source | Net gain or loss per holding term; proceeds and cost basis are not stored |
 | 1099-NEC, 1099-MISC | `tax_1099_nec_misc` | source | One parser, two form types; the heading decides |
-| Consolidated 1099 | `tax_1099_consolidated` | source | A broker's composite statement: 1099-INT, -DIV, -B and optionally -MISC sections, one form per account |
+| Consolidated 1099 | `tax_1099_consolidated` | source | A broker's composite statement: 1099-INT, -DIV, -B and optionally -MISC / -OID sections, one form per account |
 | Form 1040 | `tax_1040` | return | Tax years 2022-2025, with Schedules D, 1, 2 and C when attached. Amounts are read after the line number repeated at the right of each row, so form numbers printed inline (line 16's "Check if any from Form(s): 1 8814 2 4972") are never taken for amounts. The filing status may be one option per row or all five on one row. A Schedule 1-A page is ignored |
 
 Not supported: Form 1040-SR, 1040-NR and 1040-X (amended) returns, state returns, and 1099
-sections other than the above (for example 1099-OID, which a consolidated statement skips with a
-warning). Amounts are USD only.
+sections other than the above and 1099-OID inside a consolidated statement (for example 1099-R,
+which a consolidated statement skips with a warning). Amounts are USD only.
 
 ## What is read, and where it goes
 

@@ -41,6 +41,7 @@ from spend_analyzer.core.types import ExtractedDoc
 from spend_analyzer.ingest.layout import Row, cluster_rows, parse_money
 from spend_analyzer.ingest.tax.common import (
     build_document,
+    collect,
     halve_if_other_1099,
     require_year,
     sanitize_payer_name,
@@ -48,11 +49,13 @@ from spend_analyzer.ingest.tax.common import (
 from spend_analyzer.ingest.tax.fields import (
     compile_label,
     corrected_marker,
+    merge_docs,
     money_for_label,
     signed,
     split_blocks,
     text_for_label,
 )
+from spend_analyzer.ingest.tax.parsers._boxes import without_continuations
 from spend_analyzer.ingest.tax.tin import mask_tin
 
 _TITLE_RE = re.compile(r"\bForm\s*1099-B\b")
@@ -67,10 +70,27 @@ _ACCOUNT_RE = compile_label(r"^Account\s+number\b:?")
 _FED_WITHHELD_RE = compile_label(r"^Federal\s+income\s+tax\s+withheld\b")
 
 _TERM_START = re.compile(
-    r"^(?:detail:\s*)?(short|long)-term\b|^(?:detail:\s*)?(ordinary|undetermined)\b", re.I
+    r"^(?:detail:\s*)?(short|long)[-\s]?term\b|^(?:detail:\s*)?(ordinary|undetermined)\b", re.I
 )
+_OTHER_HEADING = re.compile(r"^other\s+transactions\b", re.I)
 _STATE_ROW = re.compile(r"^State\s+([A-Z]{2})\s+State\s+income\s+tax\s+withheld\b")
 _DATE_TOKEN = re.compile(r"^(?:\d{1,2}/\d{1,2}/\d{2,4}|various)$", re.IGNORECASE)
+_FOOTNOTE = re.compile(r"^\([A-Za-z0-9]{1,3}\)$")
+_NOT_COMPUTED = re.compile(r"^(?:N/?C|N/?A|--+)$", re.I)
+#: A term total printed by the broker: "NET SHORT TERM CAPITAL GAINS AND LOSSES  <amounts>".
+_NET_RE = re.compile(r"^NET\s+(short|long)[-\s]?term\b", re.I)
+#: A covered / noncovered category subtotal: "Covered Short Term ... Subtotal  <amounts>".
+_CATEGORY_SUBTOTAL_RE = re.compile(
+    r"^(?:non-?covered|covered)\s+(short|long)[-\s]?term\b.*\bsubtotal\b", re.I
+)
+#: A one-figure recap: "COVERED SHORT TERM GAINS/LOSSES  <amount>".
+_RECAP_RE = re.compile(
+    r"^(?:non-?covered|covered)\s+(short|long)[-\s]?term\s+(?:capital\s+)?gains?\b", re.I
+)
+
+_GRAND_TOTAL_RE = re.compile(
+    r"^(?:sales\s+proceeds\s+and\s+net\s+gains|grand\s+total|total\s+(?:proceeds|sales))", re.I
+)
 
 _CENT_TOLERANCE = 1
 
@@ -98,9 +118,18 @@ class _Totals:
 
 @dataclass(slots=True)
 class _Scan:
-    summary: dict[str, _Totals] = field(default_factory=dict)
-    detail: dict[str, _Totals] = field(default_factory=dict)
+    """What a 1099-B block prints, per term, from each kind of source. Exactly ONE source is used
+    per term (see `parse_b_section`), so subtotals, term totals and the trades they summarise are
+    never added together."""
+
+    summary: dict[str, _Totals] = field(default_factory=dict)  # "Short-term  P C W G" rows
+    detail: dict[str, _Totals] = field(default_factory=dict)  # one row per trade
+    net_lines: dict[str, int] = field(default_factory=dict)  # "NET SHORT TERM ..." totals
+    category_subtotals: dict[str, int] = field(default_factory=dict)  # covered + noncovered
+    recaps: dict[str, int] = field(default_factory=dict)  # one-figure recap rows
+    grand_total: bool = False  # the whole-statement total row was seen: the table is finished
     unreadable_rows: bool = False
+    not_computed_rows: bool = False  # trades printed with "N/C" in place of a gain
 
 
 def _term_key(match: re.Match[str]) -> str:
@@ -111,31 +140,78 @@ def _rows(block: ExtractedDoc) -> list[Row]:
     return [row for page in block.pages for row in cluster_rows(page.words)]
 
 
+def _trade_tail(words: list[str], last_date: int) -> list[int] | str | None:
+    """Signed amounts after a trade row's last date: a list; ``"not_computed"`` when the gain is
+    printed as N/C; ``None`` when the row is not a trade row (a word such as "Dividend" follows
+    the date); ``"unreadable"`` when it looks like a trade but has too few amounts."""
+    amounts: list[int] = []
+    for token in words[last_date + 1 :]:
+        if _FOOTNOTE.match(token):
+            continue
+        if _NOT_COMPUTED.match(token):
+            return "not_computed"
+        money = parse_money(token)
+        if money is None:
+            return None
+        amounts.append(-money.magnitude_minor if money.printed_negative else money.magnitude_minor)
+    return amounts if len(amounts) >= 3 else "unreadable"
+
+
 def _scan(block: ExtractedDoc) -> _Scan:
     scan = _Scan()
     current: str | None = None
     for row in _rows(block):
         words = [w.text for w in row.words]
         dates = [i for i, text in enumerate(words) if _DATE_TOKEN.match(text)]
-        start = _TERM_START.match(row.text)
         if not dates:
             money = [m for m in (parse_money(t) for t in words) if m is not None]
+            start = _TERM_START.match(row.text)
             if start is not None and len(money) >= 4:
                 key = _term_key(start)
                 nums = [signed(m) for m in money[-4:]]
                 p, c, w, n = (0 if v is None else v for v in nums)
                 scan.summary.setdefault(key, _Totals()).add(p, c, w, n)
-            elif start is not None and "transactions" in row.text.lower():
+                continue
+            if start is not None:
                 current = _term_key(start)
+                continue
+            if _OTHER_HEADING.match(row.text) and not money:
+                current = "other"
+                continue
+            if not money:
+                continue
+            last = signed(money[-1]) or 0
+            if _GRAND_TOTAL_RE.match(row.text):
+                scan.grand_total = True
+                continue
+            net = _NET_RE.match(row.text)
+            if net is not None:
+                key = net.group(1).lower()
+                scan.net_lines[key] = scan.net_lines.get(key, 0) + last
+                continue
+            sub = _CATEGORY_SUBTOTAL_RE.match(row.text)
+            if sub is not None:
+                key = sub.group(1).lower()
+                scan.category_subtotals[key] = scan.category_subtotals.get(key, 0) + last
+                continue
+            recap = _RECAP_RE.match(row.text)
+            if recap is not None and len(money) == 1:
+                key = recap.group(1).lower()
+                scan.recaps[key] = scan.recaps.get(key, 0) + last
             continue
         if current is None:
             continue
-        tail = [parse_money(t) for t in words[dates[-1] + 1 :]]
-        if len(tail) != 4 or any(m is None for m in tail):
+        tail = _trade_tail(words, dates[-1])
+        if tail is None:
+            continue
+        if tail == "not_computed":
+            scan.not_computed_rows = True
+            continue
+        if tail == "unreadable" or isinstance(tail, str):
             scan.unreadable_rows = True
             continue
-        p, c, w, n = (0 if v is None else v for v in (signed(m) for m in tail))
-        scan.detail.setdefault(current, _Totals()).add(p, c, w, n)
+        proceeds, cost, wash, gain = tail[0], tail[1], (tail[-2] if len(tail) >= 4 else 0), tail[-1]
+        scan.detail.setdefault(current, _Totals()).add(proceeds, cost, wash, gain)
     return scan
 
 
@@ -163,28 +239,47 @@ def parse_b_section(block: ExtractedDoc, year: int) -> ParsedTaxForm:
             (generic message, no document text).
     """
     scan = _scan(block)
-    if not scan.summary and not scan.detail:
+    if not (
+        scan.summary or scan.detail or scan.net_lines or scan.category_subtotals or scan.recaps
+    ):
         raise ParserError("No 1099-B transaction totals were found in this form.")
     warnings: list[str] = []
     income: list[ParsedIncomeItem] = []
     for key in ("short", "long", "other"):
         summary, detail = scan.summary.get(key), scan.detail.get(key)
-        chosen = summary or detail
-        if chosen is None:
-            continue
         label = _TERM_LABEL[key]
-        if not chosen.reconciles:
+        net: int | None
+        if summary is not None:
+            net = summary.net
+            chosen: _Totals | None = summary
+        elif key != "other" and key in scan.net_lines:
+            net, chosen = scan.net_lines[key], None
+        elif key != "other" and key in scan.category_subtotals:
+            net, chosen = scan.category_subtotals[key], None
+        elif key != "other" and key in scan.recaps:
+            net, chosen = scan.recaps[key], None
+        elif detail is not None:
+            net, chosen = detail.net, detail
+        else:
+            continue
+        if chosen is not None and not chosen.reconciles:
             warnings.append(
                 f"1099-B {label} figures do not reconcile: proceeds less cost basis plus wash "
                 "sale adjustment differs from the printed gain or loss."
             )
-        if summary and detail and abs(summary.net - detail.net) > _CENT_TOLERANCE:
+        if (
+            detail is not None
+            and chosen is not detail
+            and not scan.not_computed_rows
+            and not scan.unreadable_rows
+            and abs(net - detail.net) > _CENT_TOLERANCE
+        ):
             warnings.append(f"1099-B {label} transaction rows do not add up to the summary.")
         if key == "short":
             income.append(
                 ParsedIncomeItem(
                     "short_term_capital_gain",
-                    chosen.net,
+                    net,
                     "1099-B",
                     "ST",
                     "Net short-term gain or loss",
@@ -194,7 +289,7 @@ def parse_b_section(block: ExtractedDoc, year: int) -> ParsedTaxForm:
             income.append(
                 ParsedIncomeItem(
                     "long_term_capital_gain",
-                    chosen.net,
+                    net,
                     "1099-B",
                     "LT",
                     "Net long-term gain or loss",
@@ -204,18 +299,22 @@ def parse_b_section(block: ExtractedDoc, year: int) -> ParsedTaxForm:
             warnings.append(
                 "1099-B ordinary or undetermined-term transactions are reported as other income."
             )
-            if chosen.net > 0:
+            if net > 0:
                 income.append(
                     ParsedIncomeItem(
-                        "other", chosen.net, "1099-B", None, "Ordinary or undetermined-term gain"
+                        "other", net, "1099-B", None, "Ordinary or undetermined-term gain"
                     )
                 )
-            elif chosen.net < 0:
+            elif net < 0:
                 warnings.append(
                     "A 1099-B ordinary or undetermined-term loss was not recorded as income."
                 )
     if scan.unreadable_rows:
         warnings.append("Some 1099-B transaction rows could not be read.")
+    if scan.not_computed_rows:
+        warnings.append(
+            "Some 1099-B transactions have no computed gain or loss and are not included."
+        )
     taxes: list[ParsedTaxItem] = []
     fed = money_for_label(block, _FED_WITHHELD_RE, mode="same_row")
     if fed is not None and fed.magnitude_minor > 0:
@@ -260,6 +359,29 @@ def parse_b_section(block: ExtractedDoc, year: int) -> ParsedTaxForm:
     )
 
 
+_IDENTITY_ROW = re.compile(r"\b(?:Payer|Recipient|Account\s+(?:number|no)|TIN)\b", re.IGNORECASE)
+
+
+def _is_finished(group: list[ExtractedDoc]) -> bool:
+    scan = _scan(group[0] if len(group) == 1 else merge_docs(group))
+    return bool(scan.summary) or scan.grand_total
+
+
+def _merge_running_headings(blocks: tuple[ExtractedDoc, ...]) -> tuple[ExtractedDoc, ...]:
+    """A transaction table that spans pages repeats its ``Form 1099-B`` heading on each page. A
+    block that follows an unfinished one (no summary rows and no whole-statement total yet) and
+    prints no payer / recipient / account row of its own is that table's next page, not a new
+    form: it is merged into the previous block."""
+    merged: list[list[ExtractedDoc]] = []
+    for block in blocks:
+        has_identity = any(_IDENTITY_ROW.search(page.text) for page in block.pages)
+        if merged and not has_identity and not _is_finished(merged[-1]):
+            merged[-1].append(block)
+        else:
+            merged.append([block])
+    return tuple(group[0] if len(group) == 1 else merge_docs(group) for group in merged)
+
+
 class Form1099BParser:
     """Standalone 1099-B (one or several forms per file)."""
 
@@ -277,9 +399,11 @@ class Form1099BParser:
 
     def parse(self, doc: ExtractedDoc, *, tax_year: int | None = None) -> ParsedTaxDocument:
         year = require_year(doc, tax_year)
-        blocks = split_blocks(doc, _FORM_START_RE) or (doc,)
-        forms = [parse_b_section(block, year) for block in blocks]
-        return build_document(forms)
+        blocks = _merge_running_headings(
+            split_blocks(doc, without_continuations(_FORM_START_RE)) or (doc,)
+        )
+        got = collect(blocks, lambda block: parse_b_section(block, year), kind="1099-B")
+        return build_document(got.forms, warnings=got.warnings, unparsed=got.unparsed)
 
 
 PARSER = Form1099BParser()

@@ -1,0 +1,147 @@
+{
+  "expected_warnings": [],
+  "forms": [
+    {
+      "account_last4": "7731",
+      "agi_minor": null,
+      "filing_status": null,
+      "form_type": "1099-consolidated",
+      "income": [
+        {
+          "amount_minor": 245075,
+          "box": "1a",
+          "category": "ordinary_dividends",
+          "is_memo": false,
+          "label": "Ordinary dividends",
+          "source_form": "1099-DIV"
+        },
+        {
+          "amount_minor": 190025,
+          "box": "1b",
+          "category": "qualified_dividends",
+          "is_memo": true,
+          "label": "Qualified dividends",
+          "source_form": "1099-DIV"
+        },
+        {
+          "amount_minor": 31040,
+          "box": "2a",
+          "category": "long_term_capital_gain",
+          "is_memo": false,
+          "label": "Capital gain distributions",
+          "source_form": "1099-DIV"
+        },
+        {
+          "amount_minor": 4500,
+          "box": "12",
+          "category": "other",
+          "is_memo": true,
+          "label": "Exempt-interest dividends",
+          "source_form": "1099-DIV"
+        },
+        {
+          "amount_minor": 0,
+          "box": "1",
+          "category": "interest",
+          "is_memo": false,
+          "label": "Original issue discount",
+          "source_form": "1099-OID"
+        },
+        {
+          "amount_minor": 1500,
+          "box": "8",
+          "category": "interest",
+          "is_memo": false,
+          "label": "OID on U.S. Treasury obligations",
+          "source_form": "1099-OID"
+        },
+        {
+          "amount_minor": 123456,
+          "box": "1",
+          "category": "interest",
+          "is_memo": false,
+          "label": "Interest income",
+          "source_form": "1099-INT"
+        },
+        {
+          "amount_minor": 21000,
+          "box": "3",
+          "category": "interest",
+          "is_memo": false,
+          "label": "Interest on U.S. savings bonds and Treasury obligations",
+          "source_form": "1099-INT"
+        },
+        {
+          "amount_minor": 8000,
+          "box": "8",
+          "category": "other",
+          "is_memo": true,
+          "label": "Tax-exempt interest",
+          "source_form": "1099-INT"
+        },
+        {
+          "amount_minor": 0,
+          "box": "2",
+          "category": "other",
+          "is_memo": false,
+          "label": "Royalties",
+          "source_form": "1099-MISC"
+        },
+        {
+          "amount_minor": 0,
+          "box": "3",
+          "category": "other",
+          "is_memo": false,
+          "label": "Other income",
+          "source_form": "1099-MISC"
+        }
+      ],
+      "is_corrected": false,
+      "payer_name": "Copperfield Securities",
+      "payer_tin_last4": "0004",
+      "tax_year": 2024,
+      "taxable_income_minor": null,
+      "taxes": [
+        {
+          "amount_minor": 2500,
+          "box": "4",
+          "category": "federal_income_tax_withheld",
+          "is_estimate": false,
+          "jurisdiction": null,
+          "label": "Federal income tax withheld",
+          "source_form": "1099-DIV"
+        },
+        {
+          "amount_minor": 325,
+          "box": "16",
+          "category": "state_income_tax_withheld",
+          "is_estimate": false,
+          "jurisdiction": "OH",
+          "label": "State income tax withheld",
+          "source_form": "1099-DIV"
+        },
+        {
+          "amount_minor": 1200,
+          "box": "4",
+          "category": "federal_income_tax_withheld",
+          "is_estimate": false,
+          "jurisdiction": null,
+          "label": "Federal income tax withheld",
+          "source_form": "1099-INT"
+        },
+        {
+          "amount_minor": 750,
+          "box": "16",
+          "category": "state_income_tax_withheld",
+          "is_estimate": false,
+          "jurisdiction": "CA",
+          "label": "State income tax withheld",
+          "source_form": "1099-INT"
+        }
+      ],
+      "warnings": []
+    }
+  ],
+  "tax_year": 2024,
+  "warnings": []
+}

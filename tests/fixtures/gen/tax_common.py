@@ -19,7 +19,8 @@ Developer API
     Entity(name, ein, address_lines)                        frozen dataclass
     RECIPIENT_NAME, RECIPIENT_SSN, SPOUSE_NAME, SPOUSE_SSN, RECIPIENT_ADDRESS_LINES
     EMPLOYER_A, EMPLOYER_B, BANK, BROKER                    Entity instances
-    ACCOUNT_NUMBER                                          "SYN-000123456789"
+    CREDIT_UNION, BROKER_B                                  a second bank / broker
+    ACCOUNT_NUMBER, ACCOUNT_NUMBER_2                        "SYN-000123456789", "SYN-000555000111"
     last4(identifier) -> str
 
     BoxItem = tuple[float, float, str]                      (x, baseline y from page top, text)
@@ -82,7 +83,15 @@ BROKER = Entity(
     "Copperfield Securities", "99-0000004", ("500 Placeholder Plaza", "Exampleton, ZZ 00001")
 )
 
+CREDIT_UNION = Entity(
+    "Willow Bend Credit Union", "99-0000005", ("600 Sample Court", "Testville, ZZ 00000")
+)
+BROKER_B = Entity(
+    "Larkspur Investment Services", "99-0000006", ("700 Mock Terrace", "Exampleton, ZZ 00001")
+)
+
 ACCOUNT_NUMBER = "SYN-000123456789"
+ACCOUNT_NUMBER_2 = "SYN-000555000111"
 
 
 def last4(identifier: str) -> str:
@@ -208,6 +217,8 @@ def golden_dict(doc: ParsedTaxDocument) -> dict[str, Any]:
     """`ParsedTaxDocument` -> a plain JSON-able dict (tuples become lists, key order stable under
     ``json.dumps(sort_keys=True)``). This is the representation goldens and parser tests share."""
     result: dict[str, Any] = json.loads(json.dumps(asdict(doc), sort_keys=True))
+    if not result.get("unparsed"):
+        result.pop("unparsed", None)  # absent in goldens that predate partial-success reporting
     return result
 
 

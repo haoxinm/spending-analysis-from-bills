@@ -207,12 +207,32 @@ class ParsedTaxForm:
 
 
 @dataclass(frozen=True, slots=True)
+class UnparsedRegion:
+    """A part of a file that looks like a tax form (or section) but yielded no figures.
+
+    Structured so that a later fallback (manual entry, an optional AI pass) can address exactly
+    the pages involved. `kind` is a form type or section name such as ``"1099-INT"`` or
+    ``"unknown"``; `pages` are 1-based page numbers of the original file; `reason` is fixed
+    generic text. Never holds document text.
+    """
+
+    kind: str
+    pages: tuple[int, ...]
+    reason: str
+
+
+@dataclass(frozen=True, slots=True)
 class ParsedTaxDocument:
-    """All forms found in one file. `tax_year` is agreed across forms (mismatch is a ParserError)."""
+    """All forms found in one file. `tax_year` is agreed across forms (mismatch is a ParserError).
+
+    `unparsed` lists the regions that looked like forms but could not be read (partial success:
+    the readable forms are still returned, with a warning per skipped region).
+    """
 
     tax_year: int
     forms: tuple[ParsedTaxForm, ...]  # at least one
     warnings: tuple[str, ...] = ()
+    unparsed: tuple[UnparsedRegion, ...] = ()
 
 
 @runtime_checkable

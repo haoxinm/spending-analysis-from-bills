@@ -188,8 +188,8 @@ def test_qualified_over_ordinary_warns() -> None:
 def test_unsupported_and_empty_sections_warn() -> None:
     lines = [
         *_HEADER,
-        "1099-OID  Original Issue Discount",
-        "Original issue discount (Box 1)   10.00",
+        "1099-R  Distributions From Pensions",
+        "Gross distribution (Box 1)   10.00",
         "1099-INT  Interest Income",
         "Interest income (Box 1)   25.00",
         "1099-DIV  Dividends and Distributions",
@@ -198,7 +198,7 @@ def test_unsupported_and_empty_sections_warn() -> None:
     form = PARSER.parse(doc_from_lines(lines)).forms[0]
     assert [(i.category, i.amount_minor) for i in form.income] == [("interest", 2_500)]
     assert set(form.warnings) == {
-        "A 1099-OID section is not supported and was skipped.",
+        "A 1099-R section is not supported and was skipped.",
         "The 1099-DIV section contained no recognizable amounts.",
         "The 1099-B section contained no readable totals.",
     }
@@ -243,3 +243,89 @@ def test_detect_variants() -> None:
         )
         == 0.0
     )
+
+
+_STMT_HEADER = ["Consolidated Form 1099 Tax Information", "Tax Year 2024"]
+
+
+def test_all_zero_oid_section_is_recognised_without_a_warning() -> None:
+    lines = [
+        *_STMT_HEADER,
+        "Summary of 2024 Original Issue Discount Items",
+        "Original Issue Discount ........ 0.00",
+        "OID on U.S. Treasury Obligations ........ 0.00",
+        "1099-INT  Interest Income",
+        "Interest income (Box 1)   25.00",
+    ]
+    form = PARSER.parse(doc_from_lines(lines)).forms[0]
+    oid = [(i.box, i.amount_minor) for i in form.income if i.source_form == "1099-OID"]
+    assert oid == [("1", 0), ("8", 0)]
+    assert not any("OID" in w for w in form.warnings)
+
+
+def test_state_code_on_its_own_row_labels_the_withholding() -> None:
+    lines = [
+        *_STMT_HEADER,
+        "1099-INT  Interest Income",
+        "Interest income (Box 1)   25.00",
+        "15 State   CA",
+        "17 State Tax Withheld   3.50",
+    ]
+    (tax,) = PARSER.parse(doc_from_lines(lines)).forms[0].taxes
+    assert (tax.category, tax.amount_minor, tax.jurisdiction) == (
+        "state_income_tax_withheld",
+        350,
+        "CA",
+    )
+
+
+def test_savings_bond_abbreviation_and_box_prefixes() -> None:
+    lines = [
+        *_STMT_HEADER,
+        "1099-INT  Interest Income",
+        "1 Interest Income   25.00",
+        "3 Int. on U.S. Savings Bonds & Treas.   4.00",
+    ]
+    form = PARSER.parse(doc_from_lines(lines)).forms[0]
+    assert [(i.box, i.amount_minor) for i in form.income] == [("1", 2_500), ("3", 400)]
+
+
+def test_repeated_section_heading_is_merged_before_parsing() -> None:
+    lines = [
+        *_STMT_HEADER,
+        "1099-DIV  Dividends and Distributions",
+        "Ordinary dividends (Box 1a)   100.00",
+        "1099-INT  Interest Income",
+        "Interest income (Box 1)   25.00",
+        "1099-DIV  Dividends and Distributions (continued)",
+        "Exempt-interest dividends (Box 12)   7.00",
+    ]
+    form = PARSER.parse(doc_from_lines(lines)).forms[0]
+    assert [(i.source_form, i.box, i.amount_minor) for i in form.income] == [
+        ("1099-DIV", "1a", 10_000),
+        ("1099-DIV", "12", 700),
+        ("1099-INT", "1", 2_500),
+    ]
+
+
+def test_account_number_printed_beneath_its_label() -> None:
+    lines = [
+        *_STMT_HEADER,
+        "Account No.            Taxpayer No.",
+        "XQ-4455-7731           XXX-XX-1234",
+        "1099-INT  Interest Income",
+        "Interest income (Box 1)   25.00",
+    ]
+    assert PARSER.parse(doc_from_lines(lines)).forms[0].account_last4 == "7731"
+
+
+def test_section_without_amounts_is_reported_as_an_unparsed_region() -> None:
+    lines = [
+        *_STMT_HEADER,
+        "1099-INT  Interest Income",
+        "Interest income (Box 1)   25.00",
+        "1099-DIV  Dividends and Distributions",
+        "Dividends paid to you   9.00",
+    ]
+    parsed = PARSER.parse(doc_from_lines(lines))
+    assert [(r.kind, r.reason) for r in parsed.unparsed] == [("1099-DIV", "no amounts")]

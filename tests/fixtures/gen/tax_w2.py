@@ -4,8 +4,14 @@ Variants: ``normal`` (all boxes, state and local), ``two_employers`` (two W-2s o
 ``copies`` (Copy B / Copy C / Copy 2 on one page), ``two_states`` (two box 15-17 lines),
 ``corrected`` (CORRECTED box checked), ``no_ein_identical`` (the same W-2 on two pages with no EIN
 and no Copy marker: two forms are kept), ``no_box1`` (box 1 blank: parse error) and ``no_year`` (no
-year printed: parse error unless the year is supplied). All identities are invented (see
-`tax_common`).
+year printed: parse error unless the year is supplied).
+
+Layout variants (segmentation): ``side_by_side_2up`` (two employers left and right on a landscape
+page), ``four_up`` (2x2 grid: Copy B and Copy C of two employers, two forms expected),
+``stacked_two_per_page`` (two employers one above the other), ``multipage_one_form`` (boxes 15-20
+continue on a second page under a "(continued)" heading: one form with every state line) and
+``copies_on_separate_pages`` (Copy B, C and 2 on three pages: one form). All identities are
+invented (see `tax_common`).
 """
 
 from __future__ import annotations
@@ -13,6 +19,8 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
+
+from reportlab.lib.pagesizes import landscape, letter
 
 from spend_analyzer.core.tax_types import (
     ParsedIncomeItem,
@@ -72,88 +80,98 @@ class W2Data:
     extra: dict[str, str] = field(default_factory=dict)
 
 
-def _w2_items(y_top: float, data: W2Data) -> list[BoxItem]:
+def _w2_items(
+    y_top: float,
+    data: W2Data,
+    *,
+    x_off: float = 0.0,
+    scale: float = 1.0,
+    part: str = "all",
+) -> list[BoxItem]:
+    """The items of one W-2. ``scale`` shrinks x positions and cell widths (render with font size
+    ``7 * scale``) so forms fit side by side; ``part`` is ``"all"``, ``"main"`` (boxes a-14) or
+    ``"state"`` (boxes 15-20 only, moved up under a ``(continued)`` heading for a second page)."""
+    fs = 7.0 * scale
+    c0, c0_last, c1, c2 = (x_off + v * scale for v in (_X0, _X0_LAST, _X1, _X2))
+    w0, w1, w2 = _W0 * scale, _W1 * scale, _W2 * scale
+
     def y(row: int) -> float:
         return y_top + 14.0 + row * _PITCH
 
     def val(amount: int) -> str:
         return money_text(amount)
 
+    def box(x: float, yy: float, label: str, value: str, width: float) -> list[BoxItem]:
+        return cell(x, yy, label, value, width=width - 4, font_size=fs)
+
     year = f" {_YEAR}" if data.show_year else ""
     items: list[BoxItem] = []
-    items += text_item(_X0, y_top, f"W-2 Wage and Tax Statement{year}")
-    items += text_item(_X1, y_top, data.copy_label)
+    items += text_item(c0, y_top, f"W-2 Wage and Tax Statement{year}")
+    items += text_item(c1, y_top, data.copy_label)
 
     # R1: a / OMB, VOID, CORRECTED
-    items += cell(_X0, y(0), "a Employee's social security number", RECIPIENT_SSN, width=_W0 - 4)
-    items += text_item(_X1, y(0), "OMB No. 1545-0008")
+    items += box(c0, y(0), "a Employee's social security number", RECIPIENT_SSN, w0)
+    items += text_item(c1, y(0), "OMB No. 1545-0008")
     corrected_box = "[X]" if data.corrected else "[ ]"
-    items += text_item(_X2, y(0), f"[ ] VOID  {corrected_box} CORRECTED")
+    items += text_item(c2, y(0), f"[ ] VOID  {corrected_box} CORRECTED")
     # R2: b / 1 / 2
-    items += cell(
-        _X0, y(1), "b Employer identification number (EIN)", data.employer.ein, width=_W0 - 4
-    )
-    items += cell(
-        _X1,
+    items += box(c0, y(1), "b Employer identification number (EIN)", data.employer.ein, w0)
+    items += box(
+        c1,
         y(1),
         "1 Wages, tips, other compensation",
         "" if data.box1 is None else val(data.box1),
-        width=_W1 - 4,
+        w1,
     )
-    items += cell(_X2, y(1), "2 Federal income tax withheld", val(data.box2), width=_W2 - 4)
+    items += box(c2, y(1), "2 Federal income tax withheld", val(data.box2), w2)
     # R3-R5: c block lines coincide with value rows of boxes 3-8
-    items += cell(
-        _X0, y(2), "c Employer's name, address, and ZIP code", data.employer.name, width=_W0 - 4
-    )
-    items += cell(_X1, y(2), "3 Social security wages", val(data.box3), width=_W1 - 4)
-    items += cell(_X2, y(2), "4 Social security tax withheld", val(data.box4), width=_W2 - 4)
-    items += text_item(_X0, y(3) + 10.0, data.employer.address_lines[0])
-    items += cell(_X1, y(3), "5 Medicare wages and tips", val(data.box5), width=_W1 - 4)
-    items += cell(_X2, y(3), "6 Medicare tax withheld", val(data.box6), width=_W2 - 4)
-    items += text_item(_X0, y(4) + 10.0, data.employer.address_lines[1])
-    items += cell(_X1, y(4), "7 Social security tips", "", width=_W1 - 4)
-    items += cell(_X2, y(4), "8 Allocated tips", "", width=_W2 - 4)
+    items += box(c0, y(2), "c Employer's name, address, and ZIP code", data.employer.name, w0)
+    items += box(c1, y(2), "3 Social security wages", val(data.box3), w1)
+    items += box(c2, y(2), "4 Social security tax withheld", val(data.box4), w2)
+    items += text_item(c0, y(3) + 10.0, data.employer.address_lines[0])
+    items += box(c1, y(3), "5 Medicare wages and tips", val(data.box5), w1)
+    items += box(c2, y(3), "6 Medicare tax withheld", val(data.box6), w2)
+    items += text_item(c0, y(4) + 10.0, data.employer.address_lines[1])
+    items += box(c1, y(4), "7 Social security tips", "", w1)
+    items += box(c2, y(4), "8 Allocated tips", "", w2)
     # R6-R9
-    items += cell(_X0, y(5), "d Control number", "", width=_W0 - 4)
-    items += cell(_X2, y(5), "10 Dependent care benefits", "", width=_W2 - 4)
-    items += cell(
-        _X0, y(6), "e Employee's first name and initial", data.employee_first, width=_W0 - 4
-    )
-    items += cell(_X0_LAST, y(6), "Last name", data.employee_last, width=44.0)
-    items += cell(_X1, y(6), "11 Nonqualified plans", "", width=_W1 - 4)
-    items += cell(_X2, y(6), "12a See instructions for box 12", data.box12, width=_W2 - 4)
-    items += cell(
-        _X0, y(7), "f Employee's address and ZIP code", RECIPIENT_ADDRESS_LINES[0], width=_W0 - 4
-    )
-    items += cell(_X1, y(7), "13 Statutory employee", "[ ]", width=_W1 - 4)
-    items += cell(_X2, y(7), "12b", "", width=_W2 - 4)
-    items += text_item(_X0, y(8) + 10.0, RECIPIENT_ADDRESS_LINES[1])
-    items += cell(_X1, y(8), "14 Other", "", width=_W1 - 4)
+    items += box(c0, y(5), "d Control number", "", w0)
+    items += box(c2, y(5), "10 Dependent care benefits", "", w2)
+    items += box(c0, y(6), "e Employee's first name and initial", data.employee_first, w0)
+    items += cell(c0_last, y(6), "Last name", data.employee_last, width=44.0 * scale, font_size=fs)
+    items += box(c1, y(6), "11 Nonqualified plans", "", w1)
+    items += box(c2, y(6), "12a See instructions for box 12", data.box12, w2)
+    items += box(c0, y(7), "f Employee's address and ZIP code", RECIPIENT_ADDRESS_LINES[0], w0)
+    items += box(c1, y(7), "13 Statutory employee", "[ ]", w1)
+    items += box(c2, y(7), "12b", "", w2)
+    items += text_item(c0, y(8) + 10.0, RECIPIENT_ADDRESS_LINES[1])
+    items += box(c1, y(8), "14 Other", "", w1)
+    state_items: list[BoxItem] = []
     # State table: 15 / 16 / 17, one value row per state
-    items += cell(_X0, y(9), "15 State Employer's state ID number", "", width=_W0 - 4)
-    items += cell(_X1, y(9), "16 State wages, tips, etc.", "", width=_W1 - 4)
-    items += cell(_X2, y(9), "17 State income tax", "", width=_W2 - 4)
+    state_items += box(c0, y(9), "15 State Employer's state ID number", "", w0)
+    state_items += box(c1, y(9), "16 State wages, tips, etc.", "", w1)
+    state_items += box(c2, y(9), "17 State income tax", "", w2)
     for index, line in enumerate(data.states):
         vy = y(9) + 10.0 + 10.0 * index
-        items += text_item(_X0, vy, f"{line.code} {line.state_id}")
-        items += text_item(_X1, vy, val(line.wages))
-        items += text_item(_X2, vy, val(line.tax))
+        state_items += text_item(c0, vy, f"{line.code} {line.state_id}")
+        state_items += text_item(c1, vy, val(line.wages))
+        state_items += text_item(c2, vy, val(line.tax))
     extra = 10.0 * max(0, len(data.states) - 1)
     local_y = y(10) + extra
-    items += cell(
-        _X0,
-        local_y,
-        "18 Local wages, tips, etc.",
-        val(data.local[0]) if data.local else "",
-        width=_W0 - 4,
+    state_items += box(
+        c0, local_y, "18 Local wages, tips, etc.", val(data.local[0]) if data.local else "", w0
     )
-    items += cell(
-        _X1, local_y, "19 Local income tax", val(data.local[1]) if data.local else "", width=_W1 - 4
+    state_items += box(
+        c1, local_y, "19 Local income tax", val(data.local[1]) if data.local else "", w1
     )
-    items += cell(
-        _X2, local_y, "20 Locality name", data.local[2] if data.local else "", width=_W2 - 4
-    )
-    return items
+    state_items += box(c2, local_y, "20 Locality name", data.local[2] if data.local else "", w2)
+    if part == "main":
+        return items
+    if part == "state":
+        shift = 8 * _PITCH
+        moved: list[BoxItem] = [(x, yy - shift, text) for x, yy, text in state_items]
+        return [(c0, y_top, f"W-2 Wage and Tax Statement{year} (continued)"), *moved]
+    return items + state_items
 
 
 def _expected_form(data: W2Data) -> ParsedTaxForm:
@@ -235,6 +253,52 @@ _SECOND = W2Data(
 )
 
 
+_SCALE = 0.70
+_RIGHT_X = 380.0
+_LAYOUT_VARIANTS = (
+    "side_by_side_2up",
+    "four_up",
+    "stacked_two_per_page",
+    "multipage_one_form",
+    "copies_on_separate_pages",
+)
+_COPY_B = "Copy B - To Be Filed With Employee's FEDERAL Tax Return."
+_COPY_C = "Copy C - For EMPLOYEE'S RECORDS."
+_COPY_2 = "Copy 2 - To Be Filed With Employee's State, City, or Local Income Tax Return."
+
+
+def _with(data: W2Data, **changes: Any) -> W2Data:
+    return W2Data(**{**data.__dict__, **changes})
+
+
+def _layout_variant(variant: str) -> tuple[list[W2Data], list[list[BoxItem]]]:
+    """``(distinct forms expected, pages)`` for the geometry variants."""
+    a = _with(_NORMAL, local=None, copy_label=_COPY_B)
+    b = _with(_SECOND, copy_label=_COPY_B)
+    if variant == "side_by_side_2up":
+        page = _w2_items(30.0, a, scale=_SCALE) + _w2_items(30.0, b, x_off=_RIGHT_X, scale=_SCALE)
+        return [a, b], [page]
+    if variant == "four_up":
+        a_c = _with(a, copy_label=_COPY_C)
+        b_c = _with(b, copy_label=_COPY_C)
+        page = []
+        for top, left, right in ((24.0, a, b), (312.0, a_c, b_c)):
+            page += _w2_items(top, left, scale=_SCALE)
+            page += _w2_items(top, right, x_off=_RIGHT_X, scale=_SCALE)
+        return [a, b], [page]
+    if variant == "stacked_two_per_page":
+        return [a, b], [_w2_items(30.0, a) + _w2_items(400.0, b)]
+    if variant == "multipage_one_form":
+        full = _with(_NORMAL, states=(_CA, _OR))
+        return [full], [_w2_items(30.0, full, part="main"), _w2_items(30.0, full, part="state")]
+    if variant == "copies_on_separate_pages":
+        base = _with(_NORMAL, local=None)
+        return [base], [
+            _w2_items(30.0, _with(base, copy_label=label)) for label in (_COPY_B, _COPY_C, _COPY_2)
+        ]
+    raise ValueError(variant)
+
+
 class W2Builder:
     layout_id = "tax_w2"
     variants: tuple[str, ...] = (
@@ -246,6 +310,11 @@ class W2Builder:
         "no_box1",
         "no_year",
         "no_ein_identical",
+        "side_by_side_2up",
+        "four_up",
+        "stacked_two_per_page",
+        "multipage_one_form",
+        "copies_on_separate_pages",
     )
 
     def build(self, out_dir: Path, *, variant: str, seed: int) -> dict[str, Any]:
@@ -287,6 +356,14 @@ class W2Builder:
             )
             forms = [data, data]
             pages = [_w2_items(30.0, data), _w2_items(30.0, data)]
+        elif variant in _LAYOUT_VARIANTS:
+            forms, pages = _layout_variant(variant)
+            kwargs: dict[str, Any] = {}
+            if variant in ("side_by_side_2up", "four_up"):
+                kwargs = {"font_size": 7.0 * _SCALE, "page_size": landscape(letter)}
+            render_boxes_pdf(pdf_path, pages, **kwargs)
+            doc = ParsedTaxDocument(tax_year=_YEAR, forms=tuple(_expected_form(d) for d in forms))
+            return build_golden(doc, expected_warnings=[w for f in doc.forms for w in f.warnings])
         elif variant == "corrected":
             data = W2Data(**{**_NORMAL.__dict__, "corrected": True})
             forms = [data]

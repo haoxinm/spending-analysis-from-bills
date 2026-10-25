@@ -31,6 +31,7 @@ from spend_analyzer.core.types import ExtractedDoc
 from spend_analyzer.ingest.tax.common import (
     build_document,
     check_warning,
+    collect,
     require_year,
     sanitize_payer_name,
 )
@@ -220,12 +221,10 @@ class W2Parser:
         year = require_year(doc, tax_year)
         blocks = split_blocks(doc, _START, keep_preamble=True) or (doc,)
         has_copy_marker = doc_has(doc, _COPY_MARKER)
+        got = collect(blocks, lambda block: _parse_block(block, year), kind="W-2")
         forms: list[ParsedTaxForm] = []
-        warnings: list[str] = []
-        for block in blocks:
-            form = _parse_block(block, year)
-            if form is None:
-                continue
+        warnings: list[str] = list(got.warnings)
+        for form in got.forms:
             if form in forms:
                 if form.payer_tin_last4 is not None or has_copy_marker:
                     continue  # a Copy B/C/2 of a form already read
@@ -233,7 +232,7 @@ class W2Parser:
             forms.append(form)
         if not forms:
             raise ParserError("No W-2 form with a box 1 amount was found in this file.")
-        return build_document(forms, warnings=warnings)
+        return build_document(forms, warnings=warnings, unparsed=got.unparsed)
 
 
 PARSER = W2Parser()

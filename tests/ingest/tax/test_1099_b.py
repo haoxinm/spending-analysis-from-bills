@@ -15,6 +15,7 @@ from tests.fixtures.gen.tax_1099_b import Lot, section_lines
 from tests.ingest.tax_support import (
     assert_matches_golden,
     doc_from_lines,
+    doc_from_pages,
     extract_doc,
     generated_pdf,
     load_golden,
@@ -182,3 +183,99 @@ def test_detect_rejects_unrelated_documents() -> None:
         )
         == 0.0
     )
+
+
+# --------------------------------------------------------------------------------------------
+# Totals derived from term nets / category subtotals / trades (broker statements)
+# --------------------------------------------------------------------------------------------
+
+_TRADES = [
+    "Form 1099-B Proceeds From Broker",
+    "SHORT TERM CAPITAL GAINS AND LOSSES",
+    "COVERED TRANSACTIONS",
+    "ACME CORP CUSIP Number 99999X999",
+    "100.0000 Sale 01/02/24 03/04/24 1,000.00 800.00 0.00 0.00 200.00",
+    "100.0000 Sale 02/02/24 03/05/24 500.00 900.00 0.00 0.00 (400.00)",
+    "Security Subtotal 1,500.00 1,700.00 0.00 0.00 (200.00)",
+]
+
+
+def _gains(lines: list[str]) -> dict[str, int]:
+    form = parse_b_section(doc_from_lines(lines), 2024)
+    return {i.box or "?": i.amount_minor for i in form.income}
+
+
+def test_trades_alone_are_summed_and_the_security_subtotal_is_not_added() -> None:
+    assert _gains(_TRADES) == {"ST": -20_000}
+
+
+def test_category_subtotals_replace_the_trades() -> None:
+    lines = [
+        *_TRADES,
+        "Covered Short Term Capital Gains and Losses Subtotal 1,500.00 1,700.00 0.00 0.00 (200.00)",
+        "NONCOVERED TRANSACTIONS",
+        "Noncovered Short Term Capital Gains and Losses Subtotal 300.00 100.00 0.00 0.00 200.00",
+    ]
+    assert _gains(lines) == {"ST": 0}
+
+
+def test_term_net_line_wins_over_subtotals_and_trades() -> None:
+    lines = [
+        *_TRADES,
+        "Covered Short Term Capital Gains and Losses Subtotal 1,500.00 1,700.00 0.00 0.00 (200.00)",
+        "NET SHORT TERM CAPITAL GAINS AND LOSSES 1,500.00 1,700.00 0.00 0.00 (200.00)",
+        "SALES PROCEEDS AND NET GAINS AND LOSSES* 1,500.00 1,700.00 0.00 0.00 (200.00)",
+    ]
+    assert _gains(lines) == {"ST": -20_000}
+
+
+def test_footnote_markers_and_market_discount_column_are_tolerated() -> None:
+    lines = [
+        "Form 1099-B Proceeds From Broker",
+        "LONG TERM CAPITAL GAINS AND LOSSES",
+        "10.0000 Sale 01/02/20 03/04/24 1,000.00 1,200.00 (A) 0.00 150.00 (W) (50.00)",
+    ]
+    form = parse_b_section(doc_from_lines(lines), 2024)
+    assert [(i.box, i.amount_minor) for i in form.income] == [("LT", -5_000)]
+    assert form.warnings == ()
+
+
+def test_trade_without_a_computed_gain_is_skipped_with_a_warning() -> None:
+    lines = [
+        "Form 1099-B Proceeds From Broker",
+        "SHORT TERM CAPITAL GAINS AND LOSSES",
+        "10.0000 Sale 01/02/24 03/04/24 1,000.00 800.00 0.00 0.00 200.00",
+        "OTHER TRANSACTIONS",
+        "5.0000 Sale 01/02/20 03/04/24 900.00 0.00 0.00 0.00 N/C",
+    ]
+    form = parse_b_section(doc_from_lines(lines), 2024)
+    assert [(i.box, i.amount_minor) for i in form.income] == [("ST", 20_000)]
+    assert "Some 1099-B transactions have no computed gain or loss and are not included." in (
+        form.warnings
+    )
+
+
+def test_dividend_and_interest_rows_in_the_same_block_are_not_trades() -> None:
+    lines = [
+        *_TRADES,
+        "ACME CORP 100 03/04/24 Dividend 12.00 12.00 0.00 0.00",
+        "99/99/99 Bank Interest 0.00",
+    ]
+    form = parse_b_section(doc_from_lines(lines), 2024)
+    assert [(i.box, i.amount_minor) for i in form.income] == [("ST", -20_000)]
+    assert form.warnings == ()
+
+
+def test_running_heading_on_each_page_does_not_split_the_table() -> None:
+    pages = [
+        ["Form 1099-B Proceeds From Broker", "SHORT TERM CAPITAL GAINS AND LOSSES", *_TRADES[3:6]],
+        [
+            "Form 1099-B Proceeds From Broker",
+            "100.0000 Sale 03/02/24 03/05/24 700.00 600.00 0.00 0.00 100.00",
+            "NET SHORT TERM CAPITAL GAINS AND LOSSES 2,200.00 2,300.00 0.00 0.00 (100.00)",
+            "SALES PROCEEDS AND NET GAINS AND LOSSES* 2,200.00 2,300.00 0.00 0.00 (100.00)",
+        ],
+    ]
+    parsed = PARSER.parse(doc_from_pages(pages), tax_year=2024)
+    (form,) = parsed.forms
+    assert [(i.box, i.amount_minor) for i in form.income] == [("ST", -10_000)]

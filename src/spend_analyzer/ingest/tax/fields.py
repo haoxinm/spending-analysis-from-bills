@@ -486,6 +486,28 @@ def split_blocks(
     )
 
 
+def merge_docs(blocks: Sequence[ExtractedDoc]) -> ExtractedDoc:
+    """One `ExtractedDoc` holding the rows of all `blocks` (e.g. the pieces of a section that was
+    split at a repeated running heading). Rows of the same page number are interleaved by
+    their vertical position; page text is rebuilt from the rows."""
+    if not blocks:
+        raise ValueError("merge_docs needs at least one block")
+    by_page: dict[int, list[Row]] = {}
+    for block in blocks:
+        for page in block.pages:
+            by_page.setdefault(page.page_number, []).extend(cluster_rows(page.words))
+    pages = tuple(
+        _page_from_rows(pn, sorted(rows, key=lambda r: r.top))
+        for pn, rows in sorted(by_page.items())
+    )
+    return ExtractedDoc(
+        file_sha256=blocks[0].file_sha256,
+        page_count=len(pages),
+        pages=pages,
+        has_text_layer=blocks[0].has_text_layer,
+    )
+
+
 def first_block(
     doc: ExtractedDoc, start_re: re.Pattern[str], end_re: re.Pattern[str] | None = None
 ) -> ExtractedDoc:

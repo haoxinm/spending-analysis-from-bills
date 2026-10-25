@@ -49,7 +49,7 @@ from spend_analyzer.core.tax_types import FORM_ROLE, ParsedTaxForm
 from spend_analyzer.db.models import IncomeItem, TaxDocument, TaxForm, TaxItem
 from spend_analyzer.ingest.extract import extract, sha256_file
 from spend_analyzer.ingest.pipeline import NO_TEXT_LAYER_MESSAGE
-from spend_analyzer.ingest.tax.registry import select_tax_parser
+from spend_analyzer.ingest.tax.orchestrator import parse_document
 from spend_analyzer.ingest.tax.tin import has_long_digit_run, scrub, scrub_display_name
 
 logger = get_logger("ingest.tax.pipeline")
@@ -422,7 +422,7 @@ def _import(
         )
 
     try:
-        parser = select_tax_parser(extracted)
+        outcome = parse_document(extracted, tax_year=tax_year)
     except UnsupportedLayoutError:
         return _failure(
             session,
@@ -431,10 +431,6 @@ def _import(
             message=UNSUPPORTED_MESSAGE,
             tax_year=tax_year,
         )
-    doc_row.parser_id = parser.id
-    doc_row.parser_version = parser.version
-    try:
-        parsed = parser.parse(extracted, tax_year=tax_year)
     except ParserError as exc:
         return _failure(
             session,
@@ -443,6 +439,9 @@ def _import(
             message=_safe_message(exc),
             tax_year=tax_year,
         )
+    parsed = outcome.document
+    doc_row.parser_id = outcome.parser_id
+    doc_row.parser_version = outcome.parser_version
 
     inserted_forms = skipped = income_n = tax_n = 0
     inserted_types: list[str] = []
@@ -573,15 +572,16 @@ def _import(
     session.commit()
     logger.info(
         "tax import parsed: document_id=%s parser=%s@%s forms=%s inserted=%d skipped=%d "
-        "income_items=%d tax_items=%d",
+        "income_items=%d tax_items=%d unparsed_regions=%d",
         doc_row.id,
-        parser.id,
-        parser.version,
+        outcome.parser_id,
+        outcome.parser_version,
         ",".join(f.form_type for f in parsed.forms),
         inserted_forms,
         skipped,
         income_n,
         tax_n,
+        len(parsed.unparsed),
     )
     return TaxImportResult(
         document_id=doc_row.id,

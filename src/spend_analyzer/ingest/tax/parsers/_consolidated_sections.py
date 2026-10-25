@@ -20,6 +20,7 @@ from spend_analyzer.core.tax_types import IncomeCategory, ParsedIncomeItem, Pars
 from spend_analyzer.core.types import ExtractedDoc
 from spend_analyzer.ingest.layout import cluster_rows, parse_money
 from spend_analyzer.ingest.tax.fields import compile_label, money_for_label
+from spend_analyzer.ingest.tax.parsers._boxes import UNKNOWN_STATE
 
 
 @dataclass(frozen=True, slots=True)
@@ -51,11 +52,16 @@ def _pat(label: str) -> re.Pattern[str]:
 
 _FED_WITHHELD_RE = _pat(r"Federal\s+income\s+tax\s+withheld")
 _STATE_ROW = re.compile(r"^State\s+([A-Z]{2})\s+State\s+income\s+tax\s+withheld\b")
+#: ``16 State OH`` on its own row: the state code of a later ``State tax withheld`` row.
+_STATE_CODE_ROW = re.compile(r"^(?:\d{1,2}[a-z]?[.):]?\s+)?State\s+([A-Z]{2})$")
+_STATE_TAX_ROW = compile_label(
+    r"^(?:\d{1,2}[a-z]?[.):]?\s+)?State(?:\s+income)?\s+tax\s+withheld\b"
+)
 
 _INT_BOXES = (
     _Box(_pat(r"Interest\s+income|Taxable\s+interest"), "interest", "1", "Interest income"),
     _Box(
-        _pat(r"Interest\s+on\s+U\.S\.\s+Savings\s+Bonds"),
+        _pat(r"(?:Interest|Int\.?)\s+on\s+U\.?\s?S\.?\s+Savings\s+Bonds"),
         "interest",
         "3",
         "Interest on U.S. savings bonds and Treasury obligations",
@@ -83,6 +89,16 @@ _DIV_BOXES = (
         "12",
         "Exempt-interest dividends",
         True,
+    ),
+)
+_OID_BOXES = (
+    _Box(_pat(r"Original\s+issue\s+discount"), "interest", "1", "Original issue discount"),
+    _Box(_pat(r"Other\s+periodic\s+interest"), "interest", "2", "Other periodic interest"),
+    _Box(
+        _pat(r"OID\s+on\s+U\.?\s?S\.?\s+Treasury\s+obligations"),
+        "interest",
+        "8",
+        "OID on U.S. Treasury obligations",
     ),
 )
 _MISC_BOXES = (
@@ -123,12 +139,22 @@ def _withholding(block: ExtractedDoc, form: str) -> list[ParsedTaxItem]:
                 "Federal income tax withheld",
             )
         )
+    pending: str | None = None
     for page in block.pages:
         for row in cluster_rows(page.words):
-            match = _STATE_ROW.match(row.text)
-            if match is None:
-                continue
             values = [m for m in (parse_money(w.text) for w in row.words) if m is not None]
+            inline = _STATE_ROW.match(row.text)
+            code_row = _STATE_CODE_ROW.match(row.text)
+            code: str | None
+            if inline is not None:
+                code = inline.group(1)
+            elif code_row is not None:
+                pending = code_row.group(1)
+                continue
+            elif _STATE_TAX_ROW.search(row.text):
+                code, pending = pending, None
+            else:
+                continue
             if values and values[-1].magnitude_minor > 0:
                 taxes.append(
                     ParsedTaxItem(
@@ -137,7 +163,7 @@ def _withholding(block: ExtractedDoc, form: str) -> list[ParsedTaxItem]:
                         form,
                         "16",
                         "State income tax withheld",
-                        jurisdiction=match.group(1),
+                        jurisdiction=code or UNKNOWN_STATE,
                     )
                 )
     return taxes
@@ -162,6 +188,17 @@ def parse_consolidated_div(block: ExtractedDoc) -> SectionResult:
     if ordinary is not None and qualified is not None and qualified > ordinary:
         warnings.append("1099-DIV qualified dividends exceed ordinary dividends.")
     return SectionResult(tuple(income), tuple(_withholding(block, "1099-DIV")), tuple(warnings))
+
+
+def parse_consolidated_oid(block: ExtractedDoc) -> SectionResult:
+    """A ``1099-OID`` section (or a broker's "Summary of Original Issue Discount Items"): box 1
+    OID, box 2 other periodic interest and box 8 OID on Treasury obligations, all ``interest``.
+    A section whose figures are all zero is still recognised (zero items are emitted)."""
+    return SectionResult(
+        tuple(_boxes(block, _OID_BOXES, "1099-OID")),
+        tuple(_withholding(block, "1099-OID")),
+        (),
+    )
 
 
 def parse_consolidated_misc(block: ExtractedDoc) -> SectionResult:
