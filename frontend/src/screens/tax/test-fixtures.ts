@@ -96,3 +96,31 @@ export const PAYERS: TaxIncomePayer[] = [
     amount_minor: 24000,
   },
 ];
+
+type FormDetail = import("./logic").TaxFormDetail;
+
+export function formDetail(over: Partial<FormDetail> = {}): FormDetail {
+  return {
+    id: 10,
+    form_type: "w2",
+    role: "source",
+    tax_year: 2024,
+    payer_name: "Pinecrest Logistics LLC",
+    payer_tin_last4: "1234",
+    account_last4: null,
+    filing_status: null,
+    agi_minor: null,
+    taxable_income_minor: null,
+    is_corrected: false,
+    extraction_method: "parser",
+    is_user_edited: false,
+    needs_review: false,
+    income_items: [
+      { id: 100, category: "salary_wages", amount_minor: 8543210, currency: "USD", source_form: "W-2", box: "1", label: "Wages", is_memo: false, origin: "parser" },
+    ],
+    tax_items: [
+      { id: 200, category: "federal_income_tax_withheld", amount_minor: 1200000, currency: "USD", source_form: "W-2", box: "2", label: null, jurisdiction: null, is_estimate: false, origin: "parser" },
+    ],
+    ...over,
+  };
+}

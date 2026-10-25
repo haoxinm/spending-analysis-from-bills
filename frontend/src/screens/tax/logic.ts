@@ -1,10 +1,19 @@
-import type { components } from "@/api/client";
+import { ApiError, type components } from "@/api/client";
+import { parseBalanceInput } from "@/screens/dashboard/net-worth/logic";
 
 export type TaxSummary = components["schemas"]["TaxYearSummary"];
 export type TaxDocument = components["schemas"]["TaxDocument"];
 export type TaxIncomePayer = components["schemas"]["TaxIncomePayer"];
 export type TaxFormType = components["schemas"]["TaxFormType"];
 export type TaxCategoryAmount = components["schemas"]["TaxCategoryAmount"];
+export type TaxDocumentDetail = components["schemas"]["TaxDocumentDetail"];
+export type TaxFormDetail = components["schemas"]["TaxFormDetail"];
+export type IncomeItem = components["schemas"]["IncomeItemOut"];
+export type TaxItem = components["schemas"]["TaxItemOut"];
+export type IncomeCategory = components["schemas"]["IncomeCategoryEnum"];
+export type TaxCategory = components["schemas"]["TaxCategoryEnum"];
+export type SkippedFrom = components["schemas"]["TaxSkippedFrom"];
+export type FilingStatus = NonNullable<components["schemas"]["TaxFormCreate"]["filing_status"]>;
 
 /** "0.1319" -> "13.19%"; null/undefined/NaN -> an em dash (rate unknown). */
 export function formatRate(rate: number | null | undefined): string {
@@ -280,3 +289,155 @@ export function resolveYear(selected: number | null, years: readonly number[]): 
 
 export const TAX_PRIVACY_NOTE =
   "Only the last 4 digits of ID numbers are kept; files stay on this computer.";
+
+// ---- Manual overrides ------------------------------------------------------------------------
+
+export interface Option<T extends string = string> {
+  value: T;
+  label: string;
+}
+
+export const INCOME_CATEGORY_OPTIONS: Option<IncomeCategory>[] = [
+  { value: "salary_wages", label: "Wages and salary" },
+  { value: "interest", label: "Interest" },
+  { value: "ordinary_dividends", label: "Ordinary dividends" },
+  { value: "qualified_dividends", label: "Qualified dividends (memo)" },
+  { value: "short_term_capital_gain", label: "Short-term capital gain" },
+  { value: "long_term_capital_gain", label: "Long-term capital gain" },
+  { value: "self_employment", label: "Self-employment" },
+  { value: "other", label: "Other income" },
+];
+
+export const TAX_CATEGORY_OPTIONS: Option<TaxCategory>[] = [
+  { value: "federal_income_tax_withheld", label: "Federal income tax withheld" },
+  { value: "state_income_tax_withheld", label: "State income tax withheld" },
+  { value: "local_income_tax_withheld", label: "Local income tax withheld" },
+  { value: "social_security_tax", label: "Social Security tax" },
+  { value: "medicare_tax", label: "Medicare tax" },
+  { value: "total_federal_tax", label: "Total federal tax" },
+  { value: "federal_tax_ordinary_est", label: "Ordinary income tax (estimate)" },
+  { value: "federal_tax_preferential_est", label: "Preferential-rate tax (estimate)" },
+  { value: "net_investment_income_tax", label: "Net investment income tax" },
+  { value: "additional_medicare_tax", label: "Additional Medicare tax" },
+  { value: "self_employment_tax", label: "Self-employment tax" },
+  { value: "state_income_tax_liability", label: "State income tax" },
+  { value: "estimated_tax_payments", label: "Estimated tax payments" },
+  { value: "total_payments", label: "Total payments" },
+  { value: "refund", label: "Refund" },
+  { value: "amount_owed", label: "Amount owed" },
+];
+
+export const FORM_TYPE_OPTIONS: Option<TaxFormType>[] = (Object.keys(FORM_LABELS) as TaxFormType[]).map(
+  (value) => ({ value, label: FORM_LABELS[value] }),
+);
+
+export const FILING_STATUS_OPTIONS: Option<FilingStatus>[] = [
+  { value: "single", label: "Single" },
+  { value: "mfj", label: "Married filing jointly" },
+  { value: "mfs", label: "Married filing separately" },
+  { value: "hoh", label: "Head of household" },
+  { value: "qss", label: "Qualifying surviving spouse" },
+];
+
+export function categoryLabel(kind: "income" | "tax", category: string): string {
+  const options: Option[] = kind === "income" ? INCOME_CATEGORY_OPTIONS : TAX_CATEGORY_OPTIONS;
+  return options.find((o) => o.value === category)?.label ?? category;
+}
+
+/** Only capital gains may be negative (losses). */
+export function isSignedIncomeCategory(category: string): boolean {
+  return category === "short_term_capital_gain" || category === "long_term_capital_gain";
+}
+
+/** Dollars typed by the user -> integer cents, or null when it is not a clear amount. Accepts
+ * "$1,234.56", "12", "7.5" and (when `allowNegative`) "-50" or "(50.00)"; rounds half-up. */
+export function dollarsToMinor(text: string, allowNegative = false): number | null {
+  let t = text.trim();
+  let negative = false;
+  if (/^\(.*\)$/.test(t)) {
+    negative = true;
+    t = t.slice(1, -1).trim();
+  } else if (t.startsWith("-")) {
+    negative = true;
+    t = t.slice(1).trim();
+  }
+  const minor = parseBalanceInput(t);
+  if (minor === null) return null;
+  if (negative && !allowNegative) return null;
+  return negative ? -minor : minor;
+}
+
+/** Integer cents -> "1234.56" (no grouping, so it round-trips through `dollarsToMinor`). */
+export function minorToDollars(minor: number): string {
+  const abs = Math.abs(minor);
+  const text = `${Math.floor(abs / 100)}.${String(abs % 100).padStart(2, "0")}`;
+  return minor < 0 ? `-${text}` : text;
+}
+
+/** Validation message for a typed amount, or null when it is fine. */
+export function amountError(text: string, signed: boolean): string | null {
+  if (text.trim() === "") return "Enter an amount";
+  const minor = dollarsToMinor(text, signed);
+  if (minor === null) {
+    return /^\s*[-(]/.test(text) && !signed ? "Amount cannot be negative" : "Enter a valid dollar amount";
+  }
+  return null;
+}
+
+/** Last-4 digits: empty is fine (null), otherwise exactly 4 digits. */
+export function last4Error(text: string): string | null {
+  const t = text.trim();
+  return t === "" || /^\d{4}$/.test(t) ? null : "Enter exactly 4 digits";
+}
+
+export function taxYearError(text: string): string | null {
+  const n = Number(text);
+  return text.trim() !== "" && Number.isInteger(n) && n >= 2000 && n <= 2099
+    ? null
+    : "Enter a year from 2000 to 2099";
+}
+
+export function blankToNull(text: string): string | null {
+  const t = text.trim();
+  return t === "" ? null : t;
+}
+
+export type FormLike = Pick<TaxFormDetail, "extraction_method" | "is_user_edited" | "needs_review">;
+
+export function provenanceLabel(form: FormLike): string {
+  if (form.needs_review) return "Read by LLM — needs review";
+  if (form.extraction_method === "manual") return "Entered manually";
+  if (form.is_user_edited) return "Edited";
+  if (form.extraction_method === "llm") return "Read by LLM — confirmed";
+  return "Parsed";
+}
+
+export function itemOriginLabel(origin: "parser" | "llm" | "manual"): string | null {
+  if (origin === "llm") return "Read by LLM";
+  if (origin === "manual") return "Edited";
+  return null;
+}
+
+/** One sentence per source file, e.g. `1 form was already imported from "x.pdf" and was skipped.` */
+export function skippedFromMessages(skipped: readonly SkippedFrom[]): string[] {
+  const counts = new Map<string, number>();
+  for (const s of skipped) counts.set(s.original_name, (counts.get(s.original_name) ?? 0) + 1);
+  return [...counts].map(([name, n]) =>
+    n === 1
+      ? `1 form was already imported from "${name}" and was skipped.`
+      : `${n} forms were already imported from "${name}" and were skipped.`,
+  );
+}
+
+/** Readable text for an API failure, including FastAPI's list-style 422 details. */
+export function errorMessage(e: unknown, fallback = "Something went wrong."): string {
+  if (e instanceof ApiError && Array.isArray(e.detail)) {
+    const parts = (e.detail as unknown[])
+      .map((d) =>
+        typeof d === "object" && d !== null && "msg" in d && typeof d.msg === "string" ? d.msg : null,
+      )
+      .filter((m): m is string => m !== null);
+    if (parts.length > 0) return parts.join("; ");
+  }
+  return e instanceof Error && e.message ? e.message : fallback;
+}
