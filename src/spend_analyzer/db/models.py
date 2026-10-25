@@ -27,6 +27,7 @@ from sqlalchemy import (
 )
 from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column, relationship
 
+from spend_analyzer.core.net_worth import BALANCE_CATEGORIES
 from spend_analyzer.core.tax_types import (
     SIGNED_INCOME_CATEGORIES,
     FormType,
@@ -491,3 +492,38 @@ class TaxItem(Base):
     label: Mapped[str | None] = mapped_column(String, nullable=True)
     jurisdiction: Mapped[str | None] = mapped_column(String, nullable=True)  # NULL = federal/FICA
     is_estimate: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
+
+
+class BalanceEntry(Base):
+    """One month-end balance for one account (net worth). LOCAL ONLY: never sent to an LLM and
+    never part of `/api/export`. `balance_minor` is a non-negative magnitude (credit card = amount
+    owed)."""
+
+    __tablename__ = "balance_entries"
+    __table_args__ = (
+        UniqueConstraint(
+            "user_id", "category", "account_name", "year", "month", name="uq_balance_entry_period"
+        ),
+        Index("ix_balance_user_period", "user_id", "year", "month"),
+        CheckConstraint(f"category IN ({_sql_in(BALANCE_CATEGORIES)})", name="ck_balance_category"),
+        CheckConstraint("month BETWEEN 1 AND 12", name="ck_balance_month"),
+        CheckConstraint("year BETWEEN 1900 AND 2200", name="ck_balance_year"),
+        CheckConstraint("balance_minor >= 0", name="ck_balance_nonneg"),
+        CheckConstraint("length(trim(account_name)) > 0", name="ck_balance_account_name"),
+    )
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    user_id: Mapped[int] = mapped_column(
+        Integer, ForeignKey("users.id", ondelete="CASCADE"), nullable=False
+    )
+    category: Mapped[str] = mapped_column(String, nullable=False)
+    account_name: Mapped[str] = mapped_column(String, nullable=False)
+    year: Mapped[int] = mapped_column(Integer, nullable=False)
+    month: Mapped[int] = mapped_column(Integer, nullable=False)
+    balance_minor: Mapped[int] = mapped_column(Integer, nullable=False)
+    currency: Mapped[str] = mapped_column(String, nullable=False, default="USD")
+    note: Mapped[str | None] = mapped_column(Text, nullable=True)
+    created_at: Mapped[str] = mapped_column(Text, nullable=False, default=utcnow_iso)
+    updated_at: Mapped[str] = mapped_column(
+        Text, nullable=False, default=utcnow_iso, onupdate=utcnow_iso
+    )

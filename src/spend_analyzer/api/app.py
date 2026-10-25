@@ -26,6 +26,7 @@ from spend_analyzer.api.routers import (
     export,
     issuers,
     layout_specs,
+    net_worth,
     rules,
     statements,
     taxonomy,
@@ -88,6 +89,7 @@ def create_app(
         rules.router,
         settings_router.router,
         export.router,
+        net_worth.router,
     ):
         app.include_router(router, prefix="/api")
 

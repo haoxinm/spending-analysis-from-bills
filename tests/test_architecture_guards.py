@@ -172,3 +172,43 @@ def test_tax_modules_import_no_llm_or_http() -> None:
         if hits:
             offenders[_rel(path)] = hits
     assert not offenders, f"tax modules import an LLM or network module: {offenders}"
+
+
+def _net_worth_module_paths() -> list[Path]:
+    """Net-worth modules (balances are local-only financial data)."""
+    rels = (
+        "core/net_worth.py",
+        "analytics/net_worth_query.py",
+        "api/routers/net_worth.py",
+        "api/services/net_worth.py",
+    )
+    return [_SRC_ROOT / rel for rel in rels if (_SRC_ROOT / rel).is_file()]
+
+
+def test_net_worth_modules_import_no_llm_or_http() -> None:
+    """Balances never reach an egress seam: no LLM package and no HTTP client in the feature."""
+    paths = _net_worth_module_paths()
+    assert {p.name for p in paths} >= {"net_worth.py", "net_worth_query.py"}
+    assert len(paths) == 4
+    offenders: dict[str, set[str]] = {}
+    for path in paths:
+        tree = _parse(path)
+        hits = {
+            m
+            for m in _full_imported_modules(tree)
+            if m == "spend_analyzer.llm"
+            or m.startswith("spend_analyzer.llm.")
+            or m == "spend_analyzer.classify.llm"
+            or m.startswith("spend_analyzer.classify.llm.")
+        }
+        for node in ast.walk(tree):
+            if (
+                isinstance(node, ast.ImportFrom)
+                and node.level == 0
+                and node.module in ("spend_analyzer", "spend_analyzer.classify")
+            ):
+                hits |= {f"{node.module}.{a.name}" for a in node.names if a.name in ("llm",)}
+        hits |= _imports_http_client(tree)
+        if hits:
+            offenders[_rel(path)] = hits
+    assert not offenders, f"net-worth modules import an LLM or network module: {offenders}"

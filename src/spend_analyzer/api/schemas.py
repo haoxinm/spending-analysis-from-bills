@@ -18,6 +18,8 @@ from typing import Any, Literal
 
 from pydantic import BaseModel, ConfigDict, Field
 
+from spend_analyzer.core.net_worth import BalanceCategory
+
 
 class Kind(StrEnum):
     """The seven `Kind` values (§3.1), as a real enum rather than a `Literal` alias: FastAPI
@@ -549,3 +551,93 @@ class ApiKeyPut(_Model):
 
     api_key: str
     base_url: str = ""
+
+
+# --- Net worth ---------------------------------------------------------------------------------
+
+
+class BalanceEntry(_Model):
+    id: int
+    user_id: int
+    category: BalanceCategory
+    account_name: str
+    year: int
+    month: int
+    balance_minor: int
+    currency: str
+    note: str | None
+    created_at: str
+    updated_at: str
+
+
+class BalanceEntryUpsert(_Model):
+    user_id: int
+    category: BalanceCategory
+    account_name: str = Field(min_length=1, max_length=100)
+    year: int = Field(ge=1900, le=2200)
+    month: int = Field(ge=1, le=12)
+    balance_minor: int = Field(ge=0)
+    currency: str = Field(default="USD", pattern=r"^[A-Z]{3}$")
+    note: str | None = Field(default=None, max_length=500)
+
+
+class BalanceEntryPatch(_Model):
+    balance_minor: int | None = Field(default=None, ge=0)
+    note: str | None = None
+
+
+class NetWorthCategoryTotal(_Model):
+    category: BalanceCategory
+    balance_minor: int
+    signed_minor: int
+
+
+class NetWorthAccountBalance(_Model):
+    user_id: int
+    category: BalanceCategory
+    account_name: str
+    balance_minor: int
+    signed_minor: int
+    as_of: str
+    carried: bool
+
+
+class NetWorthPoint(_Model):
+    period: str
+    by_category: dict[str, int]
+    assets_minor: int
+    liabilities_minor: int
+    net_worth_minor: int
+
+
+class NetWorthAccountPoint(_Model):
+    period: str
+    balance_minor: int
+    carried: bool
+
+
+class NetWorthAccountSeries(_Model):
+    user_id: int
+    category: BalanceCategory
+    account_name: str
+    points: list[NetWorthAccountPoint]
+
+
+class NetWorthSnapshot(_Model):
+    period: str
+    assets_minor: int
+    liabilities_minor: int
+    net_worth_minor: int
+    previous_period: str | None
+    change_minor: int | None
+    categories: list[NetWorthCategoryTotal]
+    accounts: list[NetWorthAccountBalance]
+
+
+class NetWorthSummary(_Model):
+    currency: str
+    user_id: int | None
+    periods: list[str]
+    series: list[NetWorthPoint]
+    account_series: list[NetWorthAccountSeries]
+    snapshot: NetWorthSnapshot | None

@@ -38,6 +38,10 @@ _LOCAL_ONLY_TERMS = (
     "income_items",
     "tax_items",
     "ParsedTaxForm",
+    "balance_entries",
+    "balance_minor",
+    "BalanceEntry",
+    "net_worth",
 )
 
 
