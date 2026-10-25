@@ -21,8 +21,9 @@ Given that, the threats this project actually defends against are:
    normalized merchant descriptions (a `FORBIDDEN`-pattern guard raises rather than sanitizes, and
    a CI-enforced grep keeps local-only field names out of that package), and `llm/statement_parser.py`
    sends the text of user-selected pages for statements the user explicitly opted into LLM parsing —
-   with long account/card numbers masked to the last 4, emails replaced, and `pii_terms`/user
-   aliases redacted, an exact-payload preview, and never auto-confirmed. Only `llm/client.py` may
+   with the user's personal-info entries (`pii_terms`/user aliases: names in any case/order,
+   phone and account numbers in any format) removed first by `core/pii.py`, emails replaced, any
+   remaining long account/card numbers masked to the last 4, an exact-payload preview, and never auto-confirmed. Only `llm/client.py` may
    import an HTTP client, and only those two seams may import it (`tests/test_architecture_guards.py`);
    `ingest/` can make no network call. An endpoint on `localhost` keeps everything on the machine;
    amounts and dates in parsed page text do go to a *remote* endpoint if you choose to parse with one.

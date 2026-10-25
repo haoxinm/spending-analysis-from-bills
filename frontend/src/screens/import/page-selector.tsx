@@ -58,6 +58,10 @@ function LlmNotice({ item, pages }: { item: ImportItem; pages: number[] | null }
               {preview.data.requests.length} request{preview.data.requests.length === 1 ? "" : "s"} ·{" "}
               {preview.data.total_chars} characters total
             </p>
+            <p className="text-muted-foreground" data-testid="llm-redactions">
+              {preview.data.redactions} personal-info {preview.data.redactions === 1 ? "match" : "matches"}{" "}
+              removed
+            </p>
             {preview.data.requests.map((text, index) => (
               <pre
                 key={index}

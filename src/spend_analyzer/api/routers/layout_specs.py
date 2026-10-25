@@ -19,6 +19,7 @@ from spend_analyzer.api.deps import SessionDep, SettingsDep
 from spend_analyzer.api.services import crud
 from spend_analyzer.core.errors import ParserError, UnsupportedLayoutError
 from spend_analyzer.db.models import LayoutSpec as LayoutSpecModel
+from spend_analyzer.db.pii_terms import user_pii_terms
 from spend_analyzer.ingest.extract import extract
 from spend_analyzer.ingest.layout_spec import LayoutSpecError, load_spec
 from spend_analyzer.ingest.normalize import normalize
@@ -176,11 +177,10 @@ def dry_run_layout_spec(
         )
         reconciliation_delta_minor = total_minor - expected
 
+    pii_terms = user_pii_terms(session, settings, statement.user_id)
     sample_rows = [
         schemas.LayoutSpecDryRunRow(
-            description_clean=normalize(
-                t.description, tuple(settings.privacy.pii_terms)
-            ).description_clean,
+            description_clean=normalize(t.description, pii_terms).description_clean,
             posted_date=t.posted_date,
             amount_minor=t.amount_minor,
         )

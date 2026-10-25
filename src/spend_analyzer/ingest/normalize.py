@@ -8,8 +8,8 @@ load-bearing (see the module docstring note on redacting digits before stripping
 Every regex that does not depend on caller-supplied data (the FORBIDDEN patterns, the digit/email/
 phone/reference-token patterns, the boilerplate prefixes) is compiled once at import time (budget:
 < 50 microseconds per description, §6.6). The one pattern that *does* depend on caller-supplied
-data — the PII-term alternation, built from `pii_terms` — is memoized per distinct term set with
-`functools.lru_cache`, since callers pass the same term list for every transaction in a batch.
+data — the PII-term alternation, built from `pii_terms` — is compiled by `core.pii.compile_redactor`, memoized per distinct term set, since callers pass the
+same term list for every transaction in a batch.
 """
 
 from __future__ import annotations
@@ -19,11 +19,18 @@ import re
 import unicodedata
 from collections.abc import Sequence
 from dataclasses import dataclass, field
-from functools import lru_cache
 from pathlib import Path
 from typing import Final
 
 import yaml
+
+from spend_analyzer.core.pii import (
+    TOKEN_NAME,
+    TOKEN_NUMBER,
+    TOKEN_PHONE,
+    TOKEN_REDACTED,
+    compile_redactor,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -110,7 +117,7 @@ _BOILERPLATE_PREFIXES: Final[tuple[str, ...]] = tuple(
 _STORE_NUMBER_HASH_RE: Final = re.compile(r"#\s*\d+")
 _STORE_NUMBER_WORD_RE: Final = re.compile(r"\bstore\s*#?\.?\s*\d+\b")
 _STORE_NUMBER_NO_RE: Final = re.compile(r"\bno\.?\s*\d+\b")
-_REDACTION_TOKEN_RE: Final = re.compile(r"\[(?:amount|card|num|email|phone|name)\]")
+_REDACTION_TOKEN_RE: Final = re.compile(r"\[(?:amount|card|num|email|phone|name|number|redacted)\]")
 _PUNCT_RE: Final = re.compile(r"[^\w\s]", re.UNICODE)
 _WS_RE: Final = re.compile(r"\s+")
 
@@ -191,17 +198,6 @@ def _collapse_ws(text: str) -> str:
 # --------------------------------------------------------------------------------------------
 
 
-@lru_cache(maxsize=8)
-def _pii_term_pattern(terms: tuple[str, ...]) -> re.Pattern[str] | None:
-    """Build (and memoize per distinct term set) the PII-term alternation: word-boundary,
-    case-insensitive, minimum length 3 (D10/A11). `terms` must already be a hashable tuple."""
-    usable = sorted({t for t in terms if len(t) >= 3}, key=len, reverse=True)
-    if not usable:
-        return None
-    alternation = "|".join(re.escape(t) for t in usable)
-    return re.compile(rf"\b(?:{alternation})\b", re.IGNORECASE)
-
-
 def _redact(text: str, pii_terms: Sequence[str]) -> tuple[str, dict[str, int]]:
     counts = {"amount": 0, "card": 0, "num": 0, "email": 0, "phone": 0, "name": 0, "ref": 0}
 
@@ -225,9 +221,14 @@ def _redact(text: str, pii_terms: Sequence[str]) -> tuple[str, dict[str, int]]:
         counts["phone"] += 1
         return "[PHONE]"
 
-    def _sub_name(_: re.Match[str]) -> str:
-        counts["name"] += 1
-        return "[NAME]"
+    # E-mail first (whole address, so a name entry cannot leave `[NAME]@host` behind), then the
+    # user's own personal-info entries, so a phone/account entry is removed whole instead of
+    # being half-masked by the generic digit rules below.
+    text = _EMAIL_RE.sub(_sub_email, text)
+    text, pii_counts = compile_redactor(pii_terms).redact_counts(text)
+    counts["phone"] += pii_counts[TOKEN_PHONE]
+    counts["num"] += pii_counts[TOKEN_NUMBER]
+    counts["name"] += pii_counts[TOKEN_NAME] + pii_counts[TOKEN_REDACTED]
 
     # Dollar amounts first, so a short one ("$9") is not later mistaken for a bare digit run,
     # and a long one ("$1234567.89") does not leave a stray "$" once its digits are consumed.
@@ -240,10 +241,6 @@ def _redact(text: str, pii_terms: Sequence[str]) -> tuple[str, dict[str, int]]:
     # Phone-like separated digit sequences (also catches card numbers written with separators,
     # e.g. "4111-1111-1111-1111", which no longer look like one contiguous digit run above).
     text = _PHONE_RE.sub(_sub_phone, text)
-
-    pii_pattern = _pii_term_pattern(tuple(pii_terms))
-    if pii_pattern is not None:
-        text = pii_pattern.sub(_sub_name, text)
 
     before = text
     text = _TRAILING_REF_RE.sub("", text).rstrip()

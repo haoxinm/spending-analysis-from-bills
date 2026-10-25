@@ -74,6 +74,7 @@ function setup(opts: { llmMode: "none" | "local" | "remote"; parserId: string; c
           pages: [1, 3],
           requests: ["REDACTED TEXT ONE", "REDACTED TEXT TWO"],
           total_chars: 1234,
+          redactions: 3,
         }),
       );
     }
@@ -212,6 +213,7 @@ describe("page selection", () => {
     const blocks = await screen.findAllByTestId("llm-request");
     expect(blocks.map((b) => b.textContent)).toEqual(["REDACTED TEXT ONE", "REDACTED TEXT TWO"]);
     expect(screen.getByText(/1234 characters total/)).toBeInTheDocument();
+    expect(screen.getByTestId("llm-redactions")).toHaveTextContent("3 personal-info matches removed");
     expect(previewUrls[0]).toContain("pages=1%2C3%2C4");
 
     await userEvent.click(screen.getByRole("button", { name: "Import" }));

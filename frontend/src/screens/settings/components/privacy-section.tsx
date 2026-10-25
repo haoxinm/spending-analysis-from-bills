@@ -6,6 +6,8 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 
 import { type PrivacySettings, type Settings } from "../lib/hooks";
+import { MIN_PII_ENTRY_LENGTH, entryKindLabel } from "../lib/pii";
+import { PiiTryIt } from "./pii-try-it";
 
 export interface PrivacySectionProps {
   settings: Settings;
@@ -14,8 +16,8 @@ export interface PrivacySectionProps {
 }
 
 /** Privacy toggles (P3-E section): whether a copy of each imported PDF is kept, whether the
- * debug-only extract cache is written, and the per-user PII alias terms that feed redaction
- * (D10, A11) alongside `config.toml`'s global `pii_terms`. */
+ * debug-only extract cache is written, and the personal-info entries removed before anything reaches an LLM (`pii_terms`; kind is
+ * auto-detected server-side, shown here as a badge). */
 export function PrivacySection({ settings, onSave, saving }: PrivacySectionProps) {
   const [draft, setDraft] = React.useState<PrivacySettings>(settings.privacy);
   const [newTerm, setNewTerm] = React.useState("");
@@ -28,7 +30,7 @@ export function PrivacySection({ settings, onSave, saving }: PrivacySectionProps
 
   const addTerm = () => {
     const term = newTerm.trim();
-    if (term.length < 3) return; // D10: minimum length 3
+    if (term.length < MIN_PII_ENTRY_LENGTH) return;
     if (draft.pii_terms.includes(term)) {
       setNewTerm("");
       return;
@@ -65,15 +67,23 @@ export function PrivacySection({ settings, onSave, saving }: PrivacySectionProps
         </label>
 
         <div className="flex flex-col gap-2">
-          <span className="text-sm font-medium">PII terms (case-insensitive, word-boundary, min 3 chars)</span>
+          <span className="text-sm font-medium">Personal info to remove before sending to an LLM</span>
           <p className="text-xs text-muted-foreground">
-            Names, nicknames or other identifying words to strip from descriptions before anything is
-            classified or sent to an LLM.
+            Add your name, family members&apos; names, phone numbers, address and account or SSN-like
+            numbers. Names match ignoring case, spacing and &quot;Last, First&quot; order. Phone and account
+            numbers match in any format, e.g. (312) 555-0100 = 312.555.0100 = 3125550100. Every match is
+            removed from statement text and descriptions before anything is classified or sent to an LLM.
           </p>
           <div className="flex flex-wrap gap-2">
             {draft.pii_terms.map((term) => (
               <Badge key={term} variant="secondary" className="gap-1">
                 {term}
+                <span
+                  data-testid="pii-kind"
+                  className="rounded bg-background/60 px-1 text-[10px] uppercase tracking-wide text-muted-foreground"
+                >
+                  {entryKindLabel(term)}
+                </span>
                 <button
                   type="button"
                   aria-label={`Remove ${term}`}
@@ -89,9 +99,9 @@ export function PrivacySection({ settings, onSave, saving }: PrivacySectionProps
             <Input
               value={newTerm}
               onChange={(e) => setNewTerm(e.target.value)}
-              placeholder="e.g. a nickname"
+              placeholder="e.g. a name or (312) 555-0100"
               className="w-48"
-              aria-label="New PII term"
+              aria-label="New personal info entry"
               onKeyDown={(e) => {
                 if (e.key === "Enter") {
                   e.preventDefault();
@@ -99,10 +109,11 @@ export function PrivacySection({ settings, onSave, saving }: PrivacySectionProps
                 }
               }}
             />
-            <Button size="sm" variant="secondary" onClick={addTerm} disabled={newTerm.trim().length < 3}>
-              Add term
+            <Button size="sm" variant="secondary" onClick={addTerm} disabled={newTerm.trim().length < MIN_PII_ENTRY_LENGTH}>
+              Add entry
             </Button>
           </div>
+          <PiiTryIt terms={draft.pii_terms} />
         </div>
 
         <div>

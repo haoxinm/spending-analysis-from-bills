@@ -20,6 +20,7 @@ from pydantic import BaseModel, ConfigDict, ValidationError
 
 from spend_analyzer.config import LLMConfig, load_settings
 from spend_analyzer.core.errors import LLMError, ParserError
+from spend_analyzer.core.pii import compile_redactor
 from spend_analyzer.core.types import (
     AccountHint,
     ExtractedDoc,
@@ -132,13 +133,21 @@ def _mask_number(match: re.Match[str]) -> str:
 
 
 def redact(text: str, pii_terms: Sequence[str] = ()) -> str:
-    """Mask account/card numbers (keeping the last 4 digits), e-mail addresses and the given PII
-    terms. Amounts and dates are deliberately left intact."""
+    """Mask e-mail addresses whole (so a name entry cannot leave `[NAME]@host` behind), remove the
+    user's personal-info entries (names, phone and account numbers in any format), and only then
+    mask remaining account/card numbers (keeping the last 4 digits). Amounts and dates are
+    deliberately left intact. User entries run before the generic number rule so a phone or
+    account entry is removed whole instead of being half-masked (XXXX + last 4)."""
     text = _EMAIL_RE.sub("[email]", text)
-    text = _LONG_NUMBER_RE.sub(_mask_number, text)
-    for term in sorted({t.strip() for t in pii_terms if t.strip()}, key=len, reverse=True):
-        text = re.sub(rf"(?<!\w){re.escape(term)}(?!\w)", "[redacted]", text, flags=re.IGNORECASE)
-    return text
+    text, _ = compile_redactor(pii_terms).redact(text)
+    return _LONG_NUMBER_RE.sub(_mask_number, text)
+
+
+def count_redactions(doc: ExtractedDoc, pii_terms: Sequence[str] = ()) -> int:
+    """How many replacements the user's personal-info entries make across `doc`'s pages (each
+    page counted once, however many requests repeat the header). Pure; for the preview."""
+    redactor = compile_redactor(pii_terms)
+    return sum(redactor.redact(page.text)[1] for page in doc.pages)
 
 
 def build_requests(doc: ExtractedDoc, cfg: LLMConfig, pii_terms: Sequence[str] = ()) -> list[str]:

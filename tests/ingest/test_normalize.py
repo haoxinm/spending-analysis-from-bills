@@ -293,3 +293,29 @@ def test_forbidden_patterns_match_the_frozen_section_3_7_list() -> None:
         r"\$\s?\d",
         r"\b\d{4}-\d{2}-\d{2}\b",
     }
+
+
+class TestUserPiiEntries:
+    """The user's personal-info entries run before the generic digit/email rules."""
+
+    def test_phone_entry_removed_whole_in_any_format(self) -> None:
+        result = normalize("ZELLE TO 312.555.0100 RENT", pii_terms=["(312) 555-0100"])
+        assert "0100" not in result.description_clean
+        assert "[PHONE]" in result.description_clean
+        assert result.redaction_counts["phone"] == 1
+
+    def test_name_entry_uses_name_token_in_any_order_and_case(self) -> None:
+        result = normalize("ZELLE FROM DOE, JANE", pii_terms=["Jane Doe"])
+        assert result.description_clean == "ZELLE FROM [NAME]"
+        assert result.redaction_counts["name"] == 1
+
+    def test_email_is_masked_whole_even_when_a_name_entry_matches_its_local_part(self) -> None:
+        result = normalize("PAY john@example.com", pii_terms=["john"])
+        assert (
+            "@" not in result.description_clean and "john" not in result.description_clean.lower()
+        )
+
+    def test_account_number_entry_counts_as_num(self) -> None:
+        result = normalize("ACH 123-45-6789 PAYROLL", pii_terms=["123456789"])
+        assert "6789" not in result.description_clean
+        assert result.redaction_counts["num"] == 1

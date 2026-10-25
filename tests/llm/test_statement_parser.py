@@ -59,8 +59,31 @@ def test_redacts_emails_and_pii_terms_case_insensitively_whole_word() -> None:
     out = sp.redact("Jane.Doe@example.com JANE DOE janet", ["jane doe", "Jane"])
     assert "[email]" in out
     assert "@" not in out
-    assert out.count("[redacted]") == 1  # "janet" untouched; "JANE DOE" matched as one term
+    assert out.count("[NAME]") == 1  # "janet" untouched; "JANE DOE" matched as one term
     assert "janet" in out
+
+
+@pytest.mark.parametrize(
+    "written", ["(312) 555-0100", "312.555.0100", "3125550100", "+1 312-555-0100", "1-312-555-0100"]
+)
+def test_phone_entry_is_fully_removed_not_masked_to_last4(written: str) -> None:
+    out = sp.redact(f"Customer service {written} open 24h", ["(312)555-0100"])
+    assert out == "Customer service [PHONE] open 24h"
+    assert "0100" not in out and "XXXX" not in out
+
+
+def test_account_entry_removed_before_generic_masking() -> None:
+    out = sp.redact(
+        "Acct 9876 5432 1098 7654 and card 4111 1111 1111 1234", ["9876-5432-1098-7654"]
+    )
+    assert "7654" not in out and "[NUMBER]" in out
+    assert "XXXX1234" in out  # other numbers still get the generic last-4 mask
+
+
+def test_count_redactions_counts_user_entries_only() -> None:
+    doc = _doc("Jane Doe 312-555-0100 jane@example.com", "DOE, JANE")
+    assert sp.count_redactions(doc, ["Jane Doe", "(312) 555-0100"]) == 3
+    assert sp.count_redactions(doc, []) == 0
 
 
 def test_redaction_keeps_amounts_and_dates() -> None:

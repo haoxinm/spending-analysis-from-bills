@@ -51,8 +51,10 @@ from spend_analyzer.config import Settings, load_settings
 from spend_analyzer.core.errors import ParserError, SpendAnalyzerError, UnsupportedLayoutError
 from spend_analyzer.core.logging import get_logger
 from spend_analyzer.core.paths import ensure_home, statements_dir
+from spend_analyzer.core.pii import merge_entries
 from spend_analyzer.core.types import ExtractedDoc, ParsedStatement, StatementParser
-from spend_analyzer.db.models import Account, Issuer, LayoutSpec, Statement, Transaction, User
+from spend_analyzer.db.models import Account, Issuer, LayoutSpec, Statement, Transaction
+from spend_analyzer.db.pii_terms import user_pii_terms
 from spend_analyzer.ingest import issuer_match
 from spend_analyzer.ingest.dedupe import DedupeKey, compute_dedupe_hash, compute_occurrence_indices
 from spend_analyzer.ingest.extract import extract, sha256_file
@@ -505,12 +507,7 @@ def _resolve_parser(
         from spend_analyzer.llm.statement_parser import LLMStatementParser
 
         settings = load_settings()
-        terms: set[str] = set(settings.privacy.pii_terms)
-        user = session.get(User, user_id) if user_id is not None else None
-        if user is not None:
-            with contextlib.suppress(json.JSONDecodeError, TypeError):
-                terms.update(json.loads(user.pii_aliases))
-        return LLMStatementParser(settings.llm, tuple(sorted(terms)))
+        return LLMStatementParser(settings.llm, user_pii_terms(session, settings, user_id))
     if parser_id == generic_table.id:
         return generic_table
     for candidate in discover_all_parsers():
@@ -700,16 +697,12 @@ def _resolve_account(
 def _gather_pii_terms(session: Session, settings: Settings, user_id: int) -> tuple[str, ...]:
     """A17: issuer names and `match_terms` are added to the redaction term list, alongside the
     configured `[privacy] pii_terms` and this user's `pii_aliases` (D10/A11)."""
-    terms: set[str] = set(settings.privacy.pii_terms)
-    user = session.get(User, user_id)
-    if user is not None:
-        with contextlib.suppress(json.JSONDecodeError, TypeError):
-            terms.update(json.loads(user.pii_aliases))
+    extra: list[str] = []
     for issuer in session.execute(select(Issuer)).scalars():
-        terms.add(issuer.name)
+        extra.append(issuer.name)
         with contextlib.suppress(json.JSONDecodeError, TypeError):
-            terms.update(json.loads(issuer.match_terms))
-    return tuple(sorted(terms))
+            extra.extend(json.loads(issuer.match_terms))
+    return merge_entries(user_pii_terms(session, settings, user_id), extra)
 
 
 def _gather_issuer_match_terms(session: Session) -> tuple[str, ...]:

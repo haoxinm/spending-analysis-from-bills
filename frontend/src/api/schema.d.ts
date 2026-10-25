@@ -703,6 +703,28 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/settings/pii-test": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Pii Test
+         * @description Apply personal-info entries (the unsaved draft in `body.terms`, else the saved
+         *     `[privacy] pii_terms`) to a pasted sample. Pure and local: nothing is sent anywhere, stored or
+         *     logged, and the entries are never echoed back.
+         */
+        post: operations["pii_test_api_settings_pii_test_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/settings/test-llm": {
         parameters: {
             query?: never;
@@ -1136,6 +1158,11 @@ export interface components {
             requests: string[];
             /** Total Chars */
             total_chars: number;
+            /**
+             * Redactions
+             * @default 0
+             */
+            redactions: number;
         };
         /** LlmRun */
         LlmRun: {
@@ -1256,6 +1283,25 @@ export interface components {
         MergeRequest: {
             /** Into Id */
             into_id: number;
+        };
+        /**
+         * PiiTestRequest
+         * @description `POST /api/settings/pii-test`: apply personal-info entries to a pasted sample. `terms`
+         *     (unsaved draft entries) defaults to the saved `[privacy] pii_terms`. Nothing leaves the
+         *     machine and nothing is stored.
+         */
+        PiiTestRequest: {
+            /** Text */
+            text: string;
+            /** Terms */
+            terms?: string[] | null;
+        };
+        /** PiiTestResponse */
+        PiiTestResponse: {
+            /** Redacted Text */
+            redacted_text: string;
+            /** Count */
+            count: number;
         };
         /** PrivacySettings */
         PrivacySettings: {
@@ -3195,6 +3241,39 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content?: never;
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    pii_test_api_settings_pii_test_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["PiiTestRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PiiTestResponse"];
+                };
             };
             /** @description Validation Error */
             422: {

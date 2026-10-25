@@ -2988,6 +2988,48 @@
         }
       }
     },
+    "/settings/pii-test": {
+      "post": {
+        "tags": [
+          "settings"
+        ],
+        "summary": "Pii Test",
+        "description": "Apply personal-info entries (the unsaved draft in `body.terms`, else the saved\n`[privacy] pii_terms`) to a pasted sample. Pure and local: nothing is sent anywhere, stored or\nlogged, and the entries are never echoed back.",
+        "operationId": "pii_test_api_settings_pii_test_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/PiiTestRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PiiTestResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/settings/test-llm": {
       "post": {
         "tags": [
@@ -4245,6 +4287,11 @@
           "total_chars": {
             "type": "integer",
             "title": "Total Chars"
+          },
+          "redactions": {
+            "type": "integer",
+            "title": "Redactions",
+            "default": 0
           }
         },
         "type": "object",
@@ -4465,6 +4512,54 @@
           "into_id"
         ],
         "title": "MergeRequest"
+      },
+      "PiiTestRequest": {
+        "properties": {
+          "text": {
+            "type": "string",
+            "maxLength": 100000,
+            "title": "Text"
+          },
+          "terms": {
+            "anyOf": [
+              {
+                "items": {
+                  "type": "string"
+                },
+                "type": "array",
+                "maxItems": 500
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Terms"
+          }
+        },
+        "type": "object",
+        "required": [
+          "text"
+        ],
+        "title": "PiiTestRequest",
+        "description": "`POST /api/settings/pii-test`: apply personal-info entries to a pasted sample. `terms`\n(unsaved draft entries) defaults to the saved `[privacy] pii_terms`. Nothing leaves the\nmachine and nothing is stored."
+      },
+      "PiiTestResponse": {
+        "properties": {
+          "redacted_text": {
+            "type": "string",
+            "title": "Redacted Text"
+          },
+          "count": {
+            "type": "integer",
+            "title": "Count"
+          }
+        },
+        "type": "object",
+        "required": [
+          "redacted_text",
+          "count"
+        ],
+        "title": "PiiTestResponse"
       },
       "PrivacySettings": {
         "properties": {

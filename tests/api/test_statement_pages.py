@@ -122,6 +122,21 @@ def test_llm_preview_redacts_and_honours_pages(
     assert client.get(f"/api/statements/{sid}/llm-preview?pages=abc").status_code == 422
 
 
+def test_llm_preview_reports_user_entry_redactions(
+    client: TestClient, session: Session, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    _configure_llm(monkeypatch)
+    monkeypatch.setenv("SPEND_ANALYZER_PRIVACY__PII_TERMS", "Alice Example,4111-1111-1111-1111")
+    sid = _staged_statement(session, tmp_path)
+    data = client.get(f"/api/statements/{sid}/llm-preview").json()
+    text = data["requests"][0]
+    assert "Alice" not in text and "[NUMBER]" in text and "XXXX1111" not in text
+    assert data["redactions"] == 4  # three names on page 2 + the card number on page 1
+
+    monkeypatch.setenv("SPEND_ANALYZER_PRIVACY__PII_TERMS", "")
+    assert client.get(f"/api/statements/{sid}/llm-preview").json()["redactions"] == 0
+
+
 def test_llm_preview_uses_saved_selection(
     client: TestClient, session: Session, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:

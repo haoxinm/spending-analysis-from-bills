@@ -1,6 +1,8 @@
 from __future__ import annotations
 
+import pytest
 from fastapi.testclient import TestClient
+from sqlalchemy.orm import Session
 
 
 def test_create_and_list_users(client: TestClient) -> None:
@@ -36,3 +38,19 @@ def test_only_one_default_user(client: TestClient) -> None:
     users = {u["id"]: u for u in client.get("/api/users").json()}
     assert users[first["id"]]["is_default"] is False
     assert users[second["id"]]["is_default"] is True
+
+
+def test_user_pii_terms_merges_settings_and_aliases(
+    session: Session, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    from spend_analyzer.config import load_settings
+    from spend_analyzer.db.models import User
+    from spend_analyzer.db.pii_terms import user_pii_terms
+
+    monkeypatch.setenv("SPEND_ANALYZER_PRIVACY__PII_TERMS", "Jane Doe,312-555-0100")
+    user = User(name="Pat", pii_aliases='["jane doe", "Pat Q", 7]')
+    session.add(user)
+    session.flush()
+    terms = user_pii_terms(session, load_settings(), user.id)
+    assert terms == ("Jane Doe", "312-555-0100", "Pat Q")
+    assert user_pii_terms(session, load_settings(), None) == ("Jane Doe", "312-555-0100")

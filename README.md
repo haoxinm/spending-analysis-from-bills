@@ -32,10 +32,19 @@ This is the reason to run this instead of a hosted budgeting app, so it comes fi
      (`classify/llm/egress.py`).
   2. **Statement parsing with the LLM is opt-in, per statement.** Only when you choose the LLM
      extractor for a statement (Import screen, or `import --parser-id llm`) is the text of the
-     pages *you selected* sent. Before it leaves, card/account numbers (8+ digits) are masked to
-     the last 4, email addresses are replaced, and your `[privacy] pii_terms` and user aliases are
-     redacted. Amounts and dates are kept, since they are the content being parsed
+     pages *you selected* sent. Before it leaves, your personal-info entries are removed,
+     email addresses are replaced, and any remaining card/account numbers (8+ digits) are masked
+     to the last 4. Amounts and dates are kept, since they are the content being parsed
      (`llm/statement_parser.py`). LLM imports are never auto-confirmed.
+- **Personal info you list is removed first, on both paths.** In Settings → Privacy, add your name,
+  family members' names, phone numbers, address and account/SSN-like numbers (stored as
+  `[privacy] pii_terms`, plus per-user aliases). Names match ignoring case, spacing and
+  "Last, First" order (with an optional middle initial) and never inside a longer word. Phone and
+  account numbers match in any format -- `(312) 555-0100` = `312.555.0100` = `3125550100` =
+  `+1 312-555-0100` -- but never inside a longer run of digits. Entries are applied before the
+  generic number masking, so nothing (not even the last 4 digits) of a listed number is sent. The
+  Settings "Try it" box shows what a pasted sample looks like after redaction (local only), and
+  the Import preview reports how many matches were removed (`core/pii.py`).
 - **Local endpoint = nothing leaves your machine.** Local vs. remote is derived from the address:
   `localhost`, `127.0.0.1` and `::1` are local. The redaction and previews apply either way.
 - **Preview before you send.** The Review screen shows the exact CSV a classification call would

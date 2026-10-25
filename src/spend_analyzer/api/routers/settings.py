@@ -27,6 +27,7 @@ from spend_analyzer.config import (
     save_settings,
     set_api_key,
 )
+from spend_analyzer.core.pii import compile_redactor
 from spend_analyzer.llm.diagnostics import check_connection
 
 router = APIRouter(tags=["settings"])
@@ -151,6 +152,16 @@ def delete_api_key_route(settings: SettingsDep, base_url: str = "") -> Response:
     """Remove the key stored for the endpoint's host, if present (I7). Idempotent."""
     delete_api_key(_key_account(base_url, settings.llm))
     return Response(status_code=204)
+
+
+@router.post("/settings/pii-test", response_model=schemas.PiiTestResponse)
+def pii_test(body: schemas.PiiTestRequest, settings: SettingsDep) -> schemas.PiiTestResponse:
+    """Apply personal-info entries (the unsaved draft in `body.terms`, else the saved
+    `[privacy] pii_terms`) to a pasted sample. Pure and local: nothing is sent anywhere, stored or
+    logged, and the entries are never echoed back."""
+    terms = settings.privacy.pii_terms if body.terms is None else body.terms
+    redacted, count = compile_redactor(terms).redact(body.text)
+    return schemas.PiiTestResponse(redacted_text=redacted, count=count)
 
 
 @router.post("/settings/test-llm", response_model=schemas.TestLlmResponse)

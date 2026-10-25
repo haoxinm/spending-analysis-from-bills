@@ -270,3 +270,22 @@ def test_api_key_routes_require_the_token(client: TestClient) -> None:
         headers={"X-Spend-Token": "wrong-token"},
     )
     assert delete_response.status_code == 403
+
+
+def test_pii_test_masks_sample_text_with_draft_terms(client: TestClient) -> None:
+    r = client.post(
+        "/api/settings/pii-test",
+        json={"text": "Jane Doe 312.555.0100 ok", "terms": ["doe, jane", "(312) 555-0100"]},
+    )
+    assert r.status_code == 200
+    assert r.json() == {"redacted_text": "[NAME] [PHONE] ok", "count": 2}
+
+
+def test_pii_test_defaults_to_saved_terms(
+    client: TestClient, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.setenv("SPEND_ANALYZER_PRIVACY__PII_TERMS", "Alice Example")
+    r = client.post("/api/settings/pii-test", json={"text": "hi ALICE  example"})
+    assert r.json() == {"redacted_text": "hi [NAME]", "count": 1}
+    r = client.post("/api/settings/pii-test", json={"text": "hi ALICE", "terms": []})
+    assert r.json() == {"redacted_text": "hi ALICE", "count": 0}

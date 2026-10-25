@@ -166,6 +166,8 @@ class LlmParsePreview(_Model):
     pages: list[int]
     requests: list[str]
     total_chars: int
+    #: Replacements made by the user's personal-info entries (names, phone/account numbers...).
+    redactions: int = 0
 
 
 class StatementPatch(_Model):
@@ -490,6 +492,20 @@ class PrivacySettings(_Model):
     store_pdf_copies: bool
     store_extract_cache: bool
     pii_terms: list[str]
+
+
+class PiiTestRequest(_Model):
+    """`POST /api/settings/pii-test`: apply personal-info entries to a pasted sample. `terms`
+    (unsaved draft entries) defaults to the saved `[privacy] pii_terms`. Nothing leaves the
+    machine and nothing is stored."""
+
+    text: str = Field(max_length=100_000)
+    terms: list[str] | None = Field(default=None, max_length=500)
+
+
+class PiiTestResponse(_Model):
+    redacted_text: str
+    count: int
 
 
 class IngestSettings(_Model):

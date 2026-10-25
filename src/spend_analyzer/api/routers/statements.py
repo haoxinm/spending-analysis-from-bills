@@ -281,6 +281,7 @@ def llm_preview(
         raise HTTPException(status_code=422, detail=str(exc)) from None
     terms = statement_preview.llm_pii_terms(session, settings, statement.user_id)
     requests = statement_parser.preview(doc, settings.llm, terms)
+    redactions = statement_parser.count_redactions(doc, terms)
     return schemas.LlmParsePreview(
         mode=settings.llm.mode,
         resolved_url=settings.llm.resolved_url if settings.llm.is_configured else "",
@@ -288,6 +289,7 @@ def llm_preview(
         pages=[p.page_number for p in doc.pages],
         requests=requests,
         total_chars=sum(len(r) for r in requests),
+        redactions=redactions,
     )
 
 

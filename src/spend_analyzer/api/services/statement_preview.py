@@ -12,9 +12,7 @@ that could be mistaken for something safe to send anywhere (I1b/I3).
 
 from __future__ import annotations
 
-import contextlib
 import io
-import json
 from dataclasses import dataclass
 from pathlib import Path
 
@@ -26,7 +24,7 @@ from spend_analyzer.config import Settings
 from spend_analyzer.core.errors import SpendAnalyzerError
 from spend_analyzer.core.native_locks import PDFIUM_LOCK
 from spend_analyzer.core.types import Word
-from spend_analyzer.db.models import User
+from spend_analyzer.db.pii_terms import user_pii_terms
 from spend_analyzer.ingest.extract import extract
 
 
@@ -116,11 +114,5 @@ def render_page_png(pdf_path: Path, page_number: int, width: int) -> bytes:
 
 
 def llm_pii_terms(session: Session, settings: Settings, user_id: int | None) -> tuple[str, ...]:
-    """The redaction terms the LLM statement parser uses: `[privacy] pii_terms` plus the
-    statement user's `pii_aliases` (mirrors `ingest.pipeline._resolve_parser`)."""
-    terms: set[str] = set(settings.privacy.pii_terms)
-    user = session.get(User, user_id) if user_id is not None else None
-    if user is not None:
-        with contextlib.suppress(json.JSONDecodeError, TypeError):
-            terms.update(json.loads(user.pii_aliases))
-    return tuple(sorted(terms))
+    """The redaction terms the LLM statement parser uses (see `db.pii_terms.user_pii_terms`)."""
+    return user_pii_terms(session, settings, user_id)
