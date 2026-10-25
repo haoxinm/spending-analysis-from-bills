@@ -131,3 +131,44 @@ def test_ingest_imports_no_http_client() -> None:
             offenders[str(path.relative_to(_SRC_ROOT.parent.parent))] = hits
 
     assert not offenders, f"ingest/ imports a network-capable module: {offenders}"
+
+
+def _tax_module_paths() -> list[Path]:
+    """Tax-feature modules that exist right now (some land in later work packages)."""
+    paths: list[Path] = []
+    tax_pkg = _SRC_ROOT / "ingest" / "tax"
+    if tax_pkg.is_dir():
+        paths.extend(_iter_py_files(tax_pkg))
+    for rel in ("analytics/tax_query.py", "api/routers/tax.py", "core/tax_types.py"):
+        candidate = _SRC_ROOT / rel
+        if candidate.is_file():
+            paths.append(candidate)
+    return paths
+
+
+def test_tax_modules_import_no_llm_or_http() -> None:
+    """Tax data never reaches an egress seam: no LLM package and no HTTP client in the feature."""
+    paths = _tax_module_paths()
+    assert any(p.name == "tax_types.py" for p in paths)
+    offenders: dict[str, set[str]] = {}
+    for path in paths:
+        tree = _parse(path)
+        hits = {
+            m
+            for m in _full_imported_modules(tree)
+            if m == "spend_analyzer.llm"
+            or m.startswith("spend_analyzer.llm.")
+            or m == "spend_analyzer.classify.llm"
+            or m.startswith("spend_analyzer.classify.llm.")
+        }
+        for node in ast.walk(tree):
+            if (
+                isinstance(node, ast.ImportFrom)
+                and node.level == 0
+                and node.module in ("spend_analyzer", "spend_analyzer.classify")
+            ):
+                hits |= {f"{node.module}.{a.name}" for a in node.names if a.name in ("llm",)}
+        hits |= _imports_http_client(tree)
+        if hits:
+            offenders[_rel(path)] = hits
+    assert not offenders, f"tax modules import an LLM or network module: {offenders}"
