@@ -14,6 +14,10 @@ const PALETTE: readonly string[] = [
   "#0284c7", // sky
   "#7c3aed", // violet
   "#c026d3", // fuchsia
+  "#4f46e5", // indigo
+  "#475569", // slate
+  "#ca8a04", // yellow
+  "#be185d", // pink
 ];
 
 function hashKey(key: string): number {
@@ -26,6 +30,16 @@ function hashKey(key: string): number {
 
 export function colorForKey(key: string): string {
   return PALETTE[hashKey(key) % PALETTE.length] ?? PALETTE[0]!;
+}
+
+/**
+ * Distinct colours for a set of series: keys are ordered alphabetically (so the assignment does
+ * not depend on data order and is stable for a given set of categories) and take consecutive
+ * palette slots, so no two series collide until the palette is exhausted.
+ */
+export function colorMapForKeys(keys: readonly string[]): Map<string, string> {
+  const sorted = [...new Set(keys)].sort();
+  return new Map(sorted.map((k, i) => [k, colorByIndex(i)]));
 }
 
 /** The n-th palette colour (wraps), for series that need distinct colours by position. */

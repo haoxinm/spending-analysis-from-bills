@@ -18,6 +18,11 @@ describe("UserSwitcher", () => {
     expect(screen.getByRole("radio", { name: "All users" })).toHaveAttribute("aria-checked", "false");
   });
 
+  it("shows a focus-visible ring on chips", () => {
+    render(<UserSwitcher users={USERS} value={null} onChange={vi.fn()} />);
+    for (const r of screen.getAllByRole("radio")) expect(r.className).toMatch(/focus-visible:ring-2/);
+  });
+
   it("calls onChange with the id, or null for All users", async () => {
     const onChange = vi.fn();
     render(<UserSwitcher users={USERS} value={null} onChange={onChange} />);

@@ -10,6 +10,8 @@ import {
   refundOrOwed,
   resolveYear,
   taxBreakdownRows,
+  donutSlices,
+  incomeShare,
   toIncomeBars,
   yearOverYear,
 } from "./logic";
@@ -100,5 +102,27 @@ describe("yearOverYear / groupPayers / resolveYear", () => {
     expect(resolveYear(2023, [2024, 2023])).toBe(2023);
     expect(resolveYear(2020, [2024, 2023])).toBe(2024);
     expect(resolveYear(null, [])).toBeNull();
+  });
+});
+
+describe("net-negative income categories", () => {
+  const loss = summary({
+    income_by_category: [
+      { category: "salary_wages", label: "Wages and salary", amount_minor: 900000, is_memo: false },
+      { category: "interest", label: "Interest", amount_minor: 100000, is_memo: false },
+      { category: "long_term_capital_gain", label: "Long-term capital gains", amount_minor: -300000, is_memo: false },
+    ],
+    total_income_minor: 700000,
+  });
+  it("keeps negative rows so rows sum to the total, but excludes them from the donut", () => {
+    const bars = toIncomeBars(loss);
+    expect(bars.map((b) => b.value)).toEqual([900000, 100000, -300000]);
+    expect(bars.reduce((s, b) => s + b.value, 0)).toBe(loss.total_income_minor);
+    expect(donutSlices(bars).map((b) => b.category)).toEqual(["salary_wages", "interest"]);
+  });
+  it("computes share against positive categories and null for negatives", () => {
+    const bars = toIncomeBars(loss);
+    expect(incomeShare(bars, bars[0]!)).toBeCloseTo(0.9);
+    expect(incomeShare(bars, bars[2]!)).toBeNull();
   });
 });

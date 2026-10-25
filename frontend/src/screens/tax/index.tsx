@@ -84,7 +84,7 @@ export default function TaxScreen() {
             <>
               <BasisBanner summary={summary} />
               <SummaryCards summary={summary} />
-              <div className="grid gap-4 lg:grid-cols-2">
+              <div className="grid items-start gap-4 lg:grid-cols-2">
                 <Card>
                   <CardHeader>
                     <CardTitle>Income by category</CardTitle>

@@ -68,6 +68,13 @@ describe("TaxScreen", () => {
     expect(screenMeta).toEqual({ path: "/tax", title: "Income & Tax" });
   });
 
+  it("labels the tax-year override input by its visible text only", async () => {
+    mockGet({ "/users": [USERS[0]] });
+    render(<TaxScreen />, { wrapper });
+    const input = await screen.findByLabelText(/Tax year \(only if a form/);
+    expect(input).not.toHaveAttribute("aria-label");
+  });
+
   it("shows the empty state and the upload zone with a privacy note", async () => {
     mockGet({ "/users": [USERS[0]] });
     render(<TaxScreen />, { wrapper });

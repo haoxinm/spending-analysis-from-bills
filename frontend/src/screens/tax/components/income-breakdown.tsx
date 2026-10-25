@@ -5,7 +5,7 @@ import { Money } from "@/components/primitives/money";
 import { EmptyState } from "@/components/primitives/states";
 
 import { TOOLTIP_STYLE, incomeColor } from "../chart-colors";
-import { toIncomeBars, type TaxSummary } from "../logic";
+import { donutSlices, incomeShare, toIncomeBars, type TaxSummary } from "../logic";
 
 const usd = new Intl.NumberFormat("en-US", { style: "currency", currency: "USD" });
 
@@ -13,12 +13,16 @@ const usd = new Intl.NumberFormat("en-US", { style: "currency", currency: "USD" 
  * are listed underneath and are never added to the total. */
 export function IncomeBreakdown({ summary }: { summary: TaxSummary }) {
   const bars = React.useMemo(() => toIncomeBars(summary), [summary]);
+  const slices = React.useMemo(() => donutSlices(bars), [bars]);
   const total = summary.total_income_minor;
   if (bars.length === 0) {
     return <EmptyState title="No income recorded" description="No income was found for this year." />;
   }
   const description = bars
-    .map((b) => `${b.label} ${total > 0 ? Math.round((b.value / total) * 100) : 0}%`)
+    .map((b) => {
+      const share = incomeShare(bars, b);
+      return share === null ? `${b.label} loss` : `${b.label} ${Math.round(share * 100)}%`;
+    })
     .join(", ");
   return (
     <div className="flex flex-col gap-4" data-testid="income-breakdown">
@@ -27,16 +31,16 @@ export function IncomeBreakdown({ summary }: { summary: TaxSummary }) {
           <ResponsiveContainer width="100%" height="100%">
             <PieChart>
               <Pie
-                data={bars}
+                data={slices}
                 dataKey="value"
                 nameKey="label"
                 innerRadius="55%"
                 outerRadius="95%"
-                paddingAngle={bars.length > 1 ? 2 : 0}
+                paddingAngle={slices.length > 1 ? 2 : 0}
                 stroke="hsl(var(--card))"
                 isAnimationActive={false}
               >
-                {bars.map((b) => (
+                {slices.map((b) => (
                   <Cell key={b.category} fill={incomeColor(b.category)} />
                 ))}
               </Pie>
@@ -64,7 +68,11 @@ export function IncomeBreakdown({ summary }: { summary: TaxSummary }) {
                   <span
                     aria-hidden="true"
                     className="mr-2 inline-block h-3 w-3 rounded-sm align-middle"
-                    style={{ background: incomeColor(b.category) }}
+                    style={
+                      b.value > 0
+                        ? { background: incomeColor(b.category) }
+                        : { border: "1px dashed hsl(var(--muted-foreground))" }
+                    }
                   />
                   {b.label}
                 </td>
@@ -72,7 +80,10 @@ export function IncomeBreakdown({ summary }: { summary: TaxSummary }) {
                   <Money tone="neutral" minorUnits={b.value} />
                 </td>
                 <td className="py-1.5 text-right tabular-nums text-muted-foreground">
-                  {total > 0 ? `${((b.value / total) * 100).toFixed(0)}%` : "—"}
+                  {(() => {
+                    const share = incomeShare(bars, b);
+                    return share === null ? "—" : `${(share * 100).toFixed(0)}%`;
+                  })()}
                 </td>
               </tr>
             ))}

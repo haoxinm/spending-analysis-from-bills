@@ -126,11 +126,24 @@ export interface IncomeBar {
   value: number;
 }
 
-/** Non-memo, non-zero income categories for the chart (memo lines are never part of the total). */
+/** Non-memo, non-zero income categories for the table (memo lines are never part of the total).
+ * Net-negative categories (e.g. capital losses) are kept so the rows sum to the total. */
 export function toIncomeBars(s: TaxSummary): IncomeBar[] {
   return s.income_by_category
-    .filter((r) => !r.is_memo && r.amount_minor > 0)
+    .filter((r) => !r.is_memo && r.amount_minor !== 0)
     .map((r) => ({ category: r.category, label: r.label, value: r.amount_minor }));
+}
+
+/** Only positive categories can be donut slices. */
+export function donutSlices(bars: readonly IncomeBar[]): IncomeBar[] {
+  return bars.filter((b) => b.value > 0);
+}
+
+/** Share of a positive category against the sum of positive categories; null for non-positive rows. */
+export function incomeShare(bars: readonly IncomeBar[], bar: IncomeBar): number | null {
+  if (bar.value <= 0) return null;
+  const positive = bars.reduce((sum, b) => (b.value > 0 ? sum + b.value : sum), 0);
+  return positive > 0 ? bar.value / positive : null;
 }
 
 export interface BreakdownRow {

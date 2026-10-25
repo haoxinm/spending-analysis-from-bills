@@ -126,7 +126,6 @@ export function DocumentsPanel({ documents, users, selectedUserId }: DocumentsPa
             max={2100}
             value={taxYear}
             onChange={(e) => setTaxYear(e.target.value)}
-            aria-label="Tax year override"
             aria-invalid={yearInvalid}
             className="h-8 w-24"
           />
