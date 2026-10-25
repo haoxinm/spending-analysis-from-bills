@@ -29,7 +29,8 @@ describe("labels", () => {
   it("labels bases and forms", () => {
     expect(incomeBasisLabel("mixed")).toMatch(/mixed/i);
     expect(basisNotice("source_documents")).toBeNull();
-    expect(basisNotice("return")).toMatch(/1040/);
+    expect(basisNotice("return")).toBeNull();
+    expect(basisNotice("mixed")).toMatch(/1040/);
     expect(formTypeLabel("1099-div")).toBe("1099-DIV");
     expect(formTypeLabel("weird")).toBe("weird");
   });

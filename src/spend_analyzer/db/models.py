@@ -370,13 +370,15 @@ class TaxDocument(Base):
 
     __tablename__ = "tax_documents"
     __table_args__ = (
+        # Dedupe is per user: the same PDF may be imported for two users (e.g. a joint W-2 copy).
+        UniqueConstraint("user_id", "file_sha256"),
         Index("ix_taxdoc_user_year", "user_id", "tax_year"),
         CheckConstraint("status IN ('parsed','error','unsupported')", name="ck_taxdoc_status"),
     )
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True)
     user_id: Mapped[int] = mapped_column(Integer, ForeignKey("users.id"), nullable=False)
-    file_sha256: Mapped[str] = mapped_column(String, nullable=False, unique=True)
+    file_sha256: Mapped[str] = mapped_column(String, nullable=False)
     original_name: Mapped[str] = mapped_column(String, nullable=False)
     stored_path: Mapped[str | None] = mapped_column(String, nullable=True)
     page_count: Mapped[int | None] = mapped_column(Integer, nullable=True)

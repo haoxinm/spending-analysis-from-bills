@@ -310,6 +310,58 @@ def test_no_schedule_d_uses_line_7_as_long_term_qss() -> None:
     assert form.warnings == ()
 
 
+def test_refund_is_line_35a_not_the_overpayment() -> None:
+    form = _form("refund_applied")
+    amounts = _amounts(form)
+    assert amounts["refund"] == 150_000  # 35a; line 34 overpaid 2,000 less 500 applied
+    refund = next(t for t in form.taxes if t.category == "refund")
+    assert refund.box == "line 35a"
+    assert form.warnings == ()
+
+
+def test_refund_falls_back_to_line_34_less_line_36() -> None:
+    def edit(pages: list[list[str]]) -> list[list[str]]:
+        return [[ln for ln in page if not ln.startswith("35a")] for page in pages]
+
+    (form,) = PARSER.parse(_mem_doc("refund_applied", edit=edit)).forms
+    refund = next(t for t in form.taxes if t.category == "refund")
+    assert (refund.amount_minor, refund.box) == (150_000, "line 34")
+    assert form.warnings == ()
+
+
+def test_refund_equals_line_34_when_nothing_applied_and_no_35a() -> None:
+    def edit(pages: list[list[str]]) -> list[list[str]]:
+        return [[ln for ln in page if not ln.startswith("35a")] for page in pages]
+
+    (form,) = PARSER.parse(_mem_doc("refund", edit=edit)).forms
+    assert _amounts(form)["refund"] == 315_000
+
+
+def test_whole_refund_applied_to_estimated_tax_is_no_refund() -> None:
+    doc = _mem_doc(
+        "refund_applied",
+        edit=lambda pages: [
+            [
+                ln.replace("1,500.", "").replace("500.", "2,000.")
+                if ln.startswith(("35a", "36"))
+                else ln
+                for ln in page
+            ]
+            for page in pages
+        ],
+    )
+    (form,) = PARSER.parse(doc).forms
+    assert "refund" not in _amounts(form)
+
+
+def test_refund_consistency_warning_when_35a_and_36_do_not_add_up() -> None:
+    doc = _mem_doc("refund_applied", edit=_replace_in(("36",), "500.", "300."))
+    (form,) = PARSER.parse(doc).forms
+    assert (
+        "refund and amount applied to next year do not add up to the overpayment" in form.warnings
+    )
+
+
 def test_missing_filing_status() -> None:
     parsed = _parse_fixture("missing_filing_status")
     (form,) = parsed.forms
@@ -581,3 +633,130 @@ def test_goldens_are_for_1040_forms() -> None:
         golden = load_golden(LAYOUT_ID, variant)
         assert golden["tax_year"] == golden["forms"][0]["tax_year"]
         assert golden["forms"][0]["form_type"] == "1040"
+
+
+# --------------------------------------------------------------------------------------------
+# Inline form references, page headings, shared status rows
+# --------------------------------------------------------------------------------------------
+
+_LINE16_CHECKBOX_STYLES = [
+    "16 Tax (see instructions). Check if any from Form(s): 1 [ ] 8814 2 [ ] 4972 3 [ ] . . . 16 {}",
+    "16 Tax (see instructions). Check if any from Form(s): 1 \u2610 8814 2 \u2610 4972 3 \u2610  .  .  16 {}",
+    "16 Tax (see instructions). Check if any from Form(s): 1 \u2610 8814 2 \u2610 4972 3 \u2610 . . .",
+]
+
+
+@pytest.mark.parametrize("template", _LINE16_CHECKBOX_STYLES[:2])
+def test_line_16_ignores_inline_form_numbers(template: str) -> None:
+    """Real rows read ``16 Tax ... Check if any from Form(s): 1 [ ] 8814 2 [ ] 4972 ...  16  11,000.``"""
+    _, calc = spec_for("normal_wages_only")
+    new = template.format(f"{calc.tax:,}.")
+    form = PARSER.parse(_mem_doc(edit=_edit_line("16 ", new))).forms[0]
+    split = {t.category: t.amount_minor for t in form.taxes if t.is_estimate}
+    assert sum(split.values()) == calc.tax * 100
+    assert form.warnings == ()
+
+
+def test_line_16_blank_with_inline_form_numbers_is_not_an_amount() -> None:
+    form = PARSER.parse(
+        _mem_doc(
+            edit=_edit_line(
+                "16 ", _LINE16_CHECKBOX_STYLES[2].replace("3 \u2610 . . .", "3 \u2610 . . . 16")
+            )
+        )
+    ).forms[0]
+    assert not any(t.is_estimate for t in form.taxes)
+    assert "taxable income or tax not read; federal tax split not estimated" in form.warnings
+
+
+def test_withholding_rows_in_irs_wording() -> None:
+    """The printed form reads ``25 Federal income tax withheld from: a Form(s) W-2 ... 25a``."""
+
+    def edit(pages: list[list[str]]) -> list[list[str]]:
+        out = []
+        for page in pages:
+            new = []
+            for ln in page:
+                if ln.startswith("25a"):
+                    ln = ln.replace("25a   ", "25 Federal income tax withheld from: a ", 1)
+                    ln = ln.replace(
+                        "25a Form(s) W-2", "25 Federal income tax withheld from: a Form(s) W-2", 1
+                    )
+                elif ln.startswith("25b"):
+                    ln = ln.replace("25b ", "b ", 1)
+                elif ln.startswith("25d"):
+                    continue
+                new.append(ln)
+            out.append(new)
+        return out
+
+    (form,) = PARSER.parse(_mem_doc("with_investment_income", edit=edit)).forms
+    assert _amounts(form)["federal_income_tax_withheld"] == 1_519_100
+
+
+def test_schedule_1a_page_is_not_schedule_1() -> None:
+    spec = _Spec(2025, "single", wages=60_000)
+    pages = _pages(spec, _calc(spec))
+    pages.append(
+        [
+            "SCHEDULE 1-A (Form 1040)  Additional Deductions  2025",
+            "3 Business income or (loss). Attach Schedule C . . . . . . . . . 3  9,999.",
+        ]
+    )
+    (form,) = PARSER.parse(doc_from_pages(pages)).forms
+    assert "self_employment" not in _income(form)
+    assert _income(form)["salary_wages"] == 6_000_000
+
+
+_SHARED_ROW = (
+    "Filing Status [ ] Single [ ] Married filing jointly [ ] Married filing separately "
+    "[ ] Head of household [ ] Qualifying surviving spouse"
+)
+
+
+@pytest.mark.parametrize(
+    ("status", "label"),
+    [
+        ("single", "Single"),
+        ("mfj", "Married filing jointly"),
+        ("mfs", "Married filing separately"),
+        ("hoh", "Head of household"),
+        ("qss", "Qualifying surviving spouse"),
+    ],
+)
+@pytest.mark.parametrize("style", ["before", "after"])
+def test_filing_status_with_all_options_on_one_row(status: str, label: str, style: str) -> None:
+    row = _SHARED_ROW
+    if style == "before":
+        row = row.replace(f"[ ] {label}", f"[X] {label}")
+    else:
+        row = row.replace("[ ] ", "")
+        parts = [
+            "Single",
+            "Married filing jointly",
+            "Married filing separately",
+            "Head of household",
+            "Qualifying surviving spouse",
+        ]
+        row = "Filing Status " + " ".join(f"{p} {'[X]' if p == label else '[ ]'}" for p in parts)
+    doc = _mem_doc(edit=_status_edit([row]))
+    (form,) = PARSER.parse(doc).forms
+    assert form.filing_status == status
+
+
+def test_shared_status_row_none_or_several_marked() -> None:
+    (none_form,) = PARSER.parse(_mem_doc(edit=_status_edit([_SHARED_ROW]))).forms
+    assert none_form.filing_status is None
+    assert none_form.warnings[0].startswith("filing status not found")
+    two = _SHARED_ROW.replace("[ ] Single", "[X] Single").replace("[ ] Head", "[X] Head")
+    (many,) = PARSER.parse(_mem_doc(edit=_status_edit([two]))).forms
+    assert many.filing_status is None
+    assert many.warnings[0].startswith("several filing statuses are marked")
+
+
+def test_shared_status_row_with_glyph_boxes() -> None:
+    row = _SHARED_ROW.replace("[ ]", "\u2610").replace(
+        "\u2610 Married filing separately", "\u2612 Married filing separately"
+    )
+    (form,) = PARSER.parse(_mem_doc(edit=_status_edit([row]))).forms
+    assert form.filing_status == "mfs"

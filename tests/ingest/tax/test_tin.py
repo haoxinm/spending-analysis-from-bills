@@ -8,6 +8,7 @@ from spend_analyzer.ingest.tax.tin import (
     has_long_digit_run,
     mask_tin,
     scrub,
+    scrub_display_name,
 )
 
 
@@ -58,3 +59,11 @@ def test_has_long_digit_run() -> None:
     assert not has_long_digit_run("a 12345 b")
     assert has_long_digit_run("a 1234567 b", length=7)
     assert not has_long_digit_run("a 123456 b", length=7)
+
+
+def test_scrub_display_name_masks_tins_and_long_digit_runs() -> None:
+    out = scrub_display_name("W2 123-45-6789.pdf")
+    assert out == "W2 ***-**-6789.pdf"
+    assert scrub_display_name("acct 98765432101 w2.pdf") == "acct *******2101 w2.pdf"
+    assert not has_long_digit_run(scrub_display_name("1234567890123 99-0000001 x"))
+    assert scrub_display_name("w2-2024 final.pdf") == "w2-2024 final.pdf"

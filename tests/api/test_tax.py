@@ -385,3 +385,23 @@ def test_transaction_export_unaffected_by_tax_data(client: TestClient, user_id: 
 
 def test_fixtures_exist() -> None:
     assert Path(generated_pdf("tax_w2", "normal")).is_file()
+
+
+def test_upload_scrubs_ssn_shape_in_original_name(client: TestClient, user_id: int) -> None:
+    response = _upload(client, "tax_w2", "normal", user_id, filename="W2 123-45-6789.pdf")
+    assert response.status_code == 201, response.text
+    name = response.json()["document"]["original_name"]
+    assert "123-45" not in name and not re.search(r"\d{6,}", name)
+    listing = client.get("/api/tax/documents").text
+    assert "123-45" not in listing
+
+
+def test_same_pdf_for_two_users_is_not_a_duplicate(client: TestClient, session: Session) -> None:
+    a, b = User(name="alice"), User(name="bob")
+    session.add_all([a, b])
+    session.commit()
+    first = _upload(client, "tax_w2", "normal", a.id).json()
+    second = _upload(client, "tax_w2", "normal", b.id).json()
+    assert (first["status"], second["status"]) == ("parsed", "parsed")
+    assert second["document"]["user_id"] == b.id
+    assert first["document"]["id"] != second["document"]["id"]

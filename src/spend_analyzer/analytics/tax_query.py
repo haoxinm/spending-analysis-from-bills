@@ -11,12 +11,24 @@ as received (a net capital loss is negative); tax amounts are non-negative magni
 **Source vs return (D4).** W-2 / 1099 forms (role ``source``) and the 1040 (role ``return``)
 describe the same income, so they are never added together. Per (user, tax year):
 
-- income and withholding/FICA come from the source forms; if the year has *no* source forms they
-  fall back to the return's line items and ``income_basis`` is ``"return"`` (with a warning);
-- liability, payments and refund/owed come from the return only;
-- when both exist, W-2 wages (sum of ``salary_wages`` on source forms) are compared with the
-  return's wages and a warning is emitted if they differ by more than $1. Neither is silently
-  preferred: income stays on the source basis.
+- *A 1040 exists* (``income_basis`` ``"return"``): total income AND the income category breakdown
+  come from the return. It is authoritative and already applies the $3,000 capital-loss limit.
+  Withholding (federal, state, local) and FICA come from the source forms, because the 1040 does not
+  carry FICA or state figures; federal withholding falls back to the return's line 25d only when no
+  source form carries it. Source-form sums are compared with the return per category (wages,
+  interest, dividends, net capital result, self-employment, other income); a difference of more than
+  $1 raises a reconciliation warning ("... is $X less than the return reports - some forms may not
+  be imported"). ``other`` only warns when the source forms exceed the return, because the return's
+  line 4b-6b/8 figures include items (pensions, benefits) that have no supported source form.
+- *Several 1040s for the same user and year*: only the latest one (highest form id) is used, with a
+  warning; they are never summed. Other return forms (state returns) still contribute their
+  liability.
+- *No 1040* (``"source_documents"``): income comes from the source forms. The combined net capital
+  result (short plus long term) is floored at -$3,000 (the filing-status-independent limit; married
+  filing separately is really -$1,500, which cannot be known without a return) and a warning notes
+  the carryover. The loss categories are reduced so the categories still sum to the total.
+- Neither: ``"none"``. Across users ``"mixed"`` when their bases differ.
+- Liability, payments and refund/owed always come from the return.
 
 **Memo items (D5).** ``qualified_dividends`` and any item stored with ``is_memo`` are excluded from
 ``total_income_minor``. ``qualified_dividends`` is still listed in ``income_by_category`` (flagged
@@ -28,11 +40,15 @@ numerator is unavailable):
 
 - ``federal_effective_rate`` = ``total_federal_tax`` (return) / total income;
 - ``withholding_rate`` = federal income tax withheld (sources) / total income;
-- ``all_in_rate`` = (federal tax [return's total tax if present, else federal withheld]
+- ``all_in_rate`` = (federal tax [return's total tax less the part of its Additional Medicare Tax
+  already counted in W-2 box 6 Medicare, if a return is present; else federal withheld]
   + state tax [state liability if present, else state withheld] + local withheld
-  + Social Security + Medicare) / total income.
+  + Social Security + Medicare) / total income. The Additional Medicare Tax (Schedule 2 line 11) is
+  withheld by employers inside W-2 box 6, so the liability part excludes
+  ``min(additional_medicare_tax, medicare_tax)`` to avoid counting the same 0.9% twice.
 
-**Refund / owed.** Taken from the return when printed. If the return prints neither but has
+**Refund / owed.** Taken from the return when printed (``refund`` is the refund actually received:
+line 35a, else line 34 less line 36). If the return prints neither but has
 ``total_payments`` and ``total_federal_tax``, they are derived as the difference and
 ``refund_or_owed_derived`` is True.
 
@@ -48,7 +64,7 @@ from collections import defaultdict
 from dataclasses import dataclass, field
 from typing import Any, Literal, cast
 
-from sqlalchemy import ColumnElement, func, select
+from sqlalchemy import ColumnElement, case, func, select
 from sqlalchemy.orm import Session, selectinload
 
 from spend_analyzer.core.tax_types import (
@@ -173,6 +189,10 @@ def _fmt(minor: int) -> str:
     return f"{sign}${abs(minor) // 100:,}.{abs(minor) % 100:02d}"
 
 
+#: Form id for return forms (so only the latest 1040 counts), 0 for source forms (summed together).
+_RETURN_FORM_KEY = case((TaxForm.role == "return", TaxForm.id), else_=0)
+
+
 def _income_rows(session: Session, query: TaxQuery) -> list[Any]:
     stmt = (
         select(
@@ -180,6 +200,7 @@ def _income_rows(session: Session, query: TaxQuery) -> list[Any]:
             IncomeItem.tax_year,
             TaxForm.role,
             TaxForm.form_type,
+            _RETURN_FORM_KEY,
             IncomeItem.category,
             IncomeItem.is_memo,
             func.sum(IncomeItem.amount_minor),
@@ -190,6 +211,7 @@ def _income_rows(session: Session, query: TaxQuery) -> list[Any]:
             IncomeItem.tax_year,
             TaxForm.role,
             TaxForm.form_type,
+            _RETURN_FORM_KEY,
             IncomeItem.category,
             IncomeItem.is_memo,
         )
@@ -203,11 +225,20 @@ def _tax_rows(session: Session, query: TaxQuery) -> list[Any]:
             TaxItem.user_id,
             TaxItem.tax_year,
             TaxForm.role,
+            TaxForm.form_type,
+            _RETURN_FORM_KEY,
             TaxItem.category,
             func.sum(TaxItem.amount_minor),
         )
         .join(TaxForm, TaxForm.id == TaxItem.form_id)
-        .group_by(TaxItem.user_id, TaxItem.tax_year, TaxForm.role, TaxItem.category)
+        .group_by(
+            TaxItem.user_id,
+            TaxItem.tax_year,
+            TaxForm.role,
+            TaxForm.form_type,
+            _RETURN_FORM_KEY,
+            TaxItem.category,
+        )
     )
     return list(session.execute(stmt.where(*_filters(TaxItem, query))).all())
 
@@ -227,20 +258,108 @@ def _form_rows(session: Session, query: TaxQuery) -> list[Any]:
     return list(session.execute(stmt).all())
 
 
+def _return_rows(session: Session, query: TaxQuery) -> list[Any]:
+    """(user, year, latest 1040 form id, number of 1040 forms) per (user, year)."""
+    stmt = (
+        select(TaxForm.user_id, TaxForm.tax_year, func.max(TaxForm.id), func.count(TaxForm.id))
+        .where(TaxForm.form_type == "1040")
+        .group_by(TaxForm.user_id, TaxForm.tax_year)
+    )
+    stmt = stmt.where(TaxForm.user_id.in_(query.user_ids)) if query.user_ids is not None else stmt
+    if query.tax_years is not None:
+        stmt = stmt.where(TaxForm.tax_year.in_(query.tax_years))
+    return list(session.execute(stmt).all())
+
+
+_Key = tuple[int, int]
+#: Reconciliation groups: (label for warnings, source categories, return categories).
+_RECONCILE: tuple[tuple[str, tuple[str, ...], bool], ...] = (
+    ("W-2 wages", ("salary_wages",), False),
+    ("1099 interest", ("interest",), False),
+    ("1099 dividends", ("ordinary_dividends",), False),
+    ("1099-B net capital gain", ("short_term_capital_gain", "long_term_capital_gain"), False),
+    ("1099 self-employment income", ("self_employment",), False),
+    ("other 1099 income", ("other",), True),
+)
+_CAPITAL_CATEGORIES: tuple[str, ...] = ("short_term_capital_gain", "long_term_capital_gain")
+#: Annual limit on a net capital loss deducted against other income (single / joint filers).
+_CAPITAL_LOSS_LIMIT_MINOR = 300_000
+
+
+def _limit_capital_loss(income: dict[str, int]) -> int:
+    """Raise net capital loss categories in `income` so their sum is at least -$3,000.
+
+    Returns the amount carried over (minor units, >= 0). The most negative category is reduced first;
+    the categories still sum to the limited result.
+    """
+    net = sum(income.get(c, 0) for c in _CAPITAL_CATEGORIES)
+    carryover = max(-net - _CAPITAL_LOSS_LIMIT_MINOR, 0)
+    remaining = carryover
+    for cat in sorted(_CAPITAL_CATEGORIES, key=lambda c: income.get(c, 0)):
+        value = income.get(cat, 0)
+        if remaining <= 0 or value >= 0:
+            continue
+        take = min(remaining, -value)
+        income[cat] = value + take
+        remaining -= take
+    return carryover
+
+
+def _reconcile(
+    r: _Resolved, src_income: dict[str, int], ret_income: dict[str, int], *, has_source: bool
+) -> None:
+    """Warn per category when source-form sums differ from the return by more than $1."""
+    if not has_source:
+        return
+    src = dict(src_income)
+    _limit_capital_loss(src)  # the return already applies the limit; compare like with like
+    for label, cats, only_excess in _RECONCILE:
+        src_sum = sum(src.get(c, 0) for c in cats)
+        ret_sum = sum(ret_income.get(c, 0) for c in cats)
+        diff = src_sum - ret_sum
+        if abs(diff) <= _RECONCILE_TOLERANCE_MINOR:
+            continue
+        if diff < 0 and not only_excess:
+            r.warnings.append(
+                f"{label} is {_fmt(-diff)} less than the return reports - some forms may not be "
+                "imported. Income shown is from the return."
+            )
+        elif diff > 0:
+            r.warnings.append(
+                f"{label} is {_fmt(diff)} more than the return reports - a corrected or duplicate "
+                "form may have been imported. Income shown is from the return."
+            )
+
+
 def _resolve(
-    income_rows: list[Any], tax_rows: list[Any], form_rows: list[Any]
-) -> dict[tuple[int, int], _Resolved]:
-    keys: set[tuple[int, int]] = set()
-    src_income: dict[tuple[int, int], dict[str, int]] = defaultdict(lambda: defaultdict(int))
-    src_memo: dict[tuple[int, int], dict[str, int]] = defaultdict(lambda: defaultdict(int))
-    ret_income: dict[tuple[int, int], dict[str, int]] = defaultdict(lambda: defaultdict(int))
-    ret_memo: dict[tuple[int, int], dict[str, int]] = defaultdict(lambda: defaultdict(int))
-    for user_id, year, role, form_type, category, is_memo, total in income_rows:
+    income_rows: list[Any],
+    tax_rows: list[Any],
+    form_rows: list[Any],
+    return_rows: list[Any],
+) -> dict[_Key, _Resolved]:
+    latest_return: dict[_Key, int] = {}
+    return_count: dict[_Key, int] = {}
+    for user_id, year, latest_id, n_returns in return_rows:
+        latest_return[(user_id, year)] = int(latest_id)
+        return_count[(user_id, year)] = int(n_returns)
+
+    def counted(key: _Key, role: str, form_type: str, form_id: int) -> bool:
+        """Source forms always count; only the latest 1040 counts; other returns always do."""
+        return role == "source" or form_type != "1040" or latest_return.get(key) == form_id
+
+    keys: set[_Key] = set()
+    src_income: dict[_Key, dict[str, int]] = defaultdict(lambda: defaultdict(int))
+    src_memo: dict[_Key, dict[str, int]] = defaultdict(lambda: defaultdict(int))
+    ret_income: dict[_Key, dict[str, int]] = defaultdict(lambda: defaultdict(int))
+    ret_memo: dict[_Key, dict[str, int]] = defaultdict(lambda: defaultdict(int))
+    for user_id, year, role, form_type, form_id, category, is_memo, total in income_rows:
         key = (user_id, year)
         keys.add(key)
         if role == "source":
             income, memo = src_income[key], src_memo[key]
         elif form_type == "1040":  # state returns never feed income (they restate the 1040)
+            if not counted(key, role, form_type, form_id):
+                continue
             income, memo = ret_income[key], ret_memo[key]
         else:
             continue
@@ -253,53 +372,81 @@ def _resolve(
         else:
             income[category] += amount
 
-    src_tax: dict[tuple[int, int], dict[str, int]] = defaultdict(lambda: defaultdict(int))
-    ret_tax: dict[tuple[int, int], dict[str, int]] = defaultdict(lambda: defaultdict(int))
-    for user_id, year, role, category, total in tax_rows:
+    src_tax: dict[_Key, dict[str, int]] = defaultdict(lambda: defaultdict(int))
+    ret_tax: dict[_Key, dict[str, int]] = defaultdict(lambda: defaultdict(int))
+    for user_id, year, role, form_type, form_id, category, total in tax_rows:
         key = (user_id, year)
         keys.add(key)
+        if not counted(key, role, form_type, form_id):
+            continue
         (src_tax if role == "source" else ret_tax)[key][category] += int(total or 0)
 
-    docs: dict[tuple[int, int], int] = defaultdict(int)
-    forms: dict[tuple[int, int], int] = defaultdict(int)
-    corrected: dict[tuple[int, int], int] = defaultdict(int)
-    has_source: set[tuple[int, int]] = set()
-    has_return: set[tuple[int, int]] = set()
+    docs: dict[_Key, int] = defaultdict(int)
+    forms: dict[_Key, int] = defaultdict(int)
+    corrected: dict[_Key, int] = defaultdict(int)
+    has_source: set[_Key] = set()
     for user_id, year, role, n_forms, n_docs, n_corrected in form_rows:
         key = (user_id, year)
         keys.add(key)
         forms[key] += int(n_forms)
         docs[key] += int(n_docs)
         corrected[key] += int(n_corrected or 0)
-        (has_source if role == "source" else has_return).add(key)
+        if role == "source":
+            has_source.add(key)
 
-    out: dict[tuple[int, int], _Resolved] = {}
+    out: dict[_Key, _Resolved] = {}
     for key in keys:
         r = _Resolved(documents=docs[key], forms=forms[key])
-        if key in has_source:
-            r.basis = "source_documents"
-            income, memo = src_income[key], src_memo[key]
-            withheld_src = src_tax[key]
-        elif key in has_return:
+        has_return = key in latest_return
+        src_cat_tax = src_tax[key]
+        ret = ret_tax[key]
+        if has_return:
             r.basis = "return"
             income, memo = ret_income[key], ret_memo[key]
-            withheld_src = ret_tax[key]
-            r.warnings.append(
-                "No W-2/1099 source documents were imported for this year; income and "
-                "withholding come from the tax return."
-            )
+            if return_count[key] > 1:
+                r.warnings.append(
+                    f"{return_count[key]} Form 1040 returns were imported for this year; only the "
+                    "most recently imported one is used. Delete the others if they were "
+                    "superseded."
+                )
+            if key not in has_source:
+                r.warnings.append(
+                    "No W-2/1099 source documents were imported for this year; income comes from "
+                    "the tax return, and federal withholding from its line 25d."
+                )
+            _reconcile(r, src_income[key], ret_income[key], has_source=key in has_source)
+        elif key in has_source:
+            r.basis = "source_documents"
+            income, memo = src_income[key], src_memo[key]
+            carryover = _limit_capital_loss(income)
+            if carryover > 0:
+                r.warnings.append(
+                    f"Net capital loss exceeds the $3,000 annual limit; only $3,000 is counted "
+                    f"and {_fmt(carryover)} is a carryover to later years. Import the Form 1040 "
+                    "for the exact figure."
+                )
         else:
-            income, memo, withheld_src = {}, {}, {}
+            income, memo = {}, {}
         for cat, amount in income.items():
             r.income[cat] += amount
         for cat, amount in memo.items():
             r.memo[cat] += amount
-        for cat in _WITHHELD:
-            r.withheld[cat] = withheld_src.get(cat, 0)
-        for cat in _FICA:
-            r.fica[cat] = withheld_src.get(cat, 0)
 
-        ret = ret_tax[key]
+        for cat in _WITHHELD:
+            r.withheld[cat] = src_cat_tax.get(cat, 0)
+        for cat in _FICA:
+            r.fica[cat] = src_cat_tax.get(cat, 0)
+        fed = "federal_income_tax_withheld"
+        if has_return and "federal_income_tax_withheld" in ret:
+            if fed not in src_cat_tax:
+                r.withheld[fed] = ret[fed]
+            elif abs(src_cat_tax[fed] - ret[fed]) > _RECONCILE_TOLERANCE_MINOR:
+                r.warnings.append(
+                    f"Federal tax withheld on source forms ({_fmt(src_cat_tax[fed])}) differs from "
+                    f"the return's line 25d ({_fmt(ret[fed])}). Withholding shown is from the "
+                    "source forms."
+                )
+
         for cat in _LIABILITY:
             if cat in ret:
                 r.liability[cat] = ret[cat]
@@ -319,15 +466,6 @@ def _resolve(
             r.refund, r.owed, r.derived = max(diff, 0), max(-diff, 0), True
             r.warnings.append("Refund / amount owed is derived from payments minus total tax.")
 
-        if key in has_source and key in has_return:
-            src_wages = src_income[key].get("salary_wages", 0)
-            ret_wages = ret_income[key].get("salary_wages", 0)
-            if abs(src_wages - ret_wages) > _RECONCILE_TOLERANCE_MINOR:
-                r.warnings.append(
-                    f"Wages on W-2s ({_fmt(src_wages)}) differ from the tax return "
-                    f"({_fmt(ret_wages)}) by {_fmt(abs(src_wages - ret_wages))}. Income shown "
-                    "is from the source documents; check for a missing or corrected form."
-                )
         if any(c in _ESTIMATE_CATEGORIES for c in r.liability):
             r.warnings.append(
                 "The ordinary vs preferential federal tax split is an estimate, not a printed figure."
@@ -387,7 +525,11 @@ def _finalize(year: int, user_id: int | None, r: _Resolved) -> TaxYearSummary:
 
     fed_withheld = withheld["federal_income_tax_withheld"]
     federal = liability.get("total_federal_tax")
-    federal_for_all_in = federal if federal is not None else fed_withheld
+    federal_for_all_in = fed_withheld
+    if federal is not None:
+        # W-2 box 6 already includes the 0.9% Additional Medicare Tax an employer withheld.
+        double_counted = min(liability.get("additional_medicare_tax", 0), fica["medicare_tax"])
+        federal_for_all_in = federal - double_counted
     state = liability.get("state_income_tax_liability")
     state_for_all_in = state if state is not None else withheld["state_income_tax_withheld"]
     all_in_numerator = (
@@ -428,7 +570,10 @@ def run_tax_summary(session: Session, query: TaxQuery) -> list[TaxYearSummary]:
     """
     _validate(query)
     resolved = _resolve(
-        _income_rows(session, query), _tax_rows(session, query), _form_rows(session, query)
+        _income_rows(session, query),
+        _tax_rows(session, query),
+        _form_rows(session, query),
+        _return_rows(session, query),
     )
     out: list[TaxYearSummary] = []
     if query.per_user:

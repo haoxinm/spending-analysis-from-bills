@@ -147,3 +147,29 @@ def test_period_from_to_range(session: Session) -> None:
 def test_bad_period(session: Session, bad: str) -> None:
     with pytest.raises(ValueError):
         run_net_worth_query(session, NetWorthQuery(user_id=None, period=bad))
+
+
+def test_period_range_only_narrows_and_is_capped(session: Session) -> None:
+    from spend_analyzer.analytics.net_worth_query import MAX_SERIES_MONTHS
+
+    u, _ = _users(session)
+    _add(session, u, "checking", "C", "2025-03", 100)
+    _add(session, u, "checking", "C", "2025-05", 200)
+    wide = run_net_worth_query(
+        session, NetWorthQuery(user_id=u, period_from="0000-01", period_to="9999-12")
+    )
+    assert [p.period for p in wide.series] == ["2025-03", "2025-04", "2025-05"]
+    assert [p.period for p in wide.account_series[0].points] == ["2025-03", "2025-04", "2025-05"]
+    outside = run_net_worth_query(
+        session, NetWorthQuery(user_id=u, period_from="2030-01", period_to="2031-01")
+    )
+    assert outside.series == [] and outside.account_series == []
+    inverted = run_net_worth_query(
+        session, NetWorthQuery(user_id=u, period_from="2025-05", period_to="2025-03")
+    )
+    assert inverted.series == []
+
+    _add(session, u, "checking", "Old", "1900-01", 5)  # data spanning > 1200 months
+    long = run_net_worth_query(session, NetWorthQuery(user_id=u))
+    assert len(long.series) == MAX_SERIES_MONTHS
+    assert long.series[-1].period == "2025-05"  # the most recent months are kept

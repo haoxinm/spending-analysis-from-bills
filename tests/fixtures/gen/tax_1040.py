@@ -9,7 +9,13 @@ totals add up, and refund/owed equal payments minus total tax. Each variant's go
 from the same figures, independently of the parser.
 
 Variants: normal_wages_only, with_investment_income, high_income_niit, self_employed, refund,
-owed, mfj, unsupported_year, no_schedule_d, missing_filing_status.
+owed, mfj, unsupported_year, no_schedule_d, missing_filing_status, refund_applied.
+
+Wording follows the printed IRS form where it matters to the parser: line 16 carries the inline
+"Check if any from Form(s): 1 [ ] 8814 2 [ ] 4972 3 [ ]" references and line 35a the "If Form 8888 is
+attached, check here" text, so their form numbers sit between the label and the amount. In
+`refund_applied` part of the overpayment is applied to next year's estimated tax (line 36), so the
+refund received (line 35a) is less than the overpayment (line 34).
 """
 
 from __future__ import annotations
@@ -70,6 +76,7 @@ _VARIANTS = (
     "unsupported_year",
     "no_schedule_d",
     "missing_filing_status",
+    "refund_applied",
 )
 
 
@@ -93,6 +100,7 @@ class _Spec:
     estimated_payments: int = 0
     withheld_1099: int = 0
     delta: int = 0  # payments - total tax (positive: refund, negative: owed)
+    applied: int = 0  # part of the overpayment applied to next year's estimated tax (line 36)
     niit: bool = False
     additional_medicare: bool = False
     force_schedule_2: bool = False
@@ -170,6 +178,7 @@ _SPECS: dict[str, _Spec] = {
         delta=640,
     ),
     "missing_filing_status": _Spec(2024, None, wages=68_000, delta=-420),
+    "refund_applied": _Spec(2024, "single", wages=74_000, interest=250, delta=2_000, applied=500),
 }
 
 
@@ -212,7 +221,8 @@ class _Calc:
     withheld_total: int
     estimated: int
     total_payments: int
-    refund: int
+    refund: int  # line 34, the overpayment
+    applied: int  # line 36
     owed: int
 
 
@@ -295,6 +305,7 @@ def _calc(spec: _Spec) -> _Calc:
         estimated=spec.estimated_payments,
         total_payments=payments,
         refund=max(spec.delta, 0),
+        applied=spec.applied,
         owed=max(-spec.delta, 0),
     )
 
@@ -500,7 +511,12 @@ def _page_two(spec: _Spec, c: _Calc) -> list[str]:
             _amount(c.taxable),
         ),
         "Tax and Credits",
-        _line("16", "Tax (see instructions)", None, _amount(c.tax)),
+        _line(
+            "16",
+            "Tax (see instructions). Check if any from Form(s): 1 [ ] 8814 2 [ ] 4972 3 [ ]",
+            None,
+            _amount(c.tax),
+        ),
         _line("17", "Amount from Schedule 2, line 3", None, ""),
         _line("18", "Add lines 16 and 17", None, _amount(c.tax)),
         _line(
@@ -557,15 +573,15 @@ def _page_two(spec: _Spec, c: _Calc) -> list[str]:
         ),
         _line(
             "35a",
-            "Amount of line 34 you want refunded to you",
+            "Amount of line 34 you want refunded to you. If Form 8888 is attached, check here [ ]",
             None,
-            _amount(c.refund, **z),
+            _amount(c.refund - c.applied, **z),
         ),
         _line(
             "36",
             f"Amount of line 34 you want applied to your {y + 1} estimated tax",
             None,
-            "",
+            _amount(c.applied, **z),
         ),
         "Amount You Owe",
         _line(
@@ -794,7 +810,7 @@ def _golden_doc(spec: _Spec, c: _Calc) -> tuple[ParsedTaxDocument, list[str]]:
         ),
         _tax("estimated_tax_payments", c.estimated, "line 26", "Estimated tax payments"),
         _tax("total_payments", c.total_payments, "line 33", "Total payments", keep_zero=True),
-        _tax("refund", c.refund, "line 34", "Overpaid / refund"),
+        _tax("refund", c.refund - c.applied, "line 35a", "Refund received"),
         _tax("amount_owed", c.owed, "line 37", "Amount you owe"),
     ]
     if has_sch2:

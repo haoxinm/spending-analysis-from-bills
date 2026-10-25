@@ -152,3 +152,63 @@ def test_user_delete_cascades_entries(client: TestClient) -> None:
     client.post("/api/net-worth/entries", json=_body(uid))
     assert client.delete(f"/api/users/{uid}").status_code == 204
     assert client.get("/api/net-worth/entries").json() == []
+
+
+def test_currency_is_usd_only(client: TestClient) -> None:
+    uid = _user(client)
+    assert client.post("/api/net-worth/entries", json=_body(uid, currency="USD")).status_code == 201
+    for cur in ("EUR", "JPY"):
+        response = client.post("/api/net-worth/entries", json=_body(uid, month=4, currency=cur))
+        assert response.status_code == 422
+
+
+def test_balance_upper_bound_avoids_int64_overflow(client: TestClient) -> None:
+    uid = _user(client)
+    ok = client.post("/api/net-worth/entries", json=_body(uid, balance_minor=10**15 - 1))
+    assert ok.status_code == 201
+    for huge in (10**15, 2**63, 10**30):
+        bad = client.post("/api/net-worth/entries", json=_body(uid, month=5, balance_minor=huge))
+        assert bad.status_code == 422, huge
+    entry_id = ok.json()["id"]
+    assert (
+        client.patch(
+            f"/api/net-worth/entries/{entry_id}", json={"balance_minor": 2**63}
+        ).status_code
+        == 422
+    )
+    assert (
+        client.patch(f"/api/net-worth/entries/{entry_id}", json={"balance_minor": 7}).status_code
+        == 200
+    )
+
+
+def test_patch_note_length_matches_create(client: TestClient) -> None:
+    uid = _user(client)
+    entry_id = client.post("/api/net-worth/entries", json=_body(uid, note="a" * 500)).json()["id"]
+    assert (
+        client.post("/api/net-worth/entries", json=_body(uid, month=6, note="a" * 501)).status_code
+        == 422
+    )
+    too_long = client.patch(f"/api/net-worth/entries/{entry_id}", json={"note": "a" * 501})
+    assert too_long.status_code == 422
+    fine = client.patch(f"/api/net-worth/entries/{entry_id}", json={"note": "b" * 500})
+    assert fine.status_code == 200 and fine.json()["note"] == "b" * 500
+    cleared = client.patch(f"/api/net-worth/entries/{entry_id}", json={"note": None})
+    assert cleared.status_code == 200 and cleared.json()["note"] is None
+
+
+def test_summary_range_cannot_widen_beyond_data(client: TestClient) -> None:
+    uid = _user(client)
+    client.post("/api/net-worth/entries", json=_body(uid, year=2025, month=1))
+    client.post("/api/net-worth/entries", json=_body(uid, year=2025, month=3))
+    wide = client.get(
+        "/api/net-worth/summary",
+        params={"user_id": uid, "period_from": "0000-01", "period_to": "9999-12"},
+    )
+    assert wide.status_code == 200
+    assert [p["period"] for p in wide.json()["series"]] == ["2025-01", "2025-02", "2025-03"]
+    narrow = client.get(
+        "/api/net-worth/summary",
+        params={"user_id": uid, "period_from": "2025-02", "period_to": "2025-02"},
+    )
+    assert [p["period"] for p in narrow.json()["series"]] == ["2025-02"]

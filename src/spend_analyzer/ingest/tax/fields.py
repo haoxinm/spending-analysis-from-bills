@@ -178,6 +178,23 @@ def _hits_in(rows_by_page: dict[int, tuple[Row, ...]], label_re: re.Pattern[str]
     return hits
 
 
+def row_for_label(
+    doc: ExtractedDoc,
+    label_re: re.Pattern[str],
+    *,
+    occurrence: int = 0,
+    pages: Sequence[int] | None = None,
+) -> tuple[Row, LabelHit] | None:
+    """The row holding the `occurrence`-th match of `label_re` and the match's `LabelHit`, or
+    `None`. For callers that need their own same-row rule (`same_row_candidates`)."""
+    rows_by_page = _page_rows(doc, pages)
+    hits = _hits_in(rows_by_page, label_re)
+    if occurrence < 0 or occurrence >= len(hits):
+        return None
+    hit = hits[occurrence]
+    return rows_by_page[hit.page_number][hit.row_index], hit
+
+
 def find_label(
     doc: ExtractedDoc, label_re: re.Pattern[str], *, pages: Sequence[int] | None = None
 ) -> list[LabelHit]:
@@ -194,7 +211,7 @@ def _words_right_of(row: Row, hit: LabelHit) -> list[Word]:
     return [w for w in row.words if w.x0 >= hit.label_x1 - 0.5]
 
 
-def _same_row_candidates(row: Row, hit: LabelHit, *, skip_line_numbers: bool) -> list[ParsedMoney]:
+def same_row_candidates(row: Row, hit: LabelHit, *, skip_line_numbers: bool) -> list[ParsedMoney]:
     words = _words_right_of(row, hit)
     tokens: list[tuple[str, ParsedMoney, str | None]] = []
     for i, word in enumerate(words):
@@ -273,7 +290,7 @@ def money_for_label(
     rows = rows_by_page[hit.page_number]
     candidates: list[ParsedMoney] = []
     if mode in ("same_row", "auto"):
-        candidates = _same_row_candidates(
+        candidates = same_row_candidates(
             rows[hit.row_index], hit, skip_line_numbers=skip_line_numbers
         )
     if not candidates and mode in ("below", "auto"):

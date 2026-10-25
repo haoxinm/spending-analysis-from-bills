@@ -259,3 +259,131 @@ def test_logs_contain_only_ids_and_counts(
     assert "8543210" not in text and "85,432" not in text
     assert not _SSN_SHAPE.search(text)
     assert json.dumps(text)  # sanity: printable
+
+
+# --- per-user dedupe, scrubbed names, unexpected failures, empty re-imports -------------------
+
+
+def test_same_file_for_two_users_is_imported_for_each(session: Session) -> None:
+    a, b = _user(session, "alice"), _user(session, "bob")
+    first = _import(session, "tax_w2", "normal", a)
+    second = _import(session, "tax_w2", "normal", b)
+    assert (first.status, second.status) == ("parsed", "parsed")
+    assert first.document_id != second.document_id
+    assert second.inserted_forms == 1
+    docs = {d.id: d.user_id for d in session.scalars(select(TaxDocument))}
+    assert docs == {first.document_id: a, second.document_id: b}  # nobody is reassigned
+    # the same user importing it again is still a no-op
+    again = _import(session, "tax_w2", "normal", b)
+    assert again.status == "duplicate" and again.document_id == second.document_id
+    assert session.scalar(select(func.count()).select_from(TaxDocument)) == 2
+
+
+def test_deleting_one_users_document_keeps_the_shared_kept_copy(session: Session) -> None:
+    save_settings(Settings(privacy=PrivacyConfig(store_tax_pdf_copies=True)))
+    a, b = _user(session, "alice"), _user(session, "bob")
+    first = _import(session, "tax_w2", "normal", a)
+    second = _import(session, "tax_w2", "normal", b)
+    doc_b = session.get(TaxDocument, second.document_id)
+    assert doc_b is not None and doc_b.stored_path is not None
+    assert delete_tax_document(session, first.document_id)
+    assert Path(doc_b.stored_path).exists()
+    assert delete_tax_document(session, second.document_id)
+    assert not Path(doc_b.stored_path).exists()
+
+
+def test_original_name_is_scrubbed(session: Session) -> None:
+    uid = _user(session)
+    path = generated_pdf("tax_w2", "normal")
+    result = import_tax_document(
+        session, path, user_id=uid, original_name="W2 123-45-6789 acct 98765432101.pdf"
+    )
+    doc = session.get(TaxDocument, result.document_id)
+    assert doc is not None
+    assert "123-45" not in doc.original_name
+    assert not re.search(r"\d{6,}", doc.original_name)
+    assert "6789" in doc.original_name  # last four only
+    assert doc.original_name.endswith(".pdf")
+
+
+def _stage(src: Path) -> Path:
+    from spend_analyzer.core.paths import ensure_home
+    from spend_analyzer.ingest.extract import sha256_file
+
+    ensure_home()
+    staged = statements_dir() / f"{sha256_file(src)}.pdf"
+    staged.write_bytes(src.read_bytes())
+    return staged
+
+
+@pytest.mark.parametrize("where", ["extract", "parse"])
+def test_unexpected_exception_is_recorded_unstaged_and_not_raised(
+    session: Session,
+    monkeypatch: pytest.MonkeyPatch,
+    caplog: pytest.LogCaptureFixture,
+    where: str,
+) -> None:
+    from spend_analyzer.ingest.tax import pipeline
+
+    secret = "SSN 123-45-6789 leaked"
+
+    def boom(*_a: object, **_k: object) -> object:
+        raise RuntimeError(secret)
+
+    if where == "extract":
+        monkeypatch.setattr(pipeline, "extract", boom)
+    else:
+        real = pipeline.select_tax_parser
+
+        class _Broken:
+            def __init__(self, parser: object) -> None:
+                self.id = getattr(parser, "id", "x")
+                self.version = getattr(parser, "version", "1")
+
+            parse = staticmethod(boom)
+
+        monkeypatch.setattr(pipeline, "select_tax_parser", lambda ex: _Broken(real(ex)))
+    caplog.set_level(logging.DEBUG)
+    staged = _stage(generated_pdf("tax_w2", "normal"))
+    uid = _user(session)
+    session.commit()  # a real request has committed its user; the failure path rolls back
+    result = import_tax_document(session, staged, user_id=uid, original_name="w2.pdf")
+    assert result.status == "error"
+    assert result.error == pipeline.GENERIC_ERROR_MESSAGE
+    assert not staged.exists()
+    doc = session.get(TaxDocument, result.document_id)
+    assert doc is not None and doc.status == "error"
+    assert doc.error_detail == pipeline.GENERIC_ERROR_MESSAGE and doc.stored_path is None
+    assert session.scalar(select(func.count()).select_from(TaxForm)) == 0
+    text = "\n".join(r.getMessage() for r in caplog.records)
+    assert "RuntimeError" in text and "123-45" not in text and "leaked" not in text
+
+
+def test_unexpected_exception_mid_insert_rolls_back_partial_rows(
+    session: Session, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    from spend_analyzer.ingest.tax import pipeline
+
+    monkeypatch.setattr(
+        pipeline, "_form_fingerprint", lambda *a, **k: (_ for _ in ()).throw(KeyError("x"))
+    )
+    uid = _user(session)
+    session.commit()
+    result = _import(session, "tax_w2", "two_employers", uid)
+    assert result.status == "error"
+    assert session.scalar(select(func.count()).select_from(TaxForm)) == 0
+
+
+def test_parsed_document_with_no_forms_is_reimported(session: Session) -> None:
+    a = _user(session)
+    first = _import(session, "tax_w2", "normal", a)
+    assert first.status == "parsed"
+    # Simulate "all forms were deduped into another document that has since been deleted".
+    for form in session.scalars(select(TaxForm)).all():
+        session.delete(form)
+    session.commit()
+    again = _import(session, "tax_w2", "normal", a)
+    assert again.status == "parsed"
+    assert again.document_id == first.document_id
+    assert again.inserted_forms == 1
+    assert session.scalar(select(func.count()).select_from(TaxForm)) == 1

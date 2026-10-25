@@ -4,6 +4,10 @@ Data volume is tiny (a handful of accounts x months), so rows are loaded and agg
 Python. With `carry_forward` an account's value for month M is its latest entry at or before M,
 flagged `carried` when that entry is from an earlier month; an account has no value (not zero)
 before its first entry. Totals sum magnitudes per category; net worth = assets - liabilities.
+
+The series covers the months of the data: ``period_from`` / ``period_to`` can only narrow the range
+between the first and last entry (never widen it), and at most `MAX_SERIES_MONTHS` months, the most
+recent ones, are returned, so a request cannot make the server build a 10,000-year series.
 """
 
 from __future__ import annotations
@@ -24,6 +28,8 @@ from spend_analyzer.core.net_worth import (
 from spend_analyzer.db.models import BalanceEntry
 
 _PERIOD_RE = re.compile(r"^(\d{4})-(\d{2})$")
+#: Upper bound on the number of monthly points in a series.
+MAX_SERIES_MONTHS = 1200
 
 
 @dataclass(frozen=True)
@@ -182,9 +188,10 @@ def run_net_worth_query(session: Session, q: NetWorthQuery) -> NetWorthResult:
     real_sorted = sorted(real)
     carry = q.carry_forward
 
-    start = _idx(*from_ym) if from_ym else real_sorted[0]
-    end = _idx(*to_ym) if to_ym else real_sorted[-1]
-    month_range = range(start, end + 1)
+    start = max(_idx(*from_ym), real_sorted[0]) if from_ym else real_sorted[0]
+    end = min(_idx(*to_ym), real_sorted[-1]) if to_ym else real_sorted[-1]
+    start = max(start, end - MAX_SERIES_MONTHS + 1)
+    month_range = range(start, end + 1)  # empty when from > to or the window misses the data
 
     series: list[Point] = []
     for i in month_range:

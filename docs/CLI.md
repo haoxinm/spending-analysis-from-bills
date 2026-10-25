@@ -261,19 +261,18 @@ with `tax delete`.
 
 ```console
 $ spend-analyzer tax report --year 2024
-Tax year 2024  (income basis: source documents; 3 document(s), 3 form(s))
+Tax year 2024  (income basis: return; 3 document(s), 3 form(s))
   Income
-    Wages and salary               85432.10
-    Interest                        1444.56
-    Ordinary dividends              2450.75
-    Short-term capital gain          450.00
-    Long-term capital gain          4610.40
+    Wages and salary               90000.00
+    Interest                        1850.00
+    Ordinary dividends              4200.00
+    Short-term capital gain         1500.00
+    Long-term capital gain         12000.00
     Self-employment income             0.00
     Other income                       0.00
-    Total income                   94387.81
+    Total income                  109550.00
   Memo (not in total income)
-    Tax-exempt interest (memo)           80.00
-    Qualified dividends (memo)         1900.25
+    Qualified dividends (memo)         3100.00
   Withheld
     Federal income tax withheld        11901.40
     State income tax withheld           3512.88
@@ -290,15 +289,20 @@ Tax year 2024  (income basis: source documents; 3 document(s), 3 form(s))
     Total payments        15191.00
     Refund                  300.00
   Rates
-    Federal effective rate    15.78%
-    All-in rate               26.91%
-    Federal withholding       12.61%
-  warning: Wages on W-2s ($85,432.10) differ from the tax return ($90,000.00) by $4,567.90. Income shown is from the source documents; check for a missing or corrected form.
+    Federal effective rate    13.59%
+    All-in rate               23.18%
+    Federal withholding       10.86%
+  warning: W-2 wages is $4,567.90 less than the return reports - some forms may not be imported. Income shown is from the return.
+  warning: 1099 interest is $405.44 less than the return reports - some forms may not be imported. Income shown is from the return.
+  warning: 1099 dividends is $1,749.25 less than the return reports - some forms may not be imported. Income shown is from the return.
+  warning: 1099-B net capital gain is $8,439.60 less than the return reports - some forms may not be imported. Income shown is from the return.
+  warning: Federal tax withheld on source forms ($11,901.40) differs from the return's line 25d ($15,191.00). Withholding shown is from the source forms.
   warning: The ordinary vs preferential federal tax split is an estimate, not a printed figure.
 ```
 
 (Example figures come from the synthetic fixtures under `tests/fixtures/generated/tax_*/`, which
-is why the W-2 and the 1040 don't agree.) Prints one block per tax year, newest first, from the
+is why the W-2, the 1099 and the 1040 don't agree, and why the warnings fire.) With a 1040 on
+file, income comes from the return and withholding from the source forms. Prints one block per tax year, newest first, from the
 numbers on the forms: no transaction data is involved. Sections with nothing to show are left
 out; rates print `n/a` when they can't be computed. Options: `--year` (default: all years),
 `--user-id` / `--all-users`, and `--csv`.

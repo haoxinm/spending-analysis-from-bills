@@ -66,3 +66,15 @@ def has_long_digit_run(text: str, *, length: int = 6) -> bool:
     if length == 6:
         return bool(_LONG_DIGIT_RUN.search(text))
     return re.search(rf"\d{{{length},}}", text) is not None
+
+
+def scrub_display_name(name: str) -> str:
+    """Make a user-supplied file name safe to store and show: `scrub` it, then mask every run of
+    six or more digits down to its last four (``****1234``), so no identifier-shaped number
+    survives in `tax_documents.original_name`."""
+
+    def _mask(match: re.Match[str]) -> str:
+        run = match.group(0)
+        return "*" * (len(run) - 4) + run[-4:]
+
+    return _LONG_DIGIT_RUN.sub(_mask, scrub(name))

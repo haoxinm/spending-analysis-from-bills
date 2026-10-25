@@ -51,11 +51,11 @@
         },
         {
           "amount_minor": 81200,
-          "box": "line 34",
+          "box": "line 35a",
           "category": "refund",
           "is_estimate": false,
           "jurisdiction": null,
-          "label": "Overpaid / refund",
+          "label": "Refund received",
           "source_form": "1040"
         },
         {

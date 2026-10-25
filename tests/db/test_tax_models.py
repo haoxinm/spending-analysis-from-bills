@@ -196,3 +196,25 @@ def test_deleting_document_cascades_to_forms_and_items(session: Session) -> None
     session.expire_all()
     for model in (TaxForm, IncomeItem, TaxItem):
         assert session.scalars(select(model)).all() == []
+
+
+def test_document_sha_unique_per_user_not_global(session: Session) -> None:
+    user, doc, _ = _seed(session)
+    other = User(name="Sam")
+    session.add(other)
+    session.flush()
+    # another user may hold the same PDF ...
+    session.add(
+        TaxDocument(
+            user_id=other.id, file_sha256=doc.file_sha256, original_name="w2.pdf", status="parsed"
+        )
+    )
+    session.flush()
+    # ... but the same user may not hold it twice
+    session.add(
+        TaxDocument(
+            user_id=user.id, file_sha256=doc.file_sha256, original_name="w2.pdf", status="parsed"
+        )
+    )
+    with pytest.raises(IntegrityError):
+        session.flush()

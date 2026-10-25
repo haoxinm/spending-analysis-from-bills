@@ -17,6 +17,7 @@ from spend_analyzer.analytics.tax_query import (
 )
 from spend_analyzer.core.tax_types import FORM_ROLE
 from spend_analyzer.db.models import IncomeItem, TaxDocument, TaxForm, TaxItem, User
+from spend_analyzer.ingest.tax.tin import has_long_digit_run
 
 _seq = count(1)
 
@@ -172,7 +173,66 @@ def test_return_only_falls_back_to_return_income(session: Session) -> None:
     assert s.refund_or_owed_derived is False
 
 
-def test_both_use_sources_and_warn_on_wage_mismatch(session: Session) -> None:
+def test_return_is_authoritative_for_income_and_categories(session: Session) -> None:
+    u = _user(session)
+    _form(
+        session,
+        u,
+        2024,
+        "w2",
+        income={"salary_wages": 8_000_000},
+        taxes={"federal_income_tax_withheld": 900_000, "medicare_tax": 116_000},
+    )
+    _form(
+        session,
+        u,
+        2024,
+        "1040",
+        income={"salary_wages": 8_000_000, "interest": 500_000, "ordinary_dividends": 2_000_000},
+        memo={"qualified_dividends": 1_500_000},
+        taxes={"total_federal_tax": 1_000_000},
+    )
+    s = _one(session)
+    assert s.income_basis == "return"
+    assert s.total_income_minor == 10_500_000  # the return, not the W-2 alone, not both
+    assert s.income_by_category["interest"] == 500_000
+    assert s.income_by_category["ordinary_dividends"] == 2_000_000
+    assert s.withheld["federal_income_tax_withheld"] == 900_000
+    assert s.fica["medicare_tax"] == 116_000
+    assert s.liability == {"total_federal_tax": 1_000_000}
+    assert s.federal_effective_rate == round(1_000_000 / 10_500_000, 4)
+    assert any("1099 interest is $5,000.00 less than the return reports" in w for w in s.warnings)
+    assert any("1099 dividends is $20,000.00 less" in w for w in s.warnings)
+    assert not any("W-2 wages" in w for w in s.warnings)
+    for w in s.warnings:  # privacy rule: no digit run of six or more
+        assert not has_long_digit_run(w)
+
+
+def test_source_more_than_return_warns(session: Session) -> None:
+    u = _user(session)
+    _form(session, u, 2024, "w2", income={"salary_wages": 8_500_000})
+    _form(session, u, 2024, "1040", income={"salary_wages": 8_000_000})
+    s = _one(session)
+    assert s.total_income_minor == 8_000_000
+    assert any("W-2 wages is $5,000.00 more than the return reports" in w for w in s.warnings)
+
+
+def test_federal_withholding_falls_back_to_return_line_25d(session: Session) -> None:
+    u = _user(session)
+    _form(session, u, 2024, "w2", income={"salary_wages": 8_000_000})  # no box 2 imported
+    _form(
+        session,
+        u,
+        2024,
+        "1040",
+        income={"salary_wages": 8_000_000},
+        taxes={"federal_income_tax_withheld": 1_100_000, "total_federal_tax": 1_000_000},
+    )
+    s = _one(session)
+    assert s.withheld["federal_income_tax_withheld"] == 1_100_000
+
+
+def test_source_withholding_preferred_and_mismatch_warns(session: Session) -> None:
     u = _user(session)
     _form(
         session,
@@ -187,18 +247,12 @@ def test_both_use_sources_and_warn_on_wage_mismatch(session: Session) -> None:
         u,
         2024,
         "1040",
-        income={"salary_wages": 8_500_000},
-        taxes={"total_federal_tax": 1_000_000},
+        income={"salary_wages": 8_000_000},
+        taxes={"federal_income_tax_withheld": 1_100_000},
     )
     s = _one(session)
-    assert s.income_basis == "source_documents"
-    assert s.total_income_minor == 8_000_000  # not 16.5M: no double counting
     assert s.withheld["federal_income_tax_withheld"] == 900_000
-    assert s.liability == {"total_federal_tax": 1_000_000}
-    assert any("differ from the tax return" in w for w in s.warnings)
-    assert s.federal_effective_rate == round(1_000_000 / 8_000_000, 4)
-    # all-in uses the return's total tax rather than withholding
-    assert s.all_in_rate == round(1_000_000 / 8_000_000, 4)
+    assert any("line 25d" in w for w in s.warnings)
 
 
 def test_matching_wages_within_a_dollar_do_not_warn(session: Session) -> None:
@@ -208,13 +262,124 @@ def test_matching_wages_within_a_dollar_do_not_warn(session: Session) -> None:
     assert _one(session).warnings == []
 
 
-def test_net_capital_loss_reduces_total(session: Session) -> None:
+def test_net_capital_loss_without_return_is_floored(session: Session) -> None:
     u = _user(session)
     _form(session, u, 2024, "w2", income={"salary_wages": 5_000_000})
     _form(session, u, 2024, "1099-b", income={"short_term_capital_gain": -200_000})
     s = _one(session)
-    assert s.income_by_category["short_term_capital_gain"] == -200_000
+    assert s.income_by_category["short_term_capital_gain"] == -200_000  # within the limit
     assert s.total_income_minor == 4_800_000
+    assert s.warnings == []
+
+
+def test_large_capital_loss_without_return_is_limited_to_3000(session: Session) -> None:
+    u = _user(session)
+    _form(session, u, 2024, "w2", income={"salary_wages": 10_000_000})
+    _form(
+        session,
+        u,
+        2024,
+        "1099-b",
+        income={"short_term_capital_gain": -5_000_000, "long_term_capital_gain": 100_000},
+    )
+    s = _one(session)
+    assert s.income_basis == "source_documents"
+    assert s.total_income_minor == 10_000_000 - 300_000
+    cats = s.income_by_category
+    assert cats["short_term_capital_gain"] + cats["long_term_capital_gain"] == -300_000
+    assert any("$3,000 annual limit" in w and "$46,000.00 is a carryover" in w for w in s.warnings)
+    assert s.withholding_rate is None
+    assert s.all_in_rate is None
+
+
+def test_capital_loss_limit_spreads_over_both_categories(session: Session) -> None:
+    u = _user(session)
+    _form(
+        session,
+        u,
+        2024,
+        "1099-b",
+        income={"short_term_capital_gain": -500_000, "long_term_capital_gain": -500_000},
+    )
+    s = _one(session)
+    cats = s.income_by_category
+    assert cats["short_term_capital_gain"] + cats["long_term_capital_gain"] == -300_000
+    assert s.total_income_minor == -300_000
+
+
+def test_return_applies_loss_limit_and_source_is_compared_after_flooring(session: Session) -> None:
+    u = _user(session)
+    _form(session, u, 2024, "1099-b", income={"short_term_capital_gain": -5_000_000})
+    _form(session, u, 2024, "1040", income={"long_term_capital_gain": -300_000})
+    s = _one(session)
+    assert s.total_income_minor == -300_000
+    assert s.warnings == []  # -$50,000 on the 1099-B equals the -$3,000 on the return once limited
+
+
+def test_multiple_returns_use_only_the_latest(session: Session) -> None:
+    u = _user(session)
+    _form(
+        session,
+        u,
+        2024,
+        "1040",
+        income={"salary_wages": 10_000_000},
+        taxes={"total_federal_tax": 1_400_000, "total_payments": 1_500_000, "refund": 100_000},
+    )
+    _form(
+        session,
+        u,
+        2024,
+        "1040",
+        income={"salary_wages": 10_100_000},
+        taxes={"total_federal_tax": 1_450_000, "total_payments": 1_500_000, "refund": 50_000},
+    )
+    s = _one(session)
+    assert s.total_income_minor == 10_100_000  # not summed
+    assert s.liability == {"total_federal_tax": 1_450_000}
+    assert (s.payments_minor, s.refund_minor) == (1_500_000, 50_000)
+    assert any("2 Form 1040 returns" in w for w in s.warnings)
+    assert s.form_count == 2
+
+
+def test_all_in_rate_does_not_double_count_additional_medicare(session: Session) -> None:
+    u = _user(session)
+    _form(
+        session,
+        u,
+        2024,
+        "w2",
+        income={"salary_wages": 30_000_000},
+        taxes={
+            "federal_income_tax_withheld": 6_000_000,
+            "social_security_tax": 1_044_000,
+            "medicare_tax": 435_000 + 90_000,  # 1.45% plus the 0.9% withheld over $200k
+        },
+    )
+    _form(
+        session,
+        u,
+        2024,
+        "1040",
+        income={"salary_wages": 30_000_000},
+        taxes={"total_federal_tax": 7_000_000, "additional_medicare_tax": 90_000},
+    )
+    s = _one(session)
+    expected = (7_000_000 - 90_000) + 1_044_000 + 525_000
+    assert s.all_in_rate == round(expected / 30_000_000, 4)
+
+
+def test_all_in_rate_keeps_additional_medicare_without_w2_medicare(session: Session) -> None:
+    u = _user(session)
+    _form(
+        session,
+        u,
+        2024,
+        "1040",
+        income={"salary_wages": 30_000_000},
+        taxes={"total_federal_tax": 7_000_000, "additional_medicare_tax": 90_000},
+    )
+    assert _one(session).all_in_rate == round(7_000_000 / 30_000_000, 4)
 
 
 def test_tax_exempt_memo_excluded_from_total(session: Session) -> None:
@@ -298,10 +463,10 @@ def test_users_are_isolated_and_aggregate_independently(session: Session) -> Non
 def test_mixed_basis_across_users_is_resolved_per_user(session: Session) -> None:
     a, b = _user(session, "alice"), _user(session, "bob")
     _form(session, a, 2024, "w2", income={"salary_wages": 6_000_000})
-    _form(session, a, 2024, "1040", income={"salary_wages": 6_000_000})
     _form(session, b, 2024, "1040", income={"salary_wages": 4_000_000})
+    _form(session, b, 2024, "w2", income={"salary_wages": 1_000_000})
     s = _one(session)
-    assert s.total_income_minor == 10_000_000  # a: source only; b: return fallback
+    assert s.total_income_minor == 10_000_000  # a: source only; b: the return (not the W-2)
     assert s.income_basis == "mixed"
 
 

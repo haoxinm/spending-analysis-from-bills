@@ -43,7 +43,7 @@ Each is stored separately.
 | 1099-B | `tax_1099_b` | source | Net gain or loss per holding term; proceeds and cost basis are not stored |
 | 1099-NEC, 1099-MISC | `tax_1099_nec_misc` | source | One parser, two form types; the heading decides |
 | Consolidated 1099 | `tax_1099_consolidated` | source | A broker's composite statement: 1099-INT, -DIV, -B and optionally -MISC sections, one form per account |
-| Form 1040 | `tax_1040` | return | Tax years 2022-2025, with Schedules D, 1, 2 and C when attached |
+| Form 1040 | `tax_1040` | return | Tax years 2022-2025, with Schedules D, 1, 2 and C when attached. Amounts are read after the line number repeated at the right of each row, so form numbers printed inline (line 16's "Check if any from Form(s): 1 8814 2 4972") are never taken for amounts. The filing status may be one option per row or all five on one row. A Schedule 1-A page is ignored |
 
 Not supported: Form 1040-SR, 1040-NR and 1040-X (amended) returns, state returns, and 1099
 sections other than the above (for example 1099-OID, which a consolidated statement skips with a
@@ -125,7 +125,7 @@ withholding keeps the locality name.
 | | 25d | `federal_income_tax_withheld` | |
 | | 26 | `estimated_tax_payments` | |
 | | 33 | `total_payments` | |
-| | 34 (or 35a) | `refund` | |
+| | 35a (or 34 less 36) | `refund` | The refund actually received: line 35a, else the overpayment (34) minus the part applied to next year's estimated tax (36) |
 | | 37 | `amount_owed` | |
 | | Schedule 2 lines 4, 11, 12 | `self_employment_tax`, `additional_medicare_tax`, `net_investment_income_tax` | |
 | | 16 | `federal_tax_ordinary_est`, `federal_tax_preferential_est` | An [estimate](#the-federal-tax-split-is-an-estimate) |
@@ -150,20 +150,40 @@ In `tax report --csv` memo rows have `section = memo` and are absent from `total
 
 A W-2 or 1099 describes income **as reported to you by a payer**: a *source* form. A Form 1040
 describes the same income **as you filed it**, plus the tax computed on it: a *return*. They
-overlap, so adding them together would count every dollar twice. The rule is:
+overlap, so adding them together would count every dollar twice. The return is authoritative: it
+already applies the $3,000 limit on a net capital loss and any adjustment you made. The rule, per
+user and tax year:
 
-| Figure | Taken from |
-|---|---|
-| Income by category | Source forms (W-2, 1099) |
-| Withholding and FICA | Source forms |
-| Total tax, Schedule 2 taxes, payments, refund, amount owed, ordinary/preferential split | The return (1040) |
+| Figure | With a 1040 imported | Without a 1040 |
+|---|---|---|
+| Total income and income by category | The return | Source forms (net capital result floored at -$3,000) |
+| Federal withholding | Source forms; the return's line 25d only if no source form carries it | Source forms |
+| State and local withholding, FICA | Source forms (the 1040 doesn't carry them) | Source forms |
+| Total tax, Schedule 2 taxes, payments, refund, amount owed, ordinary/preferential split | The return | n/a |
 
-If a year has **no source forms**, income and withholding fall back to the return's own lines and
-the year is labelled "income basis: return" (with a warning); the Income & Tax screen shows a
-banner. If a year has both, the W-2 wages are compared with the return's wages and a warning is
-shown when they differ by more than $1, typically a missing or corrected W-2. Neither side wins
-silently: income stays on the source basis. When the users of an all-users view disagree on
-basis, the year is labelled "mixed".
+The year is labelled with its **income basis**: `return` when a 1040 exists, `source documents`
+when only W-2/1099 forms do, `mixed` in an all-users view where the users differ, `none` when
+there is nothing to read. Rates are computed on the resulting total income.
+
+**Reconciliation.** When both exist, the source-form sums are compared with the return one category
+at a time (W-2 wages, 1099 interest, 1099 dividends, 1099-B net capital gain, 1099 self-employment,
+other 1099 income). A difference of more than $1 raises a warning such as "1099 interest is
+$405.44 less than the return reports - some forms may not be imported" (or "more than ... a corrected
+or duplicate form may have been imported"). The usual cause of "less" is a form you haven't imported
+yet. Other income only warns when the source forms exceed the return, since the return's pension
+and Social Security lines have no supported source form. The source-form capital result is floored
+at -$3,000 before it is compared, like the return. Federal withholding on the source forms is also
+compared with the return's line 25d. These warnings never change the income shown, which stays on
+the return.
+
+**No return: the capital-loss limit.** Without a 1040 the tool can't know your filing status, so
+a combined net capital loss (short plus long term) is limited to $3,000 (married filing separately
+is really $1,500) and a warning reports the amount carried over to later years. The loss categories
+are reduced so the category lines still add up to total income.
+
+**Several returns for one year.** If you import more than one 1040 for the same user and year (a
+draft and the final, or an amended copy), only the most recently imported one is used and a
+warning says so; they are never added. Delete the superseded document with `tax delete`.
 
 ## Rates
 
@@ -182,9 +202,24 @@ the federal tax withheld. "State tax" is the return's state liability when prese
 state tax withheld. Local tax is local withholding. The all-in rate therefore mixes final and
 withheld figures when you have only part of the paperwork, so read the warnings under the numbers.
 
-**Refund or owed** comes from the return's printed lines. If the return prints neither but does
-print total payments and total tax, it is derived as their difference and flagged (the CLI notes
-"refund / owed derived from total payments minus total tax").
+**Additional Medicare Tax is counted once.** Employers withhold the 0.9% Additional Medicare Tax
+inside W-2 box 6, so the Medicare figure from your W-2s already contains it, and the return's total
+tax contains it again (Schedule 2 line 11). With a return, the all-in rate therefore uses
+
+```text
+all-in = (total federal tax - min(additional Medicare Tax, W-2 Medicare tax)
+          + state tax + local withholding + Social Security + Medicare) / total income
+```
+
+If no W-2 Medicare figure was imported, nothing is subtracted (the Additional Medicare Tax would
+otherwise vanish from the rate).
+
+**Refund or owed** comes from the return's printed lines. `refund` is the refund you actually
+received: line 35a when printed, otherwise line 34 (overpaid) minus line 36 (the part applied to
+next year's estimated tax). A warning is raised when 35a plus 36 doesn't equal line 34. If the
+return prints neither refund nor amount owed but does print total payments and total tax, it is
+derived as their difference and flagged (the CLI notes "refund / owed derived from total payments
+minus total tax").
 
 ## The federal tax split is an estimate
 
@@ -232,9 +267,10 @@ return with one total tax, and it is stored under the user you import it for. If
 spouse are separate users and each imported their own W-2s:
 
 - the return's tax is compared with only that user's income, so the per-user **effective rate is
-  not meaningful**, and the wage reconciliation warning will fire for that user;
-- the **All users** view adds income and withholding from every user's source forms and takes the
-  liability from the return, which gives the correct household figures.
+  not meaningful**, and the reconciliation warnings will fire for that user;
+- the **All users** view adds each user's resolved figures: the return's income where it was
+  imported, withholding from source forms, and the liability from the return, which gives the
+  correct household figures when the return is imported under one user.
 
 Either use All users for a joint-filing household, or import the whole household's forms under one
 user. Your spouse's name and number on a return are never read.
@@ -250,13 +286,17 @@ $ spend-analyzer tax list
 $ spend-analyzer tax delete 3
 ```
 
-Importing the same file again does nothing, and a form whose content is identical to one already
+Importing the same file again for the same user does nothing (a parsed document that has lost all
+its forms, because they were duplicates of a document you since deleted, is imported again). The same
+PDF may be imported for two different users: each user keeps their own copy, and an existing
+document is never moved to another user. A form whose content is identical to one already
 stored (the same W-2 delivered as two different PDFs) is skipped and reported as a duplicate form.
 
 ## Where the data lives
 
 Imported figures are stored in the local database (`tax_documents`, `tax_forms`, `income_items`,
-`tax_items`), per user. Beyond amounts, the database holds the payer name, the last four digits of
+`tax_items`), per user. The file name you uploaded is stored for display, with any SSN or EIN shape
+and any run of six or more digits masked (`W2 123-45-6789.pdf` becomes `W2 ***-**-6789.pdf`). Beyond amounts, the database holds the payer name, the last four digits of
 the payer's identifier and of the account number, the form type and the tax year. Full SSNs,
 ITINs and EINs are never written to the database, the logs or the extract cache. After a tax import
 the uploaded PDF is deleted; to keep a copy (it contains full identifiers, so think before you do),
@@ -287,12 +327,20 @@ field).
 box 1) is blank or unreadable. Run `tax list` to see the status; try the PDF the issuer provides
 rather than a "print to PDF" copy of a screen.
 
-**Wages differ between W-2s and the return.** Usually a W-2 is missing or a corrected one was
-imported alongside the original. See [Corrected forms](#corrected-forms), and for joint returns
+**"W-2 wages is $X less than the return reports" (or the same for 1099 interest, dividends,
+capital gain).** Usually a form is missing, or a corrected one was imported alongside the
+original. Income stays on the return either way. See [Corrected forms](#corrected-forms), and for joint returns
 [Joint returns](#joint-returns).
 
-**"No W-2/1099 source documents were imported for this year."** Income is coming from the return.
-Import the W-2 and 1099 forms to see income by payer.
+**"No W-2/1099 source documents were imported for this year."** Income and federal withholding come
+from the return. Import the W-2 and 1099 forms to see income by payer, state and FICA figures.
+
+**"N Form 1040 returns were imported for this year."** Only the latest is used. Delete the others
+with `tax delete`.
+
+**"This tax form could not be read." for a file that normally works.** An unexpected failure while
+reading is recorded the same way (status `error`, nothing half-saved, no copy of the PDF left in the
+upload folder); the log names only the kind of error.
 
 **"federal tax split not estimated" / "no federal bracket table".** See the
 [limits above](#the-federal-tax-split-is-an-estimate): the filing status wasn't a single clear

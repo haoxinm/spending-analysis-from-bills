@@ -4253,6 +4253,7 @@
             "anyOf": [
               {
                 "type": "integer",
+                "exclusiveMaximum": 1000000000000000.0,
                 "minimum": 0.0
               },
               {
@@ -4264,7 +4265,8 @@
           "note": {
             "anyOf": [
               {
-                "type": "string"
+                "type": "string",
+                "maxLength": 500
               },
               {
                 "type": "null"
@@ -4312,12 +4314,13 @@
           },
           "balance_minor": {
             "type": "integer",
+            "exclusiveMaximum": 1000000000000000.0,
             "minimum": 0.0,
             "title": "Balance Minor"
           },
           "currency": {
             "type": "string",
-            "pattern": "^[A-Z]{3}$",
+            "const": "USD",
             "title": "Currency",
             "default": "USD"
           },

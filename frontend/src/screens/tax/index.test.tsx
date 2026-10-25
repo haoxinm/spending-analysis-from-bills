@@ -100,7 +100,7 @@ describe("TaxScreen", () => {
     expect(screen.getByRole("radio", { name: "2023" })).toBeInTheDocument();
   });
 
-  it("hides year-over-year with a single year and shows the return basis banner", async () => {
+  it("hides year-over-year with a single year and shows no banner for the return basis", async () => {
     mockGet({
       ...FULL,
       "/tax/years": [2024],
@@ -109,7 +109,14 @@ describe("TaxScreen", () => {
     render(<TaxScreen />, { wrapper });
     await screen.findByTestId("tax-summary-cards");
     expect(screen.queryByTestId("year-over-year")).not.toBeInTheDocument();
-    expect(screen.getByTestId("basis-banner")).toHaveTextContent(/Form 1040 return/);
+    expect(screen.queryByTestId("basis-banner")).not.toBeInTheDocument();
+  });
+
+  it("shows the mixed basis banner", async () => {
+    mockGet({ ...FULL, "/tax/summary": [summary({ income_basis: "mixed", warnings: [] })] });
+    render(<TaxScreen />, { wrapper });
+    await screen.findByTestId("tax-summary-cards");
+    expect(screen.getByTestId("basis-banner")).toHaveTextContent(/Form 1040/);
   });
 
   it("switches year", async () => {

@@ -185,3 +185,19 @@ def test_statement_import_has_no_hint_for_a_real_statement(migrated: Path) -> No
     )
     result = runner.invoke(app, ["import", pdf])
     assert "tax form" not in result.output
+
+
+def test_import_scrubs_ssn_shape_in_file_name(migrated: Path, tmp_path: Path) -> None:
+    named = tmp_path / "W2 123-45-6789.pdf"
+    named.write_bytes(Path(_pdf("tax_w2", "normal")).read_bytes())
+    result = runner.invoke(app, ["tax", "import", str(named)])
+    assert result.exit_code == 0, result.output
+    engine = make_engine_for_path(migrated / "spend.db")
+    from sqlalchemy.orm import Session
+
+    with Session(engine) as session:
+        (doc,) = session.query(TaxDocument).all()
+        assert "123-45" not in doc.original_name
+        assert "6789" in doc.original_name
+    listed = runner.invoke(app, ["tax", "list"])
+    assert "123-45" not in listed.output

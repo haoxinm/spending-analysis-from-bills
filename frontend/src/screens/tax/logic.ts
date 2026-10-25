@@ -25,13 +25,13 @@ export function incomeBasisLabel(basis: TaxSummary["income_basis"]): string {
   }
 }
 
-/** Banner text for a non-default basis, or null when the numbers come from source documents. */
+/** Banner text for an unusual basis, or null for the normal cases: income from the Form 1040 when
+ * one is imported, otherwise from W-2 / 1099 source forms. Mismatches between the two arrive as
+ * separate `warnings`. */
 export function basisNotice(basis: TaxSummary["income_basis"]): string | null {
   switch (basis) {
-    case "return":
-      return "No W-2 or 1099 forms were found for this year, so income comes from your Form 1040 return.";
     case "mixed":
-      return "Some income comes from W-2 / 1099 source forms and some from your Form 1040 return.";
+      return "Some users' income comes from their Form 1040 and others' from W-2 / 1099 source forms only.";
     case "none":
       return "No income was found in the imported documents for this year.";
     default:

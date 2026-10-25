@@ -570,20 +570,25 @@ class BalanceEntry(_Model):
     updated_at: str
 
 
+#: Largest accepted balance (minor units): keeps sums of many accounts far inside int64.
+MAX_BALANCE_MINOR = 10**15
+_NOTE_MAX_LENGTH = 500
+
+
 class BalanceEntryUpsert(_Model):
     user_id: int
     category: BalanceCategory
     account_name: str = Field(min_length=1, max_length=100)
     year: int = Field(ge=1900, le=2200)
     month: int = Field(ge=1, le=12)
-    balance_minor: int = Field(ge=0)
-    currency: str = Field(default="USD", pattern=r"^[A-Z]{3}$")
-    note: str | None = Field(default=None, max_length=500)
+    balance_minor: int = Field(ge=0, lt=MAX_BALANCE_MINOR)
+    currency: Literal["USD"] = "USD"  # USD only, like the tax tables
+    note: str | None = Field(default=None, max_length=_NOTE_MAX_LENGTH)
 
 
 class BalanceEntryPatch(_Model):
-    balance_minor: int | None = Field(default=None, ge=0)
-    note: str | None = None
+    balance_minor: int | None = Field(default=None, ge=0, lt=MAX_BALANCE_MINOR)
+    note: str | None = Field(default=None, max_length=_NOTE_MAX_LENGTH)
 
 
 class NetWorthCategoryTotal(_Model):

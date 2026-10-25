@@ -18,9 +18,14 @@ Layout handling
   neutralised so they are never mistaken for amounts (`_prepare`).
 * Schedule pages (D, 1, 2, C) are recognised by their heading row; fields are looked up only on
   the pages that own them, so a Schedule D "line 7" is never confused with 1040 line 7.
-* Filing status is the one status row with a check mark (``[X] Single``, ``(X)``, a ballot glyph
-  or a bare ``X`` before the label, or a bracketed mark after it). None or several marked =>
-  `None` plus a warning (and no tax estimate).
+* An amount is the one after the right-hand repeat of the line number; on a row with inline form
+  references (``16 Tax ... Check if any from Form(s): 1 [ ] 8814 2 [ ] 4972 ... 16 11,000.``) the
+  form numbers are never amounts (`_row_money`).
+* Filing status is the one option with a check mark (``[X] Single``, ``(X)``, a ballot glyph or a
+  bare ``X`` before the label, or a bracketed mark after it); the options may be on separate rows or
+  share one (``Filing Status [ ] Single [X] Married filing jointly [ ] ...``). None or several
+  marked => `None` plus a warning (and no tax estimate).
+* ``refund`` is line 35a (refund received), else line 34 less line 36 (applied to next year).
 
 Units and signs: minor units; only capital gains (1040 line 7, Schedule D lines 7 and 15) may be
 negative (D6). 1040-SR, 1040-NR and 1040-X are not supported (`detect` returns 0.0, `parse`
@@ -45,10 +50,16 @@ from spend_analyzer.core.tax_types import (
     TaxCategory,
 )
 from spend_analyzer.core.types import ExtractedDoc, PageText, Word
-from spend_analyzer.ingest.layout import Row, cluster_rows, parse_money
+from spend_analyzer.ingest.layout import ParsedMoney, Row, cluster_rows, parse_money
 from spend_analyzer.ingest.tax import estimate
 from spend_analyzer.ingest.tax.common import build_document, check_warning, require_year
-from spend_analyzer.ingest.tax.fields import compile_label, money_for_label, signed
+from spend_analyzer.ingest.tax.fields import (
+    LabelHit,
+    compile_label,
+    row_for_label,
+    same_row_candidates,
+    signed,
+)
 
 #: Tax years whose line layout has been verified against the IRS form.
 SUPPORTED_1040_YEARS: Final[tuple[int, ...]] = (2022, 2023, 2024, 2025)
@@ -89,15 +100,18 @@ _COMMON: Final[dict[str, FieldSpec]] = {
     "tax": _f(r"(?:^|\s)Tax \(see instructions\)", "16"),
     "total_tax": _f(r"This is your total tax", "24", line_fallback=True),
     "withheld_total": _f(r"Add lines 25a through 25c", "25d"),
-    "withheld_w2": _f(r"^25a\s+Form\(s\) W-2", "25a"),
-    "withheld_1099": _f(r"^25b\s+Form\(s\) #?1099", "25b"),
-    "withheld_other": _f(r"^25c\s+Other forms", "25c"),
+    # IRS rows read "25 Federal income tax withheld from: a Form(s) W-2 ..."; software often prints
+    # "25a Form(s) W-2". Both are accepted ("a" standing alone, so line 1a never matches).
+    "withheld_w2": _f(r"(?:^|\s)(?:25a|a)\s+Form\(s\) W-2", "25a"),
+    "withheld_1099": _f(r"(?:^|\s)(?:25b|b)\s+Form\(s\) #?1099", "25b"),
+    "withheld_other": _f(r"(?:^|\s)(?:25c|c)\s+Other forms", "25c"),
     "estimated_payments": _f(
         r"estimated tax payments and amount applied from (?:the )?\S+ return", "26"
     ),
     "total_payments": _f(r"These are your total payments", "33", line_fallback=True),
     "overpaid": _f(r"amount you overpaid", "34"),
     "refunded": _f(r"you want refunded to you", "35a"),
+    "applied": _f(r"you want applied to your \S+ estimated tax", "36"),
     "owed": _f(r"This is the amount you owe", "37"),
     # Schedule D
     "d_short_term": _f(r"Net short-term capital gain or \(loss\)", "7", "d"),
@@ -176,9 +190,12 @@ _TRAILING_PERIOD_MONEY = re.compile(r"^(\(?-?\$?\d{1,3}(?:,\d{3})*|\(?-?\$?\d+)\
 _YEAR_LIKE = re.compile(r"^(?:19|20)\d{2}$")
 _BARE_FOUR = re.compile(r"^\d{4}$")
 _FORM_WORDS = frozenset({"form", "forms", "form(s)", "form(s):", "form:", "schedule"})
+#: A checkbox glyph (or the closing bracket of ``[ ]``) before a number: "Form(s): 1 ☐ 8814".
+_CHECKBOX_WORDS = frozenset({"☐", "☒", "☑", "]", "[ ]", "( )"})
 _SUBLINE_MARKER = re.compile(r"^[b-e]$")
 _ALPHA_WORD = re.compile(r"^[A-Za-z]")
-_SCHEDULE_HEADING = re.compile(r"^\s*SCHEDULE\s+(\w+)\b", re.IGNORECASE)
+# The whole token after "SCHEDULE" (hyphen included), so "Schedule 1-A" is not read as Schedule 1.
+_SCHEDULE_HEADING = re.compile(r"^\s*SCHEDULE\s+([\w-]+)", re.IGNORECASE)
 _LINE_REF = re.compile(r"^\d{1,2}[a-z]?$")
 #: Prefix marking a neutralised right-hand line reference (see `_prepare_page`).
 REF_PREFIX = "ref:"
@@ -189,7 +206,8 @@ _GLYPH = 8.0
 def _clean_token(prev: str | None, text: str) -> str:
     stripped = _TRAILING_PERIOD_MONEY.sub(r"\1\2", text)
     if _BARE_FOUR.match(stripped) and (
-        _YEAR_LIKE.match(stripped) or (prev is not None and prev.lower() in _FORM_WORDS)
+        _YEAR_LIKE.match(stripped)
+        or (prev is not None and (prev.lower() in _FORM_WORDS or prev in _CHECKBOX_WORDS))
     ):
         return "#" + stripped  # a year or form number, never an amount
     return stripped
@@ -313,6 +331,40 @@ def _last_money_on_line_row(doc: ExtractedDoc, pages: Sequence[int], line: str) 
     return None
 
 
+def _inline_form_refs(row_words: Sequence[Word], start: int) -> bool:
+    """True when words from `start` on contain a form reference (``Form(s):``, ``Form 8814``)."""
+    return any(w.text.lower() in _FORM_WORDS for w in row_words[start:])
+
+
+def _row_money(row: Row, hit: LabelHit, line: str) -> ParsedMoney | None:
+    """The amount of a 1040 line on the row holding its label.
+
+    Rows can carry form references between the label and the amount (``16 Tax (see
+    instructions). Check if any from Form(s): 1 [ ] 8814 2 [ ] 4972 3 [ ] . . . 16 11,000.``), whose
+    numbers must never be read as the amount. Rules, in order:
+
+    1. the amount after the right-hand repeat of the line number (`REF_PREFIX`), blank if none
+       follows it (an empty line prints only its number);
+    2. on a row with an inline form reference, the last money token on the row;
+    3. otherwise the first money token right of the label (box and line numbers skipped).
+    """
+    words = row.words
+    after = [i for i, w in enumerate(words) if w.x0 >= hit.label_x1 - 0.5]
+    refs = [i for i in after if words[i].text == REF_PREFIX + line]
+    if refs:
+        for word in words[refs[-1] + 1 :]:
+            money = parse_money(word.text)
+            if money is not None:
+                return money
+        return None
+    candidates = same_row_candidates(row, hit, skip_line_numbers=True)
+    if not candidates:
+        return None
+    if after and _inline_form_refs(words, after[0]):
+        return candidates[-1]
+    return candidates[0]
+
+
 class _Values:
     """Reads fields of one year's table from a prepared document."""
 
@@ -331,9 +383,11 @@ class _Values:
         pages = self._pages.for_scope(spec.scope)
         if not pages:
             return None
-        money = money_for_label(self._doc, spec.label, mode="same_row", pages=pages)
-        if money is not None:
-            return signed(money)
+        found = row_for_label(self._doc, spec.label, pages=pages)
+        if found is not None:
+            money = _row_money(found[0], found[1], spec.line)
+            if money is not None:
+                return signed(money)
         if spec.line_fallback:
             return _last_money_on_line_row(self._doc, pages, spec.line)
         return None
@@ -350,8 +404,11 @@ class _Values:
 # Filing status
 # --------------------------------------------------------------------------------------------
 
-_MARK_BEFORE = r"(?:\[\s*[xX✓✔]\s*\]|\(\s*[xX✓✔]\s*\)|[☒☑✓✔]|[xX])"
-_MARK_AFTER = r"(?:\[\s*[xX✓✔]\s*\]|\(\s*[xX✓✔]\s*\)|[☒☑✓✔])"
+_MARKED = "[xX✓✔]"
+#: Any check box on a status row, marked or empty: ``[X]``, ``[ ]``, ``(X)``, ``( )``, a glyph.
+_BOX = re.compile(r"\[\s*([xX✓✔]?)\s*\]|\(\s*([xX✓✔]?)\s*\)|([☐☒☑✓✔])")
+#: A bare ``X`` standing before a label ("X Single"): a mark, never an empty box.
+_BARE_X = re.compile(r"(?<![\w])[xX](?=\s+\S)")
 _STATUS_LABELS: Final[tuple[tuple[str, str], ...]] = (
     ("single", r"Single\b"),
     ("mfj", r"Married filing jointly"),
@@ -359,16 +416,60 @@ _STATUS_LABELS: Final[tuple[tuple[str, str], ...]] = (
     ("hoh", r"Head of household"),
     ("qss", r"Qualifying (?:surviving spouse|widow\(er\))"),
 )
-_STATUS_PATTERNS: Final[tuple[tuple[str, re.Pattern[str]], ...]] = tuple(
-    (
-        key,
-        re.compile(
-            rf"^\s*(?:Filing Status\s+)?(?:{_MARK_BEFORE}\s*(?:{label})|(?:{label})[^\[\]]*?\s*{_MARK_AFTER}\s*$)",
-            re.IGNORECASE,
-        ),
-    )
-    for key, label in _STATUS_LABELS
+_STATUS_REGEXES: Final[tuple[tuple[str, re.Pattern[str]], ...]] = tuple(
+    (key, re.compile(label, re.IGNORECASE)) for key, label in _STATUS_LABELS
 )
+_STATUS_ROW_START = re.compile(
+    rf"^\s*(?:Filing Status\s+)?(?:{_BOX.pattern}|{_BARE_X.pattern}|"
+    + "|".join(label for _, label in _STATUS_LABELS)
+    + ")",
+    re.IGNORECASE,
+)
+
+
+def _is_marked(match: re.Match[str]) -> bool:
+    groups = match.groups()
+    return bool(groups[0] or groups[1] or (groups[2] and groups[2] != "☐"))
+
+
+def _row_statuses(line: str) -> list[str]:
+    """Statuses marked on one text row; several statuses may share the row (IRS layout:
+    ``Filing Status [ ] Single [X] Married filing jointly [ ] Married filing separately``).
+
+    A mark belongs to the label that follows it when the row's first label has a box (or a bare
+    ``X``) in front of it, else to the label that precedes it (``Single [X] Married ... [ ]``)."""
+    if _STATUS_ROW_START.match(line) is None:
+        return []
+    spans: list[tuple[int, int, str]] = []
+    for key, pattern in _STATUS_REGEXES:
+        match = pattern.search(line)
+        if match is not None:
+            spans.append((match.start(), match.end(), key))
+    spans.sort()
+    if not spans:
+        return []
+    boxes = [(m.start(), m.end(), _is_marked(m)) for m in _BOX.finditer(line)]
+    boxes += [(m.start(), m.end(), True) for m in _BARE_X.finditer(line)]
+    boxes.sort()
+
+    def box_before(start: int) -> tuple[int, int, bool] | None:
+        for box in boxes:
+            if box[1] <= start and line[box[1] : start].strip() == "":
+                return box
+        return None
+
+    found: list[str] = []
+    if box_before(spans[0][0]) is not None:  # the first label has a box in front: box-first row
+        for start, _, key in spans:
+            box = box_before(start)
+            if box is not None and box[2]:
+                found.append(key)
+        return found
+    for i, (_, end, key) in enumerate(spans):  # a box after each label
+        limit = spans[i + 1][0] if i + 1 < len(spans) else len(line)
+        if any(end <= b0 < limit and marked for b0, _, marked in boxes):
+            found.append(key)
+    return found
 
 
 def _filing_status(doc: ExtractedDoc, pages: Sequence[int]) -> tuple[str | None, str | None]:
@@ -378,8 +479,8 @@ def _filing_status(doc: ExtractedDoc, pages: Sequence[int]) -> tuple[str | None,
         if page.page_number not in pages:
             continue
         for line in page.text.splitlines():
-            for key, pattern in _STATUS_PATTERNS:
-                if pattern.match(line) and key not in found:
+            for key in _row_statuses(line):
+                if key not in found:
                     found.append(key)
     if len(found) == 1:
         return found[0], None
@@ -433,6 +534,18 @@ def _tax(
 
 
 _ONE_DOLLAR = 100
+
+
+def _refund_received(v: _Values) -> tuple[int | None, str]:
+    """(refund actually received, box label): line 35a when printed, else line 34 less line 36
+    (the part applied to next year's estimated tax). `None` when neither line 34 nor 35a is read."""
+    refunded = v.amount("refunded")
+    if refunded is not None:
+        return refunded, "line 35a"
+    overpaid = v.amount("overpaid")
+    if overpaid is None:
+        return None, "line 34"
+    return max(overpaid - (v.amount("applied") or 0), 0), "line 34"
 
 
 class F1040Parser:
@@ -638,9 +751,7 @@ class F1040Parser:
             parts = [v.amount(k) for k in ("withheld_w2", "withheld_1099", "withheld_other")]
             if any(p is not None for p in parts):
                 withheld = sum(p or 0 for p in parts)
-        refund = v.amount("overpaid")
-        if refund is None:
-            refund = v.amount("refunded")
+        refund, refund_box = _refund_received(v)
         candidates = (
             _tax("total_federal_tax", total_tax, "line 24", "Total tax", keep_zero=True),
             _tax(
@@ -662,7 +773,7 @@ class F1040Parser:
                 "Total payments",
                 keep_zero=True,
             ),
-            _tax("refund", refund, "line 34", "Overpaid / refund"),
+            _tax("refund", refund, refund_box, "Refund received"),
             _tax("amount_owed", v.amount("owed"), "line 37", "Amount you owe"),
             _tax(
                 "net_investment_income_tax",
@@ -762,18 +873,28 @@ class F1040Parser:
     # ----- consistency ----------------------------------------------------------------------
 
     def _consistency(self, v: _Values, warnings: list[str]) -> None:
-        refund = v.amount("overpaid")
-        if refund is None:
-            refund = v.amount("refunded")
+        overpaid = v.amount("overpaid")
+        refunded = v.amount("refunded")
+        applied = v.amount("applied")
+        if overpaid is None and (refunded is not None or applied is not None):
+            overpaid = (refunded or 0) + (applied or 0)  # line 34 unreadable: rebuild it
         owed = v.amount("owed")
-        if (refund or 0) > 0 and (owed or 0) > 0:
+        if (overpaid or 0) > 0 and (owed or 0) > 0:
             warnings.append("both a refund and an amount owed are printed")
+        if (
+            overpaid is not None
+            and refunded is not None  # without 35a the refund is derived from 34 less 36
+            and abs(overpaid - (refunded or 0) - (applied or 0)) > _ONE_DOLLAR
+        ):
+            warnings.append(
+                "refund and amount applied to next year do not add up to the overpayment"
+            )
         payments = v.amount("total_payments")
         total_tax = v.amount("total_tax")
         if payments is not None and total_tax is not None:
             diff = payments - total_tax
             if (
-                abs((refund or 0) - max(diff, 0)) > _ONE_DOLLAR
+                abs((overpaid or 0) - max(diff, 0)) > _ONE_DOLLAR
                 or abs((owed or 0) - max(-diff, 0)) > _ONE_DOLLAR
             ):
                 warnings.append(

@@ -1065,8 +1065,9 @@ export interface components {
             /**
              * Currency
              * @default USD
+             * @constant
              */
-            currency: string;
+            currency: "USD";
             /** Note */
             note?: string | null;
         };
