@@ -231,13 +231,19 @@ def _confirm_command_args(import_output: str) -> list[str]:
     after an `awaiting_extractor` result, and return it as the argv `runner.invoke` takes
     (everything after the leading `spend-analyzer`) — exactly what a terminal user would copy
     and run."""
-    import os
     import re
-    import shlex
 
     match = re.search(r"confirm with:\n\s+spend-analyzer (.+)", import_output)
     assert match is not None, f"no confirm command printed:\n{import_output}"
-    line = match.group(1).strip()
+    return _split_printed_command(match.group(1))
+
+
+def _split_printed_command(line: str) -> list[str]:
+    """Split a command line the CLI printed (quoted for this platform's shell) into argv."""
+    import os
+    import shlex
+
+    line = line.strip()
     if os.name != "nt":
         return shlex.split(line)
     # Windows quoting (subprocess.list2cmdline): backslashes are literal, tokens may be wrapped
@@ -322,7 +328,6 @@ def test_import_builtin_failure_warns_and_prints_llm_retry_command(
     """A built-in parser that raises is a warning with a copy-pasteable `--parser-id llm`
     retry; the staged PDF is kept so that retry succeeds."""
     import re
-    import shlex
 
     from tests.ingest.test_pipeline import _build_bank_pdf
     from tests.llm_fakes import install
@@ -356,6 +361,6 @@ def test_import_builtin_failure_warns_and_prints_llm_retry_command(
     install(monkeypatch).queue(
         json.dumps({"account_type": "checking", "transactions": []})  # empty is fine too
     )
-    retried = runner.invoke(app, shlex.split(match.group(1)), catch_exceptions=False)
+    retried = runner.invoke(app, _split_printed_command(match.group(1)), catch_exceptions=False)
     assert retried.exit_code == 0, retried.output
     assert "imported 0 transaction" in retried.output
