@@ -541,6 +541,172 @@
         }
       }
     },
+    "/statements/{statement_id}/pages": {
+      "get": {
+        "tags": [
+          "statements"
+        ],
+        "summary": "List Statement Pages",
+        "description": "Per-page text stats and a snippet, so the user can choose which pages to keep/parse.",
+        "operationId": "list_statement_pages_api_statements__statement_id__pages_get",
+        "parameters": [
+          {
+            "name": "statement_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "title": "Statement Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/StatementPageInfo"
+                  },
+                  "title": "Response List Statement Pages Api Statements  Statement Id  Pages Get"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/statements/{statement_id}/pages/{page_number}/image": {
+      "get": {
+        "tags": [
+          "statements"
+        ],
+        "summary": "Statement Page Image",
+        "description": "PNG thumbnail of one page (loaded via `<img src=...?token=...>`; local-only).",
+        "operationId": "statement_page_image_api_statements__statement_id__pages__page_number__image_get",
+        "parameters": [
+          {
+            "name": "statement_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "title": "Statement Id"
+            }
+          },
+          {
+            "name": "page_number",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "title": "Page Number"
+            }
+          },
+          {
+            "name": "width",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "default": 400,
+              "title": "Width"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/statements/{statement_id}/llm-preview": {
+      "get": {
+        "tags": [
+          "statements"
+        ],
+        "summary": "Llm Preview",
+        "description": "Exactly the (redacted) page text the LLM statement parser would send. No network call.",
+        "operationId": "llm_preview_api_statements__statement_id__llm_preview_get",
+        "parameters": [
+          {
+            "name": "statement_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "title": "Statement Id"
+            }
+          },
+          {
+            "name": "pages",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Pages"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LlmParsePreview"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/statements/{statement_id}/extract": {
       "post": {
         "tags": [
@@ -2718,7 +2884,7 @@
           "settings"
         ],
         "summary": "Put Api Key",
-        "description": "Store `body.api_key` for `body.provider` in the OS keychain (I7). Never returned, logged,\nor written to `config.toml`/the database \u2014 `body` itself is never included in any response.",
+        "description": "Store `body.api_key` for the endpoint's host in the OS keychain (I7). Never returned,\nlogged, or written to `config.toml`/the database.",
         "operationId": "put_api_key_api_settings_api_key_put",
         "requestBody": {
           "required": true,
@@ -2751,16 +2917,17 @@
           "settings"
         ],
         "summary": "Delete Api Key Route",
-        "description": "Remove `provider`'s key from the OS keychain, if present (I7). Idempotent: clearing an\nalready-absent key is not an error.",
+        "description": "Remove the key stored for the endpoint's host, if present (I7). Idempotent.",
         "operationId": "delete_api_key_route_api_settings_api_key_delete",
         "parameters": [
           {
-            "name": "provider",
+            "name": "base_url",
             "in": "query",
-            "required": true,
+            "required": false,
             "schema": {
               "type": "string",
-              "title": "Provider"
+              "default": "",
+              "title": "Base Url"
             }
           }
         ],
@@ -2787,8 +2954,25 @@
           "settings"
         ],
         "summary": "Test Llm Settings",
-        "description": "One-row round trip verifying credentials, via the same `classify_batch` egress path every\nreal classification uses (never a bespoke LLM call).",
+        "description": "One-row round trip via the same `classify_batch` egress path every real classification\nuses. Tests the unsaved draft in `body.llm` when given, else the saved settings.",
         "operationId": "test_llm_settings_api_settings_test_llm_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "anyOf": [
+                  {
+                    "$ref": "#/components/schemas/TestLlmRequest"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "Body"
+              }
+            }
+          }
+        },
         "responses": {
           "200": {
             "description": "Successful Response",
@@ -2796,6 +2980,16 @@
               "application/json": {
                 "schema": {
                   "$ref": "#/components/schemas/TestLlmResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
                 }
               }
             }
@@ -3108,22 +3302,22 @@
       },
       "ApiKeyPut": {
         "properties": {
-          "provider": {
-            "type": "string",
-            "title": "Provider"
-          },
           "api_key": {
             "type": "string",
             "title": "Api Key"
+          },
+          "base_url": {
+            "type": "string",
+            "title": "Base Url",
+            "default": ""
           }
         },
         "type": "object",
         "required": [
-          "provider",
           "api_key"
         ],
         "title": "ApiKeyPut",
-        "description": "`PUT /api/settings/api-key` body (I7: the key is written straight to the OS keychain via\n`config.set_api_key` \u2014 never to `config.toml`, the database, a response, or a log line)."
+        "description": "`PUT /api/settings/api-key` body (I7: the key is written straight to the OS keychain via\n`config.set_api_key` \u2014 never to `config.toml`, the database, a response, or a log line).\nThe key is stored for `base_url`'s host (default: the saved `[llm] base_url`), so it is only\never sent to that host."
       },
       "Body_upload_statement_api_statements_post": {
         "properties": {
@@ -3332,6 +3526,20 @@
             "type": "boolean",
             "title": "Remember",
             "default": false
+          },
+          "pages": {
+            "anyOf": [
+              {
+                "items": {
+                  "type": "integer"
+                },
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Pages"
           }
         },
         "type": "object",
@@ -3412,6 +3620,15 @@
           "always_confirm_extractor": {
             "type": "boolean",
             "title": "Always Confirm Extractor"
+          },
+          "default_extractor": {
+            "type": "string",
+            "enum": [
+              "auto",
+              "llm"
+            ],
+            "title": "Default Extractor",
+            "default": "auto"
           },
           "date_format_hints": {
             "items": {
@@ -3908,6 +4125,56 @@
         ],
         "title": "LayoutSpecDryRunRow"
       },
+      "LlmParsePreview": {
+        "properties": {
+          "mode": {
+            "type": "string",
+            "enum": [
+              "none",
+              "local",
+              "remote"
+            ],
+            "title": "Mode"
+          },
+          "resolved_url": {
+            "type": "string",
+            "title": "Resolved Url"
+          },
+          "model": {
+            "type": "string",
+            "title": "Model"
+          },
+          "pages": {
+            "items": {
+              "type": "integer"
+            },
+            "type": "array",
+            "title": "Pages"
+          },
+          "requests": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Requests"
+          },
+          "total_chars": {
+            "type": "integer",
+            "title": "Total Chars"
+          }
+        },
+        "type": "object",
+        "required": [
+          "mode",
+          "resolved_url",
+          "model",
+          "pages",
+          "requests",
+          "total_chars"
+        ],
+        "title": "LlmParsePreview",
+        "description": "`GET /api/statements/{id}/llm-preview?pages=1,2`: the exact page text (after\nredaction) that the LLM statement parser would send, one entry per request. No network."
+      },
       "LlmRun": {
         "properties": {
           "id": {
@@ -3983,6 +4250,100 @@
       },
       "LlmSettings": {
         "properties": {
+          "enabled": {
+            "type": "boolean",
+            "title": "Enabled",
+            "default": false
+          },
+          "base_url": {
+            "type": "string",
+            "title": "Base Url",
+            "default": ""
+          },
+          "api_format": {
+            "type": "string",
+            "enum": [
+              "openai_chat",
+              "openai_responses",
+              "anthropic_messages"
+            ],
+            "title": "Api Format",
+            "default": "openai_chat"
+          },
+          "path": {
+            "type": "string",
+            "title": "Path",
+            "default": ""
+          },
+          "model": {
+            "type": "string",
+            "title": "Model",
+            "default": ""
+          },
+          "temperature": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Temperature"
+          },
+          "max_tokens": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Max Tokens"
+          },
+          "reasoning_effort": {
+            "type": "string",
+            "title": "Reasoning Effort",
+            "default": ""
+          },
+          "extra_body": {
+            "additionalProperties": true,
+            "type": "object",
+            "title": "Extra Body"
+          },
+          "extra_headers": {
+            "additionalProperties": {
+              "type": "string"
+            },
+            "type": "object",
+            "title": "Extra Headers"
+          },
+          "structured_output": {
+            "type": "boolean",
+            "title": "Structured Output",
+            "default": true
+          },
+          "batch_size": {
+            "type": "integer",
+            "title": "Batch Size",
+            "default": 50
+          },
+          "timeout_s": {
+            "type": "integer",
+            "title": "Timeout S",
+            "default": 120
+          },
+          "confidence_threshold": {
+            "type": "number",
+            "title": "Confidence Threshold",
+            "default": 0.7
+          },
+          "parse_pages_per_request": {
+            "type": "integer",
+            "title": "Parse Pages Per Request",
+            "default": 0
+          },
           "mode": {
             "type": "string",
             "enum": [
@@ -3990,31 +4351,13 @@
               "local",
               "remote"
             ],
-            "title": "Mode"
+            "title": "Mode",
+            "default": "none"
           },
-          "provider": {
+          "resolved_url": {
             "type": "string",
-            "title": "Provider"
-          },
-          "model": {
-            "type": "string",
-            "title": "Model"
-          },
-          "api_base": {
-            "type": "string",
-            "title": "Api Base"
-          },
-          "batch_size": {
-            "type": "integer",
-            "title": "Batch Size"
-          },
-          "timeout_s": {
-            "type": "integer",
-            "title": "Timeout S"
-          },
-          "confidence_threshold": {
-            "type": "number",
-            "title": "Confidence Threshold"
+            "title": "Resolved Url",
+            "default": ""
           },
           "has_key": {
             "type": "boolean",
@@ -4023,16 +4366,8 @@
           }
         },
         "type": "object",
-        "required": [
-          "mode",
-          "provider",
-          "model",
-          "api_base",
-          "batch_size",
-          "timeout_s",
-          "confidence_threshold"
-        ],
-        "title": "LlmSettings"
+        "title": "LlmSettings",
+        "description": "`[llm]` (one endpoint for classification and opt-in statement parsing). `mode`,\n`resolved_url` and `has_key` are derived and read-only: ignored on `PUT`."
       },
       "MergeRequest": {
         "properties": {
@@ -4401,6 +4736,31 @@
             "type": "string",
             "format": "date-time",
             "title": "Created At"
+          },
+          "page_count": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Page Count"
+          },
+          "selected_pages": {
+            "anyOf": [
+              {
+                "items": {
+                  "type": "integer"
+                },
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Selected Pages"
           }
         },
         "type": "object",
@@ -4417,6 +4777,35 @@
           "created_at"
         ],
         "title": "Statement"
+      },
+      "StatementPageInfo": {
+        "properties": {
+          "page_number": {
+            "type": "integer",
+            "title": "Page Number"
+          },
+          "char_count": {
+            "type": "integer",
+            "title": "Char Count"
+          },
+          "snippet": {
+            "type": "string",
+            "title": "Snippet"
+          },
+          "selected": {
+            "type": "boolean",
+            "title": "Selected"
+          }
+        },
+        "type": "object",
+        "required": [
+          "page_number",
+          "char_count",
+          "snippet",
+          "selected"
+        ],
+        "title": "StatementPageInfo",
+        "description": "`GET /api/statements/{id}/pages` row: enough to choose pages without opening the PDF.\nA thumbnail is at `GET /api/statements/{id}/pages/{page_number}/image`."
       },
       "StatementPatch": {
         "properties": {
@@ -4565,6 +4954,23 @@
         ],
         "title": "Subcategory"
       },
+      "TestLlmRequest": {
+        "properties": {
+          "llm": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/LlmSettings"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          }
+        },
+        "type": "object",
+        "title": "TestLlmRequest",
+        "description": "Optional `POST /api/settings/test-llm` body: test these (unsaved, draft) LLM settings\ninstead of the saved ones. Omit the body to test what is saved."
+      },
       "TestLlmResponse": {
         "properties": {
           "ok": {
@@ -4581,6 +4987,32 @@
               }
             ],
             "title": "Detail"
+          },
+          "mode": {
+            "type": "string",
+            "enum": [
+              "none",
+              "local",
+              "remote"
+            ],
+            "title": "Mode",
+            "default": "none"
+          },
+          "resolved_url": {
+            "type": "string",
+            "title": "Resolved Url",
+            "default": ""
+          },
+          "latency_ms": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Latency Ms"
           }
         },
         "type": "object",

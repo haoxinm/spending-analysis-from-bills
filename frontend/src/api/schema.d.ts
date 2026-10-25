@@ -138,6 +138,66 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/statements/{statement_id}/pages": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List Statement Pages
+         * @description Per-page text stats and a snippet, so the user can choose which pages to keep/parse.
+         */
+        get: operations["list_statement_pages_api_statements__statement_id__pages_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/statements/{statement_id}/pages/{page_number}/image": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Statement Page Image
+         * @description PNG thumbnail of one page (loaded via `<img src=...?token=...>`; local-only).
+         */
+        get: operations["statement_page_image_api_statements__statement_id__pages__page_number__image_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/statements/{statement_id}/llm-preview": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Llm Preview
+         * @description Exactly the (redacted) page text the LLM statement parser would send. No network call.
+         */
+        get: operations["llm_preview_api_statements__statement_id__llm_preview_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/statements/{statement_id}/extract": {
         parameters: {
             query?: never;
@@ -628,15 +688,14 @@ export interface paths {
         get?: never;
         /**
          * Put Api Key
-         * @description Store `body.api_key` for `body.provider` in the OS keychain (I7). Never returned, logged,
-         *     or written to `config.toml`/the database — `body` itself is never included in any response.
+         * @description Store `body.api_key` for the endpoint's host in the OS keychain (I7). Never returned,
+         *     logged, or written to `config.toml`/the database.
          */
         put: operations["put_api_key_api_settings_api_key_put"];
         post?: never;
         /**
          * Delete Api Key Route
-         * @description Remove `provider`'s key from the OS keychain, if present (I7). Idempotent: clearing an
-         *     already-absent key is not an error.
+         * @description Remove the key stored for the endpoint's host, if present (I7). Idempotent.
          */
         delete: operations["delete_api_key_route_api_settings_api_key_delete"];
         options?: never;
@@ -655,8 +714,8 @@ export interface paths {
         put?: never;
         /**
          * Test Llm Settings
-         * @description One-row round trip verifying credentials, via the same `classify_batch` egress path every
-         *     real classification uses (never a bespoke LLM call).
+         * @description One-row round trip via the same `classify_batch` egress path every real classification
+         *     uses. Tests the unsaved draft in `body.llm` when given, else the saved settings.
          */
         post: operations["test_llm_settings_api_settings_test_llm_post"];
         delete?: never;
@@ -767,12 +826,17 @@ export interface components {
          * ApiKeyPut
          * @description `PUT /api/settings/api-key` body (I7: the key is written straight to the OS keychain via
          *     `config.set_api_key` — never to `config.toml`, the database, a response, or a log line).
+         *     The key is stored for `base_url`'s host (default: the saved `[llm] base_url`), so it is only
+         *     ever sent to that host.
          */
         ApiKeyPut: {
-            /** Provider */
-            provider: string;
             /** Api Key */
             api_key: string;
+            /**
+             * Base Url
+             * @default
+             */
+            base_url: string;
         };
         /** Body_upload_statement_api_statements_post */
         Body_upload_statement_api_statements_post: {
@@ -844,6 +908,8 @@ export interface components {
              * @default false
              */
             remember: boolean;
+            /** Pages */
+            pages?: number[] | null;
         };
         /** ExtractorProposal */
         ExtractorProposal: {
@@ -867,6 +933,12 @@ export interface components {
         IngestSettings: {
             /** Always Confirm Extractor */
             always_confirm_extractor: boolean;
+            /**
+             * Default Extractor
+             * @default auto
+             * @enum {string}
+             */
+            default_extractor: "auto" | "llm";
             /** Date Format Hints */
             date_format_hints: string[];
             /** Default Currency */
@@ -1023,6 +1095,28 @@ export interface components {
             /** Amount Minor */
             amount_minor: number;
         };
+        /**
+         * LlmParsePreview
+         * @description `GET /api/statements/{id}/llm-preview?pages=1,2`: the exact page text (after
+         *     redaction) that the LLM statement parser would send, one entry per request. No network.
+         */
+        LlmParsePreview: {
+            /**
+             * Mode
+             * @enum {string}
+             */
+            mode: "none" | "local" | "remote";
+            /** Resolved Url */
+            resolved_url: string;
+            /** Model */
+            model: string;
+            /** Pages */
+            pages: number[];
+            /** Requests */
+            requests: string[];
+            /** Total Chars */
+            total_chars: number;
+        };
         /** LlmRun */
         LlmRun: {
             /** Id */
@@ -1047,25 +1141,91 @@ export interface components {
              */
             created_at: string;
         };
-        /** LlmSettings */
+        /**
+         * LlmSettings
+         * @description `[llm]` (one endpoint for classification and opt-in statement parsing). `mode`,
+         *     `resolved_url` and `has_key` are derived and read-only: ignored on `PUT`.
+         */
         LlmSettings: {
             /**
+             * Enabled
+             * @default false
+             */
+            enabled: boolean;
+            /**
+             * Base Url
+             * @default
+             */
+            base_url: string;
+            /**
+             * Api Format
+             * @default openai_chat
+             * @enum {string}
+             */
+            api_format: "openai_chat" | "openai_responses" | "anthropic_messages";
+            /**
+             * Path
+             * @default
+             */
+            path: string;
+            /**
+             * Model
+             * @default
+             */
+            model: string;
+            /** Temperature */
+            temperature?: number | null;
+            /** Max Tokens */
+            max_tokens?: number | null;
+            /**
+             * Reasoning Effort
+             * @default
+             */
+            reasoning_effort: string;
+            /** Extra Body */
+            extra_body?: {
+                [key: string]: unknown;
+            };
+            /** Extra Headers */
+            extra_headers?: {
+                [key: string]: string;
+            };
+            /**
+             * Structured Output
+             * @default true
+             */
+            structured_output: boolean;
+            /**
+             * Batch Size
+             * @default 50
+             */
+            batch_size: number;
+            /**
+             * Timeout S
+             * @default 120
+             */
+            timeout_s: number;
+            /**
+             * Confidence Threshold
+             * @default 0.7
+             */
+            confidence_threshold: number;
+            /**
+             * Parse Pages Per Request
+             * @default 0
+             */
+            parse_pages_per_request: number;
+            /**
              * Mode
+             * @default none
              * @enum {string}
              */
             mode: "none" | "local" | "remote";
-            /** Provider */
-            provider: string;
-            /** Model */
-            model: string;
-            /** Api Base */
-            api_base: string;
-            /** Batch Size */
-            batch_size: number;
-            /** Timeout S */
-            timeout_s: number;
-            /** Confidence Threshold */
-            confidence_threshold: number;
+            /**
+             * Resolved Url
+             * @default
+             */
+            resolved_url: string;
             /**
              * Has Key
              * @default false
@@ -1176,6 +1336,25 @@ export interface components {
              * Format: date-time
              */
             created_at: string;
+            /** Page Count */
+            page_count?: number | null;
+            /** Selected Pages */
+            selected_pages?: number[] | null;
+        };
+        /**
+         * StatementPageInfo
+         * @description `GET /api/statements/{id}/pages` row: enough to choose pages without opening the PDF.
+         *     A thumbnail is at `GET /api/statements/{id}/pages/{page_number}/image`.
+         */
+        StatementPageInfo: {
+            /** Page Number */
+            page_number: number;
+            /** Char Count */
+            char_count: number;
+            /** Snippet */
+            snippet: string;
+            /** Selected */
+            selected: boolean;
         };
         /** StatementPatch */
         StatementPatch: {
@@ -1226,12 +1405,33 @@ export interface components {
             /** Merged Into */
             merged_into?: string | null;
         };
+        /**
+         * TestLlmRequest
+         * @description Optional `POST /api/settings/test-llm` body: test these (unsaved, draft) LLM settings
+         *     instead of the saved ones. Omit the body to test what is saved.
+         */
+        TestLlmRequest: {
+            llm?: components["schemas"]["LlmSettings"] | null;
+        };
         /** TestLlmResponse */
         TestLlmResponse: {
             /** Ok */
             ok: boolean;
             /** Detail */
             detail?: string | null;
+            /**
+             * Mode
+             * @default none
+             * @enum {string}
+             */
+            mode: "none" | "local" | "remote";
+            /**
+             * Resolved Url
+             * @default
+             */
+            resolved_url: string;
+            /** Latency Ms */
+            latency_ms?: number | null;
         };
         /** TopMerchantRow */
         TopMerchantRow: {
@@ -1733,6 +1933,104 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["StatementPreviewPage"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    list_statement_pages_api_statements__statement_id__pages_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                statement_id: number;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["StatementPageInfo"][];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    statement_page_image_api_statements__statement_id__pages__page_number__image_get: {
+        parameters: {
+            query?: {
+                width?: number;
+            };
+            header?: never;
+            path: {
+                statement_id: number;
+                page_number: number;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": unknown;
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    llm_preview_api_statements__statement_id__llm_preview_get: {
+        parameters: {
+            query?: {
+                pages?: string | null;
+            };
+            header?: never;
+            path: {
+                statement_id: number;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["LlmParsePreview"];
                 };
             };
             /** @description Validation Error */
@@ -2826,8 +3124,8 @@ export interface operations {
     };
     delete_api_key_route_api_settings_api_key_delete: {
         parameters: {
-            query: {
-                provider: string;
+            query?: {
+                base_url?: string;
             };
             header?: never;
             path?: never;
@@ -2860,7 +3158,11 @@ export interface operations {
             path?: never;
             cookie?: never;
         };
-        requestBody?: never;
+        requestBody?: {
+            content: {
+                "application/json": components["schemas"]["TestLlmRequest"] | null;
+            };
+        };
         responses: {
             /** @description Successful Response */
             200: {
@@ -2869,6 +3171,15 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["TestLlmResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
                 };
             };
         };

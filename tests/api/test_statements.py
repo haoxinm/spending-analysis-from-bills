@@ -91,6 +91,7 @@ def test_extract_enqueues_import_job(
         parser_id: str | None,
         layout_spec_id: int | None,
         remember: bool,
+        pages: list[int] | None = None,
     ) -> gateway.ImportResult:
         return gateway.ImportResult(
             statement_id=stmt_id,

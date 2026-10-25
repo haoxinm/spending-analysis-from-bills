@@ -27,7 +27,6 @@ from pathlib import Path
 SPEND_ANALYZER_HOME_ENV = "SPEND_ANALYZER_HOME"
 
 
-
 def default_home(platform: str | None = None) -> Path:
     """The per-user data directory for ``platform`` (default: the running one, `sys.platform`)."""
     plat = platform if platform is not None else sys.platform
