@@ -5,12 +5,22 @@ import { cn } from "@/utils";
 export interface FileDropZoneProps {
   onFiles: (files: File[]) => void;
   disabled?: boolean;
+  /** Overrides for reuse outside Import (e.g. tax forms); defaults keep the statement wording. */
+  title?: string;
+  hint?: string;
+  inputLabel?: string;
 }
 
 /** Drag-and-drop (or click-to-browse) multiple PDFs onto the Import screen. Filters to
  * `.pdf`/`application/pdf` client-side as a friendly first pass — the server re-checks the
  * magic bytes regardless (A12), so this is UX only, never the security boundary. */
-export function FileDropZone({ onFiles, disabled = false }: FileDropZoneProps) {
+export function FileDropZone({
+  onFiles,
+  disabled = false,
+  title = "Drag statements here, or click to browse",
+  hint = "Native digital PDFs only — scanned or photographed statements can\u2019t be read.",
+  inputLabel = "Choose statement PDFs",
+}: FileDropZoneProps) {
   const [isDraggingOver, setIsDraggingOver] = React.useState(false);
   const inputRef = React.useRef<HTMLInputElement>(null);
 
@@ -58,12 +68,8 @@ export function FileDropZone({ onFiles, disabled = false }: FileDropZoneProps) {
         if (!disabled) acceptFiles(event.dataTransfer.files);
       }}
     >
-      <p className="text-sm font-medium text-foreground">
-        Drag statements here, or click to browse
-      </p>
-      <p className="text-xs text-muted-foreground">
-        Native digital PDFs only — scanned or photographed statements can&rsquo;t be read.
-      </p>
+      <p className="text-sm font-medium text-foreground">{title}</p>
+      <p className="text-xs text-muted-foreground">{hint}</p>
       <input
         ref={inputRef}
         type="file"
@@ -75,7 +81,7 @@ export function FileDropZone({ onFiles, disabled = false }: FileDropZoneProps) {
           acceptFiles(event.target.files);
           event.target.value = "";
         }}
-        aria-label="Choose statement PDFs"
+        aria-label={inputLabel}
       />
     </div>
   );

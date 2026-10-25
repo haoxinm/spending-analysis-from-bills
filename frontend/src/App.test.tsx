@@ -65,7 +65,7 @@ describe("App shell nav", () => {
     await renderApp("/layout-mapper");
     // "bg-muted" only ever appears together with the active state (see `NavItem` in `App.tsx`):
     // `hover:text-foreground` is present on every link regardless, so it isn't a useful signal.
-    for (const name of ["Dashboard", "Import", "Review", "Transactions", "Rules", "Settings"]) {
+    for (const name of ["Dashboard", "Import", "Review", "Transactions", "Income & Tax", "Rules", "Settings"]) {
       expect(navLinkClassName(name)).not.toContain("bg-muted");
     }
   });

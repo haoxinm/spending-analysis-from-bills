@@ -1,0 +1,269 @@
+import type { components } from "@/api/client";
+
+export type TaxSummary = components["schemas"]["TaxYearSummary"];
+export type TaxDocument = components["schemas"]["TaxDocument"];
+export type TaxIncomePayer = components["schemas"]["TaxIncomePayer"];
+export type TaxFormType = components["schemas"]["TaxFormType"];
+export type TaxCategoryAmount = components["schemas"]["TaxCategoryAmount"];
+
+/** "0.1319" -> "13.19%"; null/undefined/NaN -> an em dash (rate unknown). */
+export function formatRate(rate: number | null | undefined): string {
+  if (rate === null || rate === undefined || Number.isNaN(rate)) return "—";
+  return `${(rate * 100).toFixed(2)}%`;
+}
+
+export function incomeBasisLabel(basis: TaxSummary["income_basis"]): string {
+  switch (basis) {
+    case "source_documents":
+      return "W-2 / 1099 source forms";
+    case "return":
+      return "Form 1040 return";
+    case "mixed":
+      return "Mixed: source forms and return";
+    case "none":
+      return "No income documents";
+  }
+}
+
+/** Banner text for a non-default basis, or null when the numbers come from source documents. */
+export function basisNotice(basis: TaxSummary["income_basis"]): string | null {
+  switch (basis) {
+    case "return":
+      return "No W-2 or 1099 forms were found for this year, so income comes from your Form 1040 return.";
+    case "mixed":
+      return "Some income comes from W-2 / 1099 source forms and some from your Form 1040 return.";
+    case "none":
+      return "No income was found in the imported documents for this year.";
+    default:
+      return null;
+  }
+}
+
+const FORM_LABELS: Record<TaxFormType, string> = {
+  w2: "W-2",
+  "1099-int": "1099-INT",
+  "1099-div": "1099-DIV",
+  "1099-b": "1099-B",
+  "1099-nec": "1099-NEC",
+  "1099-misc": "1099-MISC",
+  "1099-consolidated": "1099 (consolidated)",
+  "1040": "1040",
+  "state-return": "State return",
+};
+
+export function formTypeLabel(form: string): string {
+  return FORM_LABELS[form as TaxFormType] ?? form;
+}
+
+export function documentStatusLabel(status: string): string {
+  switch (status) {
+    case "parsed":
+      return "Parsed";
+    case "unsupported":
+      return "Unsupported";
+    case "error":
+      return "Error";
+    case "duplicate":
+      return "Already imported";
+    default:
+      return status;
+  }
+}
+
+function amountOf(rows: readonly TaxCategoryAmount[], category: string): number | null {
+  const row = rows.find((r) => r.category === category);
+  return row ? row.amount_minor : null;
+}
+
+export interface HeadlineTax {
+  /** Federal income tax: the return's total liability, else what was withheld. */
+  federalMinor: number;
+  federalKind: "liability" | "withheld";
+  ficaMinor: number;
+  /** State (and local) income tax: liability when printed, else withheld. */
+  stateMinor: number;
+  totalMinor: number;
+}
+
+export function headlineTax(s: TaxSummary): HeadlineTax {
+  const liability = amountOf(s.liability, "total_federal_tax");
+  const federalKind = liability !== null ? "liability" : "withheld";
+  const federalMinor = liability ?? amountOf(s.withheld, "federal_income_tax_withheld") ?? 0;
+  const ficaMinor = s.fica.reduce((sum, r) => sum + r.amount_minor, 0);
+  const stateLiability = amountOf(s.liability, "state_income_tax_liability");
+  const stateMinor =
+    stateLiability ??
+    (amountOf(s.withheld, "state_income_tax_withheld") ?? 0) +
+      (amountOf(s.withheld, "local_income_tax_withheld") ?? 0);
+  return {
+    federalMinor,
+    federalKind,
+    ficaMinor,
+    stateMinor,
+    totalMinor: federalMinor + ficaMinor + stateMinor,
+  };
+}
+
+export interface RefundOrOwed {
+  kind: "refund" | "owed" | "even" | "unknown";
+  amountMinor: number | null;
+  derived: boolean;
+}
+
+export function refundOrOwed(s: TaxSummary): RefundOrOwed {
+  const refund = s.refund_minor;
+  const owed = s.amount_owed_minor;
+  const derived = s.refund_or_owed_derived;
+  if (refund === null && owed === null) return { kind: "unknown", amountMinor: null, derived };
+  if ((refund ?? 0) > 0) return { kind: "refund", amountMinor: refund, derived };
+  if ((owed ?? 0) > 0) return { kind: "owed", amountMinor: owed, derived };
+  return { kind: "even", amountMinor: 0, derived };
+}
+
+export interface IncomeBar {
+  category: string;
+  label: string;
+  value: number;
+}
+
+/** Non-memo, non-zero income categories for the chart (memo lines are never part of the total). */
+export function toIncomeBars(s: TaxSummary): IncomeBar[] {
+  return s.income_by_category
+    .filter((r) => !r.is_memo && r.amount_minor > 0)
+    .map((r) => ({ category: r.category, label: r.label, value: r.amount_minor }));
+}
+
+export interface BreakdownRow {
+  key: string;
+  label: string;
+  /** null = not reported / unknown. */
+  amountMinor: number | null;
+  estimate?: boolean;
+  /** Shown instead of an amount when `amountMinor` is null. */
+  missingText?: string;
+}
+
+export interface BreakdownGroup {
+  key: string;
+  title: string;
+  rows: BreakdownRow[];
+}
+
+const LIABILITY_ROWS: Array<{ category: string; label: string; estimate?: boolean }> = [
+  { category: "total_federal_tax", label: "Total federal tax" },
+  { category: "federal_tax_ordinary_est", label: "Ordinary income tax", estimate: true },
+  { category: "federal_tax_preferential_est", label: "Preferential-rate tax (dividends and gains)", estimate: true },
+  { category: "net_investment_income_tax", label: "Net investment income tax (NIIT)" },
+  { category: "additional_medicare_tax", label: "Additional Medicare tax" },
+  { category: "self_employment_tax", label: "Self-employment tax" },
+  { category: "state_income_tax_liability", label: "State income tax" },
+];
+
+/** Grouped rows for the tax table. Liability rows show only what the return printed, except NIIT,
+ * which reads "not reported" when absent (the return may simply have none). */
+export function taxBreakdownRows(s: TaxSummary): BreakdownGroup[] {
+  const groups: BreakdownGroup[] = [
+    {
+      key: "withholding",
+      title: "Withholding",
+      rows: s.withheld.map((r) => ({ key: r.category, label: r.label, amountMinor: r.amount_minor })),
+    },
+    {
+      key: "fica",
+      title: "FICA",
+      rows: s.fica.map((r) => ({ key: r.category, label: r.label, amountMinor: r.amount_minor })),
+    },
+  ];
+  const liabilityRows: BreakdownRow[] = [];
+  for (const spec of LIABILITY_ROWS) {
+    const amount = amountOf(s.liability, spec.category);
+    if (amount === null && spec.category !== "net_investment_income_tax") continue;
+    liabilityRows.push({
+      key: spec.category,
+      label: spec.label,
+      amountMinor: amount,
+      estimate: spec.estimate,
+      missingText: "not reported",
+    });
+  }
+  groups.push({
+    key: "liability",
+    title: "Liability (from return)",
+    rows: liabilityRows,
+  });
+  groups.push({
+    key: "payments",
+    title: "Payments",
+    rows: [
+      {
+        key: "payments",
+        label: "Total payments",
+        amountMinor: s.payments_minor,
+        missingText: "not reported",
+      },
+    ],
+  });
+  const result = refundOrOwed(s);
+  const resultRows: BreakdownRow[] = [];
+  if (result.kind === "refund" || result.kind === "owed" || result.kind === "even") {
+    resultRows.push({
+      key: "result",
+      label: result.kind === "owed" ? "Amount owed" : "Refund",
+      amountMinor: result.amountMinor,
+    });
+  } else {
+    resultRows.push({ key: "result", label: "Refund / amount owed", amountMinor: null, missingText: "unknown" });
+  }
+  groups.push({ key: "result", title: "Result", rows: resultRows });
+  return groups;
+}
+
+export interface YearPoint {
+  year: number;
+  income: number;
+  tax: number;
+}
+
+/** Oldest-to-newest points for the year-over-year chart. */
+export function yearOverYear(summaries: readonly TaxSummary[]): YearPoint[] {
+  return [...summaries]
+    .sort((a, b) => a.tax_year - b.tax_year)
+    .map((s) => ({ year: s.tax_year, income: s.total_income_minor, tax: headlineTax(s).totalMinor }));
+}
+
+export interface PayerRow {
+  key: string;
+  payerName: string;
+  formType: string;
+  totalMinor: number;
+  lines: Array<{ category: string; label: string; amountMinor: number }>;
+}
+
+/** One row per (payer, form type) for the selected year, largest first; users are combined. */
+export function groupPayers(rows: readonly TaxIncomePayer[], year: number): PayerRow[] {
+  const map = new Map<string, PayerRow>();
+  for (const r of rows) {
+    if (r.tax_year !== year) continue;
+    const payerName = r.payer_name?.trim() || "Unknown payer";
+    const key = `${payerName}|${r.form_type}`;
+    let row = map.get(key);
+    if (!row) {
+      row = { key, payerName, formType: r.form_type, totalMinor: 0, lines: [] };
+      map.set(key, row);
+    }
+    row.totalMinor += r.amount_minor;
+    const line = row.lines.find((l) => l.category === r.category);
+    if (line) line.amountMinor += r.amount_minor;
+    else row.lines.push({ category: r.category, label: r.label, amountMinor: r.amount_minor });
+  }
+  return [...map.values()].sort((a, b) => b.totalMinor - a.totalMinor);
+}
+
+/** Selected year if still available, else the newest. */
+export function resolveYear(selected: number | null, years: readonly number[]): number | null {
+  if (selected !== null && years.includes(selected)) return selected;
+  return years[0] ?? null;
+}
+
+export const TAX_PRIVACY_NOTE =
+  "Only the last 4 digits of ID numbers are kept; files stay on this computer.";

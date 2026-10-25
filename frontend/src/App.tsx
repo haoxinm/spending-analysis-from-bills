@@ -11,12 +11,13 @@ import DashboardScreen, { screenMeta as dashboardMeta } from "@/screens/dashboar
 import ImportScreen, { screenMeta as importMeta } from "@/screens/import";
 import ReviewScreen, { screenMeta as reviewMeta } from "@/screens/review";
 import TransactionsScreen, { screenMeta as transactionsMeta } from "@/screens/transactions";
+import TaxScreen, { screenMeta as taxMeta } from "@/screens/tax";
 import RulesScreen, { screenMeta as rulesMeta } from "@/screens/rules";
 import SettingsScreen, { screenMeta as settingsMeta } from "@/screens/settings";
 import LayoutMapperScreen, { screenMeta as layoutMapperMeta } from "@/screens/layout-mapper";
 
 /**
- * The seven Phase 3 screens, in the order they appear in the main nav. `screenMeta.path` on each
+ * The Phase 3 screens (plus Income & Tax), in the order they appear in the main nav. `screenMeta.path` on each
  * screen is the source of truth for its route; this array is only display order.
  */
 const SCREENS = [
@@ -24,6 +25,7 @@ const SCREENS = [
   { meta: importMeta, Component: ImportScreen },
   { meta: reviewMeta, Component: ReviewScreen },
   { meta: transactionsMeta, Component: TransactionsScreen },
+  { meta: taxMeta, Component: TaxScreen },
   { meta: rulesMeta, Component: RulesScreen },
   { meta: settingsMeta, Component: SettingsScreen },
   { meta: layoutMapperMeta, Component: LayoutMapperScreen },
