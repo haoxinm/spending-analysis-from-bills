@@ -1,0 +1,177 @@
+"""Tests for the consolidated 1099 parser (`tax_1099_consolidated`)."""
+
+from __future__ import annotations
+
+import json
+import re
+
+import pytest
+
+from spend_analyzer.core.errors import ParserError
+from spend_analyzer.core.tax_types import ParsedTaxDocument
+from spend_analyzer.ingest.tax.parsers import f1099_b
+from spend_analyzer.ingest.tax.parsers.f1099_consolidated import PARSER
+from tests.ingest.tax_support import (
+    assert_matches_golden,
+    doc_from_lines,
+    extract_doc,
+    generated_pdf,
+    load_golden,
+    parsed_to_dict,
+)
+
+LAYOUT = "tax_1099_consolidated"
+VARIANTS = ("int_div_b", "int_div_b_misc", "div_only", "multi_account")
+
+
+def _parse(variant: str) -> ParsedTaxDocument:
+    return PARSER.parse(extract_doc(generated_pdf(LAYOUT, variant)))
+
+
+_HEADER = [
+    "Consolidated Form 1099 Tax Information",
+    "Tax Year 2024",
+    "Payer name: Copperfield Securities",
+    "Form 1099 Summary",
+    "Account number: SYN-000123456789",
+]
+
+
+@pytest.mark.parametrize("variant", VARIANTS)
+def test_matches_golden(variant: str) -> None:
+    assert_matches_golden(_parse(variant), load_golden(LAYOUT, variant))
+
+
+@pytest.mark.parametrize("variant", VARIANTS)
+def test_detect_and_privacy(variant: str) -> None:
+    doc = extract_doc(generated_pdf(LAYOUT, variant))
+    assert PARSER.detect(doc) == pytest.approx(0.95)
+    assert f1099_b.PARSER.detect(doc) <= 0.5
+    parsed = PARSER.parse(doc)
+    blob = repr(parsed) + json.dumps(parsed_to_dict(parsed))
+    assert not re.search(r"\d{3}-\d{2}-\d{4}|\d{9}", blob)
+    assert "Testperson" not in blob
+    for form in parsed.forms:
+        assert form.form_type == "1099-consolidated"
+        assert form.payer_tin_last4 == "0004"
+        assert form.account_last4 is not None and len(form.account_last4) == 4
+
+
+def test_standalone_1099_b_is_not_consolidated() -> None:
+    doc = extract_doc(generated_pdf("tax_1099_b", "normal_summary"))
+    assert PARSER.detect(doc) == 0.0
+
+
+def test_int_div_b_items_keep_their_source_form() -> None:
+    form = _parse("int_div_b").forms[0]
+    assert [(i.source_form, i.category, i.is_memo) for i in form.income] == [
+        ("1099-INT", "interest", False),
+        ("1099-INT", "interest", False),
+        ("1099-INT", "other", True),
+        ("1099-DIV", "ordinary_dividends", False),
+        ("1099-DIV", "qualified_dividends", True),
+        ("1099-DIV", "long_term_capital_gain", False),
+        ("1099-B", "short_term_capital_gain", False),
+        ("1099-B", "long_term_capital_gain", False),
+    ]
+    assert [(t.source_form, t.amount_minor) for t in form.taxes] == [("1099-DIV", 2_500)]
+
+
+def test_misc_section_and_state_withholding() -> None:
+    form = _parse("int_div_b_misc").forms[0]
+    misc = [i for i in form.income if i.source_form == "1099-MISC"]
+    assert [(i.category, i.amount_minor) for i in misc] == [
+        ("other", 120_000),
+        ("other", 34_000),
+        ("other", 7_550),
+    ]
+    taxes = {(t.source_form, t.category, t.jurisdiction): t.amount_minor for t in form.taxes}
+    assert taxes[("1099-MISC", "federal_income_tax_withheld", None)] == 1_000
+    assert taxes[("1099-DIV", "state_income_tax_withheld", "CA")] == 1_200
+
+
+def test_div_only_single_section() -> None:
+    form = _parse("div_only").forms[0]
+    assert {i.source_form for i in form.income} == {"1099-DIV"}
+
+
+def test_multi_account_emits_one_form_per_account() -> None:
+    parsed = _parse("multi_account")
+    assert [f.account_last4 for f in parsed.forms] == ["6789", "4321"]
+    first, second = parsed.forms
+    assert {i.source_form for i in first.income} == {"1099-DIV", "1099-INT"}
+    assert {i.source_form for i in second.income} == {"1099-B", "1099-DIV"}
+    ltcg = [i.amount_minor for i in second.income if i.source_form == "1099-B"]
+    assert ltcg == [-250_000, -60_000]  # net losses stay negative (D6)
+    assert [t.amount_minor for t in second.taxes] == [4_000]
+
+
+def test_qualified_over_ordinary_warns() -> None:
+    lines = [
+        *_HEADER,
+        "1099-DIV  Dividends and Distributions",
+        "Ordinary dividends (Box 1a)           100.00",
+        "Qualified dividends (Box 1b)          150.00",
+    ]
+    parsed = PARSER.parse(doc_from_lines(lines))
+    assert parsed.forms[0].warnings == ("1099-DIV qualified dividends exceed ordinary dividends.",)
+
+
+def test_unsupported_and_empty_sections_warn() -> None:
+    lines = [
+        *_HEADER,
+        "1099-OID  Original Issue Discount",
+        "Original issue discount (Box 1)   10.00",
+        "1099-INT  Interest Income",
+        "Interest income (Box 1)   25.00",
+        "1099-DIV  Dividends and Distributions",
+        "1099-B  Proceeds From Broker",
+    ]
+    form = PARSER.parse(doc_from_lines(lines)).forms[0]
+    assert [(i.category, i.amount_minor) for i in form.income] == [("interest", 2_500)]
+    assert set(form.warnings) == {
+        "A 1099-OID section is not supported and was skipped.",
+        "The 1099-DIV section contained no recognizable amounts.",
+        "The 1099-B section contained no readable totals.",
+    }
+
+
+def test_without_account_rows_the_whole_document_is_one_account() -> None:
+    lines = [
+        "Consolidated Form 1099 Tax Information",
+        "Tax Year 2024",
+        "1099-INT  Interest Income",
+        "Interest income (Box 1)   25.00",
+    ]
+    form = PARSER.parse(doc_from_lines(lines)).forms[0]
+    assert form.account_last4 is None and form.payer_name is None
+
+
+def test_no_sections_is_a_parser_error() -> None:
+    with pytest.raises(ParserError) as err:
+        PARSER.parse(doc_from_lines([*_HEADER]))
+    assert not re.search(r"\d{6}", str(err.value))
+
+
+def test_year_override_and_missing_year() -> None:
+    lines = [h for h in _HEADER if "Tax Year" not in h]
+    lines += ["1099-INT  Interest Income", "Interest income (Box 1)   25.00"]
+    doc = doc_from_lines(lines)
+    with pytest.raises(ParserError):
+        PARSER.parse(doc)
+    assert PARSER.parse(doc, tax_year=2023).tax_year == 2023
+
+
+def test_detect_variants() -> None:
+    two = ["1099-INT  Interest Income", "1099-DIV  Dividends"]
+    assert PARSER.detect(doc_from_lines(two)) == pytest.approx(0.6)
+    assert PARSER.detect(doc_from_lines([*_HEADER, *two])) == pytest.approx(0.95)
+    assert PARSER.detect(doc_from_lines(["1099-INT  Interest Income"])) == 0.0
+    assert PARSER.detect(doc_from_lines(["Form 1099 Summary"])) == 0.0
+    assert PARSER.detect(doc_from_lines(["Wage and Tax Statement 2024"])) == 0.0
+    assert (
+        PARSER.detect(
+            doc_from_lines(["Form 1040  U.S. Individual Income Tax Return", *_HEADER, *two])
+        )
+        == 0.0
+    )

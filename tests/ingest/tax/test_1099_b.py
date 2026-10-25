@@ -1,0 +1,184 @@
+"""Tests for the Form 1099-B parser (`tax_1099_b`) against the generated fixtures plus inline docs."""
+
+from __future__ import annotations
+
+import json
+import re
+
+import pytest
+
+from spend_analyzer.core.errors import ParserError
+from spend_analyzer.core.tax_types import ParsedTaxDocument
+from spend_analyzer.ingest.tax.parsers.f1099_b import PARSER, parse_b_section
+from tests.fixtures.gen.base import format_row
+from tests.fixtures.gen.tax_1099_b import Lot, section_lines
+from tests.ingest.tax_support import (
+    assert_matches_golden,
+    doc_from_lines,
+    extract_doc,
+    generated_pdf,
+    load_golden,
+    parsed_to_dict,
+)
+
+LAYOUT = "tax_1099_b"
+VARIANTS = ("normal_summary", "transactions_only", "loss_year", "wash_sale", "mismatch")
+
+
+def _parse(variant: str) -> ParsedTaxDocument:
+    return PARSER.parse(extract_doc(generated_pdf(LAYOUT, variant)))
+
+
+def _form_lines(lots: list[Lot], *, summary: bool, detail: bool) -> list[str]:
+    return [
+        "Form 1099-B  Proceeds From Broker",
+        "Tax Year 2024",
+        *section_lines(lots, heading="x", summary=summary, detail=detail)[2:],
+    ]
+
+
+_ST = Lot("short", True, "10 sh AAA", "01/02/2024", "02/03/2024", 100_000, 80_000)
+_LT = Lot("long", True, "10 sh BBB", "01/02/2021", "02/03/2024", 90_000, 100_000)
+
+
+@pytest.mark.parametrize("variant", VARIANTS)
+def test_matches_golden(variant: str) -> None:
+    assert_matches_golden(_parse(variant), load_golden(LAYOUT, variant))
+
+
+@pytest.mark.parametrize("variant", VARIANTS)
+def test_detect_and_privacy(variant: str) -> None:
+    doc = extract_doc(generated_pdf(LAYOUT, variant))
+    assert PARSER.detect(doc) > 0.5
+    parsed = PARSER.parse(doc)
+    blob = repr(parsed) + json.dumps(parsed_to_dict(parsed))
+    assert not re.search(r"\d{3}-\d{2}-\d{4}|\d{9}", blob)
+    assert "Testperson" not in blob
+    form = parsed.forms[0]
+    assert form.form_type == "1099-b"
+    assert (form.payer_tin_last4, form.account_last4) == ("0004", "6789")
+    assert all(not has for has in (form.is_corrected,))
+
+
+def test_normal_summary_signs_and_categories() -> None:
+    form = _parse("normal_summary").forms[0]
+    by_cat = {i.category: i.amount_minor for i in form.income}
+    assert by_cat == {"short_term_capital_gain": 60_000, "long_term_capital_gain": 370_000}
+    assert {(t.category, t.jurisdiction): t.amount_minor for t in form.taxes} == {
+        ("federal_income_tax_withheld", None): 15_000,
+        ("state_income_tax_withheld", "CA"): 4_500,
+    }
+    assert all(t.amount_minor > 0 for t in form.taxes)
+
+
+def test_transactions_only_sums_rows_to_the_same_totals() -> None:
+    summary = {i.category: i.amount_minor for i in _parse("normal_summary").forms[0].income}
+    rows = {i.category: i.amount_minor for i in _parse("transactions_only").forms[0].income}
+    assert rows == summary
+
+
+def test_loss_year_short_term_is_negative() -> None:
+    form = _parse("loss_year").forms[0]
+    short = next(i for i in form.income if i.category == "short_term_capital_gain")
+    assert short.amount_minor == -320_050
+    assert form.taxes == ()
+
+
+def test_wash_sale_reconciles_without_warnings() -> None:
+    parsed = _parse("wash_sale")
+    assert parsed.forms[0].warnings == ()
+    short = next(i for i in parsed.forms[0].income if i.category == "short_term_capital_gain")
+    assert short.amount_minor == -20_000  # (2,000 - 3,000 + 400) + (4,500 - 4,100)
+
+
+def test_mismatch_warns_once_and_keeps_printed_net() -> None:
+    form = _parse("mismatch").forms[0]
+    assert len(form.warnings) == 1 and "reconcile" in form.warnings[0]
+    assert "short-term" in form.warnings[0]
+    short = next(i for i in form.income if i.category == "short_term_capital_gain")
+    assert short.amount_minor == 55_000
+
+
+def test_parse_b_section_on_a_section_block() -> None:
+    doc = doc_from_lines(
+        section_lines([_ST, _LT], heading="1099-B  Sales", summary=True, detail=False)
+    )
+    form = parse_b_section(doc, 2024)
+    assert form.tax_year == 2024
+    assert [(i.category, i.amount_minor) for i in form.income] == [
+        ("short_term_capital_gain", 20_000),
+        ("long_term_capital_gain", -10_000),
+    ]
+    assert form.payer_name is None and form.account_last4 is None
+
+
+def test_detail_rows_not_matching_summary_warn() -> None:
+    lines = section_lines(
+        [_ST], heading="1099-B", summary=True, detail=True, printed_net={("short", True): 25_000}
+    )
+    form = parse_b_section(doc_from_lines(lines), 2024)
+    assert any("do not add up" in w for w in form.warnings)
+    assert any("reconcile" in w for w in form.warnings)
+
+
+def test_ordinary_term_becomes_other_with_warning() -> None:
+    lines = [
+        "Summary of Sales by Term",
+        format_row(
+            ["Ordinary/undetermined", "500.00", "100.00", "0.00", "400.00"], (26, 12, 12, 12, 12)
+        ),
+    ]
+    form = parse_b_section(doc_from_lines(lines), 2024)
+    assert [(i.category, i.amount_minor) for i in form.income] == [("other", 40_000)]
+    assert any("other income" in w for w in form.warnings)
+
+
+def test_zero_withholding_is_not_emitted() -> None:
+    form = parse_b_section(
+        doc_from_lines(section_lines([_ST], heading="1099-B", summary=True, detail=False)), 2024
+    )
+    assert form.taxes == ()
+
+
+def test_no_totals_is_a_parser_error_without_digits() -> None:
+    with pytest.raises(ParserError) as err:
+        parse_b_section(doc_from_lines(["Form 1099-B", "Tax Year 2024"]), 2024)
+    assert not re.search(r"\d{6}", str(err.value))
+
+
+def test_missing_year_needs_override() -> None:
+    lines = [
+        "Form 1099-B  Proceeds",
+        *section_lines([_ST], heading="x", summary=True, detail=False)[2:],
+    ]
+    doc = doc_from_lines(lines)
+    with pytest.raises(ParserError):
+        PARSER.parse(doc)
+    assert PARSER.parse(doc, tax_year=2023).tax_year == 2023
+
+
+def test_two_forms_in_one_file() -> None:
+    one = _form_lines([_ST], summary=True, detail=False)
+    parsed = PARSER.parse(doc_from_lines([*one, "", *one]))
+    assert len(parsed.forms) == 2
+
+
+def test_detect_halves_when_another_1099_section_is_present() -> None:
+    base = _form_lines([_ST], summary=True, detail=False)
+    assert PARSER.detect(doc_from_lines(base)) == pytest.approx(0.9)
+    assert PARSER.detect(doc_from_lines([*base, "1099-INT  Interest Income"])) == pytest.approx(
+        0.45
+    )
+
+
+def test_detect_rejects_unrelated_documents() -> None:
+    assert PARSER.detect(doc_from_lines(["Wage and Tax Statement 2024"])) == 0.0
+    assert PARSER.detect(doc_from_lines(["Form 1099-B"])) == 0.0
+    assert (
+        PARSER.detect(
+            doc_from_lines(
+                ["Form 1040  U.S. Individual Income Tax Return", "Form 1099-B proceeds cost basis"]
+            )
+        )
+        == 0.0
+    )
