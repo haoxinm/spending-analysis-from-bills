@@ -53,7 +53,7 @@ from spend_analyzer.ingest.layout import (
 )
 
 _SCHEMA_PATH = Path(__file__).with_name("layout_spec.schema.json")
-_SCHEMA: dict[str, Any] = json.loads(_SCHEMA_PATH.read_text())
+_SCHEMA: dict[str, Any] = json.loads(_SCHEMA_PATH.read_text(encoding="utf-8"))
 
 #: Regex fields are capped at this many characters; also enforced in the JSON Schema, but checked
 #: again here so a schema edit can never silently drop the guard (§6.4).

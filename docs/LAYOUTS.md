@@ -20,6 +20,14 @@ Every layout, and the generic fallback, shares a few rules (owned by `ingest/lay
   instead of trusting a possibly-broken parse.
 - **Account masks** are the last 4 digits only, and are local-only data — never sent to an LLM.
 
+> **Layouts the templates don't handle.** The recommended path for a statement none of these
+> layouts (or a saved layout spec) fits is the **LLM extractor**: choose it for that statement in
+> the Import screen, or `spend-analyzer import x.pdf --parser-id llm --pages 1-3`. It is opt-in per
+> statement, sends only the pages you select (redacted: card/account numbers masked, emails and PII
+> terms removed) to your configured endpoint — a local model keeps everything on your machine — and
+> is never auto-confirmed. See the [README](../README.md#using-an-llm-local-or-remote). The
+> hand-built layout specs below remain the no-LLM, fully deterministic option.
+
 ## The four built-in layouts
 
 ### Layout A — `layout_a_credit` (sectioned, dual-date)

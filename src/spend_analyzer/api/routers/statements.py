@@ -54,7 +54,12 @@ def _save_upload(file_bytes: bytes) -> Path:
         tmp_path = Path(tmp.name)
     digest = sha256_file(tmp_path)
     final_path = tmp_dir / f"{digest}.pdf"
-    tmp_path.replace(final_path)
+    if final_path.exists():
+        # Byte-identical copy already stored (the name is the content hash). Don't replace it:
+        # on Windows that fails while another request has the stored PDF open.
+        tmp_path.unlink(missing_ok=True)
+    else:
+        tmp_path.replace(final_path)
     return final_path
 
 

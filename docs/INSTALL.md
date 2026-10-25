@@ -2,20 +2,20 @@
 
 Spend Analyzer is a single local program: one `spend-analyzer` command that manages a SQLite
 database on your machine and serves a web UI on `127.0.0.1`. There is no server to run elsewhere,
-no account to create, and no data leaves your machine except the specific text you explicitly send
-to an LLM provider for classification (see [Privacy](#privacy), below).
+no account to create, and no data leaves your machine unless you turn on an LLM that is not running locally (see
+[Privacy](#privacy), below).
 
 ## Requirements
 
 - **Python 3.12** (3.13 is not yet supported; the package pins `>=3.12,<3.13`).
-- **macOS or Linux.** The data directory defaults to macOS's `~/Library/Application Support/`; on
-  Linux (or in CI), set `SPEND_ANALYZER_HOME` to a directory you control (see
+- **Windows 10+, macOS, or Linux.** Each uses its platform's standard per-user data directory (see
   [Data location](#data-location)).
-- macOS Keychain (used automatically for storing an LLM API key) or, on Linux, any
-  [`keyring`](https://pypi.org/project/keyring/)-compatible secret service (e.g. `gnome-keyring`,
-  KWallet, or the `keyrings.alt` package for a plain encrypted file when no OS keychain is
-  available). Only needed if you configure a remote LLM provider — the default `[llm] mode =
-  "none"` needs no secret store at all.
+- A credential store for the LLM API key, used automatically through
+  [`keyring`](https://pypi.org/project/keyring/): macOS Keychain, Windows Credential Manager, or on
+  Linux a Secret Service provider (GNOME Keyring, KWallet) — or the `keyrings.alt` package for a
+  plain-file fallback. On a headless machine with none of these, set the
+  `SPEND_ANALYZER_LLM_API_KEY` environment variable instead. Only needed for a remote LLM that
+  requires a key; the default (LLM off) and local servers like Ollama need no secret at all.
 - No Node.js/npm needed to *install* — the published wheel already contains the built web UI.
   Node is only needed to build the package from source (see
   [Building from source](#building-from-source)).
@@ -46,8 +46,18 @@ $ .venv-spend-analyzer/bin/pip install spend-analyzer
 $ .venv-spend-analyzer/bin/spend-analyzer --help
 ```
 
-(On Windows, activate with `.venv-spend-analyzer\Scripts\activate` first; Spend Analyzer itself
-targets macOS/Linux, matching its Keychain-backed secret storage.)
+On Windows (PowerShell), the interpreter is `py -3.12` and the scripts live in `Scripts\`:
+
+```powershell
+> py -3.12 -m venv .venv-spend-analyzer
+> .venv-spend-analyzer\Scripts\Activate.ps1       # in cmd.exe: ...\Scripts\activate.bat
+> pip install spend-analyzer
+> spend-analyzer --help
+```
+
+If PowerShell refuses to run the activation script, either run
+`Set-ExecutionPolicy -Scope CurrentUser RemoteSigned` once, or skip activation and call
+`.venv-spend-analyzer\Scripts\spend-analyzer.exe` directly. `pipx` (Option A) avoids all of this.
 
 ## First run
 
@@ -60,7 +70,7 @@ PASS  Python version >= 3.12
 PASS  Data directory (/Users/you/Library/Application Support/SpendAnalyzer) writable
 PASS  Database migrated to head (0001_initial)
 PASS  Keychain read/write
-SKIP  LLM connectivity (mode='none')
+SKIP  LLM connectivity (disabled — run `spend-analyzer llm set ...` to configure)
 
 $ spend-analyzer serve
 Spend Analyzer is running at http://127.0.0.1:8756/?token=<per-launch token>
@@ -76,7 +86,7 @@ than `127.0.0.1`, so nothing on your network — let alone the internet — can 
 
 If `doctor` reports a `FAIL`, fix that before continuing — it means a real problem: an
 unwritable data directory, a database that failed to migrate, a broken Keychain/keyring backend,
-or (only if you've configured a remote LLM) a provider your machine can't reach.
+or (only if you've enabled an LLM) an endpoint your machine can't reach.
 
 From there:
 
@@ -93,32 +103,38 @@ or do the same from the web UI the browser just opened.
 | OS | Default location |
 |---|---|
 | macOS | `~/Library/Application Support/SpendAnalyzer/` |
-| Linux / other | set `SPEND_ANALYZER_HOME` yourself — there is no built-in default |
+| Windows | `%LOCALAPPDATA%\SpendAnalyzer\` (e.g. `C:\Users\you\AppData\Local\SpendAnalyzer`) |
+| Linux / other | `$XDG_DATA_HOME/spend-analyzer/`, i.e. `~/.local/share/spend-analyzer/` by default |
 
 Inside: `spend.db` (SQLite, WAL mode), `statements/<sha256>.pdf` (a copy of each imported PDF,
 unless you set `[privacy] store_pdf_copies = false` in `config.toml`), `config.toml`, and
 `logs/app.log`. Nothing here is ever uploaded anywhere by Spend Analyzer itself — there is no
 telemetry, no analytics, and no update check.
 
-Override the location for a second profile, a test, or a non-macOS machine:
+Override the location for a second profile, a test, or a portable install:
 
 ```console
-$ SPEND_ANALYZER_HOME=/path/to/a/directory spend-analyzer serve
+$ SPEND_ANALYZER_HOME=/path/to/a/directory spend-analyzer serve         # macOS / Linux
+```
+
+```powershell
+> $env:SPEND_ANALYZER_HOME = "D:\spend-data"; spend-analyzer serve      # Windows PowerShell
 ```
 
 ## Privacy
 
 This is the whole reason to run this instead of a hosted budgeting app: your statements, your
-transaction descriptions, and your spending never leave your machine, with one narrow, optional
-exception. If you configure a remote LLM provider (`spend-analyzer` asks for this in Settings, or
-you set `[llm] mode = "remote"` in `config.toml`), the *only* thing ever sent to it is the
-normalized, redacted merchant description of a transaction your local rules couldn't already
-classify — never a raw statement line, a date, an amount, an account number, an issuer name, or
-anything else. See the running app's Settings screen for a live preview of exactly what a call
-would send before any data is sent. Set `[llm] mode = "none"` (the default) to never call an LLM
-at all; the local rules engine still classifies most transactions. See the
-[README's privacy model](../README.md#privacy-model) for the full picture and
-[docs/SECURITY_REVIEW.md](SECURITY_REVIEW.md) for the code-verified checklist behind it.
+transaction descriptions, and your spending stay on your machine unless you turn on an LLM that
+runs elsewhere. The LLM is **off by default**. When on, it can receive (1) normalized, redacted
+merchant descriptions of transactions your local rules couldn't classify — never dates, amounts,
+account numbers or issuer names — and (2) only if you pick the LLM extractor for a specific
+statement, the redacted text of the pages you selected (card/account numbers masked to the last 4,
+emails and your configured PII terms removed). Both have an exact-payload preview in the web UI.
+Point the LLM at a local server (`localhost`, e.g. Ollama or LM Studio) and nothing leaves your
+machine at all. Configure it with `spend-analyzer llm set ...` or the Settings screen — no restart
+needed; see [Using an LLM](../README.md#using-an-llm-local-or-remote). The full picture is in the
+[README's privacy model](../README.md#privacy-model) and the code-verified checklist in
+[docs/SECURITY_REVIEW.md](SECURITY_REVIEW.md).
 
 ## Upgrading
 
@@ -140,13 +156,17 @@ place; delete it yourself if you want to remove your statements and database too
 ## Troubleshooting
 
 Run `spend-analyzer doctor` first — it checks the Python version, data directory permissions,
-database migration state, Keychain/keyring access, and (if configured) LLM connectivity, and
+database migration state, credential-store access, and (if an LLM is enabled) LLM connectivity, and
 prints one `PASS`/`FAIL` line per check.
 
-- **`FAIL  Keychain access failed: ...`** — on Linux without a running secret service, install one
-  (`gnome-keyring`, or `pip install keyrings.alt` for a plain, less-secure fallback keyring) and
-  ensure a keyring backend is registered. This only matters if you plan to use a remote LLM
-  provider (`[llm] mode = "none"`, the default, needs no secret storage).
+- **`FAIL  Keychain access failed: ...`** — most often a headless Linux box (SSH session, container,
+  WSL) with no Secret Service. Install and unlock one (`gnome-keyring`, KWallet), or
+  `pip install keyrings.alt` for a plain-file, less-secure fallback — or skip the credential store
+  and export `SPEND_ANALYZER_LLM_API_KEY`. It only matters for a remote LLM that needs a key;
+  with the LLM off, or a local server, the app never touches the credential store.
+- **`FAIL  LLM connectivity failed: ...`** — run `spend-analyzer llm show` and
+  `spend-analyzer llm test`. Usual causes: wrong base URL, the wrong `api_format` or `path` for the
+  server, a missing/incorrect key (`llm set-key`), or a model name the server doesn't know.
 - **Browser shows a blank page / 404 for `/assets/...`** — the wheel you installed is missing the
   built web UI. This should never happen from a published release, but if you built the wheel
   yourself, see [Building from source](#building-from-source): the frontend build step must
@@ -157,7 +177,8 @@ prints one `PASS`/`FAIL` line per check.
 - **`spend-analyzer: command not found`** — the install didn't put its `bin`/`Scripts` directory on
   your `PATH`. `pipx` normally handles this for you (`pipx ensurepath`, then open a new shell); for
   a plain `pip install` into a virtualenv, activate that virtualenv or invoke the binary from its
-  `bin/` (or `Scripts/`, on Windows) directory directly.
+  `bin/` (or `Scripts\`, on Windows) directory directly. On Windows, `pipx ensurepath` then a new
+  terminal.
 
 ## Building from source
 

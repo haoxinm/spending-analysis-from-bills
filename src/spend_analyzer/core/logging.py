@@ -76,7 +76,7 @@ def configure_logging(
     logs_dir = home / "logs"
     logs_dir.mkdir(parents=True, exist_ok=True)
     file_handler = RotatingFileHandler(
-        logs_dir / "app.log", maxBytes=5 * 1024 * 1024, backupCount=3
+        logs_dir / "app.log", maxBytes=5 * 1024 * 1024, backupCount=3, encoding="utf-8"
     )
     file_handler.setLevel(file_level)
     file_handler.setFormatter(formatter)

@@ -8,9 +8,30 @@ $ uv sync --extra dev            # Python deps into .venv/
 $ cd frontend && npm ci           # frontend deps
 ```
 
-Linux needs a keyring backend for anything that touches the Keychain-equivalent code path in
-tests (`gnome-keyring`, or `pip install keyrings.alt` for a plain fallback); tests mock it, so
-this is rarely needed just to run the suite.
+Development works on Windows, macOS and Linux (CI runs the Python tests on all three). The
+commands above are identical everywhere; on Windows use PowerShell or Git Bash, and
+`uv run <cmd>` rather than activating the virtualenv by hand (or run
+`.venv\Scripts\Activate.ps1`). Install Node.js 22+ only if you touch `frontend/` or build a wheel.
+Set `PYTHONUTF8=1` if you see encoding errors reading fixtures on Windows. The tests never touch a
+real credential store (`keyring` is mocked) or your real data directory (`SPEND_ANALYZER_HOME` is
+redirected per test), so no keyring backend is needed just to run the suite. When writing code,
+build paths with `pathlib` (never string-splitting on `/`), open text files with an explicit
+`encoding="utf-8"`, and don't rely on POSIX permission bits (`chmod`) or on replacing a file that
+may be open — mark genuinely POSIX-only tests with
+`@pytest.mark.skipif(sys.platform == "win32", reason=...)`.
+
+## Testing LLM code
+
+No test makes a network call. `tests/llm_fakes.py` provides `FakeLLM`, which replaces
+`spend_analyzer.llm.client._post`, records every request body, URL and header, and answers in
+whichever wire format the config asks for (`openai_chat`, `openai_responses`,
+`anthropic_messages`). Use `install(monkeypatch, fake)` to swap it in, `remote_cfg(...)` for an
+`LLMConfig` pointing at a fake remote host, and queue replies (a string, a `(status, body)` tuple, or
+a callable) with `FakeLLM.queue`. Assert on `fake.requests` to check exactly what would have been
+sent — that is how the egress and redaction guarantees are tested. See `tests/llm/`,
+`tests/classify/test_egress.py` and `tests/test_cli_llm.py` for examples. Architecture rules (only
+`llm/client.py` imports an HTTP client; only the two egress seams import it) are enforced by
+`tests/test_architecture_guards.py`.
 
 ## Checks
 
@@ -104,7 +125,7 @@ bare `Exception` in library code, and never swallow `EgressViolation`.
 
 ## Security-sensitive changes
 
-Anything touching `classify/llm/`, `api/security.py`, the upload path in
+Anything touching `classify/llm/`, `llm/` (the HTTP client and the statement parser), `api/security.py`, the upload path in
 `api/routers/statements.py`, or `analytics/query.py` is security-sensitive by nature of this
 project's privacy model — see [docs/SECURITY_REVIEW.md](docs/SECURITY_REVIEW.md) for the checklist
 those areas are held to, and [SECURITY.md](SECURITY.md) to report a vulnerability rather than

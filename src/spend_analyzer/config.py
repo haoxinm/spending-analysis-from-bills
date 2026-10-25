@@ -12,6 +12,7 @@ from __future__ import annotations
 import contextlib
 import json
 import os
+import time
 import tomllib
 from pathlib import Path
 from typing import Any, Literal
@@ -254,7 +255,21 @@ def save_settings(settings: Settings, path: Path | None = None) -> None:
     tmp_path = toml_path.with_suffix(toml_path.suffix + ".tmp")
     with tmp_path.open("wb") as f:
         tomli_w.dump(payload, f)
-    os.replace(tmp_path, toml_path)
+    _replace_with_retry(tmp_path, toml_path)
+
+
+def _replace_with_retry(src: Path, dest: Path, attempts: int = 10) -> None:
+    """`os.replace`, retried briefly on `PermissionError`. config.toml is re-read on every
+    request, and on Windows replacing a file another thread or process has open for reading
+    fails until that (very short) read finishes. POSIX never raises here."""
+    for attempt in range(attempts):
+        try:
+            os.replace(src, dest)
+            return
+        except PermissionError:
+            if attempt == attempts - 1:
+                raise
+            time.sleep(0.05)
 
 
 def _drop_none(value: Any) -> Any:
