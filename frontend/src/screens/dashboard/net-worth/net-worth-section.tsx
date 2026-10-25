@@ -130,7 +130,6 @@ export function NetWorthSection({ userId, users, currency }: NetWorthSectionProp
             users={users}
             selectedUserId={userId}
             entries={entries ?? []}
-            currency={currency}
           />
         </CardContent>
       </Card>

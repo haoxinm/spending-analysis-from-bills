@@ -27,7 +27,7 @@ beforeEach(() => {
 
 describe("BalanceEntryForm", () => {
   it("validates before submitting", async () => {
-    render(<BalanceEntryForm users={USERS} selectedUserId={1} entries={[]} currency="USD" />, { wrapper: Wrapper });
+    render(<BalanceEntryForm users={USERS} selectedUserId={1} entries={[]} />, { wrapper: Wrapper });
     await userEvent.click(screen.getByRole("button", { name: "Save balance" }));
     const alerts = await screen.findAllByRole("alert");
     expect(alerts.map((a) => a.textContent).join(" ")).toMatch(/account name/i);
@@ -36,7 +36,7 @@ describe("BalanceEntryForm", () => {
   });
 
   it("posts the entry in minor units and clears only the amount", async () => {
-    render(<BalanceEntryForm users={USERS} selectedUserId={2} entries={[]} currency="USD" />, { wrapper: Wrapper });
+    render(<BalanceEntryForm users={USERS} selectedUserId={2} entries={[]} />, { wrapper: Wrapper });
     await userEvent.selectOptions(screen.getByLabelText("Category"), "savings");
     await userEvent.type(screen.getByLabelText("Account name"), "Ally");
     await userEvent.selectOptions(screen.getByLabelText("Month"), "3");
@@ -67,7 +67,7 @@ describe("BalanceEntryForm", () => {
 
   it("says when an existing entry was updated (HTTP 200)", async () => {
     post(200);
-    render(<BalanceEntryForm users={USERS} selectedUserId={1} entries={[]} currency="USD" />, { wrapper: Wrapper });
+    render(<BalanceEntryForm users={USERS} selectedUserId={1} entries={[]} />, { wrapper: Wrapper });
     await userEvent.type(screen.getByLabelText("Account name"), "Chase");
     await userEvent.type(screen.getByLabelText(/Balance/), "5");
     await userEvent.click(screen.getByRole("button", { name: "Save balance" }));
@@ -75,7 +75,7 @@ describe("BalanceEntryForm", () => {
   });
 
   it("explains credit card amounts as owed", async () => {
-    render(<BalanceEntryForm users={USERS} selectedUserId={1} entries={[]} currency="USD" />, { wrapper: Wrapper });
+    render(<BalanceEntryForm users={USERS} selectedUserId={1} entries={[]} />, { wrapper: Wrapper });
     expect(screen.queryByText(/what you owe/i)).not.toBeInTheDocument();
     await userEvent.selectOptions(screen.getByLabelText("Category"), "credit_card");
     expect(screen.getByText(/what you owe/i)).toBeInTheDocument();
@@ -87,7 +87,7 @@ describe("BalanceEntryForm", () => {
       entry({ id: 1, account_name: "Chase checking" }),
       entry({ id: 2, account_name: "Ally", category: "savings" }),
     ];
-    render(<BalanceEntryForm users={USERS} selectedUserId={1} entries={entries} currency="USD" />, { wrapper: Wrapper });
+    render(<BalanceEntryForm users={USERS} selectedUserId={1} entries={entries} />, { wrapper: Wrapper });
     const list = screen.getByTestId("account-suggestions");
     expect(Array.from(list.querySelectorAll("option")).map((o) => o.value)).toEqual(["Chase checking"]);
     await userEvent.selectOptions(screen.getByLabelText("Category"), "savings");
@@ -95,11 +95,11 @@ describe("BalanceEntryForm", () => {
   });
 
   it("asks who the balance is for only in All-users mode (default user preselected)", async () => {
-    const { unmount } = render(<BalanceEntryForm users={USERS} selectedUserId={1} entries={[]} currency="USD" />, { wrapper: Wrapper });
+    const { unmount } = render(<BalanceEntryForm users={USERS} selectedUserId={1} entries={[]} />, { wrapper: Wrapper });
     expect(screen.queryByLabelText("Account owner")).not.toBeInTheDocument();
     unmount();
 
-    render(<BalanceEntryForm users={USERS} selectedUserId={null} entries={[]} currency="USD" />, { wrapper: Wrapper });
+    render(<BalanceEntryForm users={USERS} selectedUserId={null} entries={[]} />, { wrapper: Wrapper });
     const owner = screen.getByLabelText("Account owner");
     expect(owner).toHaveValue("1");
     expect(screen.queryByRole("option", { name: "All users" })).not.toBeInTheDocument();
@@ -121,7 +121,7 @@ describe("BalanceEntryForm", () => {
       error: { detail: "user not found" },
       response: { status: 404 },
     });
-    render(<BalanceEntryForm users={USERS} selectedUserId={1} entries={[]} currency="USD" />, { wrapper: Wrapper });
+    render(<BalanceEntryForm users={USERS} selectedUserId={1} entries={[]} />, { wrapper: Wrapper });
     await userEvent.type(screen.getByLabelText("Account name"), "X");
     await userEvent.type(screen.getByLabelText(/Balance/), "1");
     await userEvent.click(screen.getByRole("button", { name: "Save balance" }));

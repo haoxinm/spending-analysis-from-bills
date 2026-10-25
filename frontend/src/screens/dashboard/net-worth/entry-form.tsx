@@ -6,7 +6,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { useToast } from "@/components/ui/use-toast";
 
-import { useUpsertBalanceEntry } from "./api";
+import { useUpsertBalanceEntry, type BalanceEntryUpsert } from "./api";
 import {
   CATEGORIES,
   CATEGORY_LABELS,
@@ -27,8 +27,11 @@ export interface BalanceEntryFormProps {
   selectedUserId: number | null;
   /** Existing entries, used for account-name suggestions. */
   entries: readonly Entry[];
-  currency: string;
 }
+
+/** The API only accepts USD balances (`BalanceEntryUpsert.currency` is `Literal["USD"]`), so the
+ * form always saves in it, whatever display currency the dashboard has selected. */
+const ENTRY_CURRENCY: BalanceEntryUpsert["currency"] = "USD";
 
 const LABEL = "text-xs font-medium text-muted-foreground";
 const SELECT =
@@ -37,7 +40,7 @@ const SELECT =
 
 /** Add or overwrite one account balance for a month. Saving the same user/category/account/
  * month again updates that entry (the API upserts), so re-typing a month is a correction. */
-export function BalanceEntryForm({ users, selectedUserId, entries, currency }: BalanceEntryFormProps) {
+export function BalanceEntryForm({ users, selectedUserId, entries }: BalanceEntryFormProps) {
   const { toast } = useToast();
   const upsert = useUpsertBalanceEntry();
   const now = React.useMemo(() => new Date(), []);
@@ -91,7 +94,7 @@ export function BalanceEntryForm({ users, selectedUserId, entries, currency }: B
         year: y,
         month,
         balance_minor: minor,
-        currency,
+        currency: ENTRY_CURRENCY,
         note: note.trim() ? note.trim() : null,
       },
       {
@@ -227,7 +230,7 @@ export function BalanceEntryForm({ users, selectedUserId, entries, currency }: B
 
       <div className="flex flex-col gap-1">
         <label htmlFor="nw-balance" className={LABEL}>
-          {category === "credit_card" ? "Amount owed" : "Balance"} ({currency})
+          {category === "credit_card" ? "Amount owed" : "Balance"} ({ENTRY_CURRENCY})
         </label>
         <Input
           id="nw-balance"
