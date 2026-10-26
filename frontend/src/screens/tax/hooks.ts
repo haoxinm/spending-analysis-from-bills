@@ -1,6 +1,7 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 
 import { apiClient, throwIfError, type components } from "@/api/client";
+import { useSettings } from "@/api/hooks";
 
 const ROOT_KEY = ["tax"] as const;
 
@@ -281,4 +282,62 @@ export function useReassignTaxDocument(ownerId?: OwnerId) {
     throwIfError(error);
     return need(data);
   });
+}
+
+// ---- Reading chosen pages with the LLM -----------------------------------------------------------
+
+export type TaxPageInfo = Schemas["TaxPageInfo"];
+export type TaxLlmReadResponse = Schemas["TaxLlmReadResponse"];
+
+/** Per-page facts (suggested / never-sent) of a document whose PDF copy is kept. */
+export function useTaxDocumentPages(id: number, ownerId: OwnerId, enabled: boolean) {
+  return useQuery({
+    enabled,
+    queryKey: [...ROOT_KEY, "pages", id],
+    queryFn: async () => {
+      const { data, error } = await apiClient.GET("/tax/documents/{document_id}/pages", {
+        params: { path: { document_id: id }, query: owner(ownerId) },
+      });
+      throwIfError(error);
+      return Array.isArray(data) ? data : [];
+    },
+  });
+}
+
+/** The redacted text that would be sent for `pages` (null = the automatic fallback's pages). */
+export async function fetchTaxLlmPreview(id: number, ownerId: OwnerId, pages: number[] | null) {
+  const { data, error } = await apiClient.GET("/tax/documents/{document_id}/llm-preview", {
+    params: {
+      path: { document_id: id },
+      query: { ...owner(ownerId), pages: pages === null ? undefined : pages.join(",") },
+    },
+  });
+  throwIfError(error);
+  if (!data) throw new Error("preview returned no data");
+  return data;
+}
+
+/** Send exactly `pages` to the configured LLM (explicit consent) and merge the result. */
+export function useReadPagesWithLlm(ownerId: OwnerId) {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: async ({ documentId, pages }: { documentId: number; pages: number[] }): Promise<TaxLlmReadResponse> => {
+      const { data, error } = await apiClient.POST("/tax/documents/{document_id}/llm-fallback", {
+        params: { path: { document_id: documentId }, query: owner(ownerId) },
+        body: { pages },
+      });
+      throwIfError(error);
+      if (!data) throw new Error("the LLM read returned no data");
+      return data;
+    },
+    onSuccess: () => {
+      void queryClient.invalidateQueries({ queryKey: ROOT_KEY });
+    },
+  });
+}
+
+/** Does a document offer "Read pages with LLM…"? Needs a configured LLM and a file-backed row. */
+export function useLlmReadAvailable(document: { page_count: number | null }): boolean {
+  const mode = useSettings().data?.llm?.mode;
+  return (mode === "local" || mode === "remote") && document.page_count != null;
 }

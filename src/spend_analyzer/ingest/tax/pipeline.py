@@ -33,7 +33,7 @@ import hashlib
 import json
 from collections import Counter
 from collections.abc import Sequence
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from datetime import UTC, datetime
 from pathlib import Path
 from typing import Literal
@@ -414,6 +414,167 @@ def _record_unexpected_failure(
     return _failure(session, doc, status=STATUS_ERROR, message=GENERIC_ERROR_MESSAGE, tax_year=None)
 
 
+@dataclass
+class StoredForms:
+    """What `store_forms` did with a batch of parsed forms."""
+
+    inserted_forms: int = 0
+    skipped: int = 0
+    income_n: int = 0
+    tax_n: int = 0
+    llm_forms: int = 0
+    dropped_empty: int = 0
+    inserted_types: list[str] = field(default_factory=list)
+    skipped_from: list[tuple[int, str, str]] = field(default_factory=list)
+    soft_warnings: list[str] = field(default_factory=list)
+    kept_forms: list[ParsedTaxForm] = field(default_factory=list)
+
+
+def store_forms(
+    session: Session,
+    doc_row: TaxDocument,
+    forms: Sequence[ParsedTaxForm],
+    *,
+    tax_year: int,
+    user_id: int,
+    file_sha256: str,
+    first_ordinal: int = 0,
+) -> StoredForms:
+    """Insert `forms` under `doc_row` (no commit). A form already stored for this user and year
+    (same fingerprint) is skipped and reported; forms without any figure are ignored."""
+    inserted_forms = skipped = income_n = tax_n = llm_forms = 0
+    inserted_types: list[str] = []
+    skipped_from: list[tuple[int, str, str]] = []
+    soft_warnings: list[str] = []
+    dropped_empty = 0
+    kept_forms: list[ParsedTaxForm] = []
+    seen_content: Counter[str] = Counter()
+    for ordinal, form in enumerate(forms, start=first_ordinal):
+        if not (
+            form.income
+            or form.taxes
+            or form.agi_minor is not None
+            or form.taxable_income_minor is not None
+        ):
+            dropped_empty += 1  # parsers no longer emit these; nothing to store or dedupe
+            continue
+        kept_forms.append(form)
+        content_key = _form_fingerprint(user_id, tax_year, form)
+        repeat = seen_content[content_key]
+        seen_content[content_key] += 1
+        fingerprint, strength = _form_identity(
+            user_id,
+            tax_year,
+            form,
+            file_sha256=file_sha256,
+            ordinal=ordinal,
+            repeat=repeat,
+        )
+        form_id = session.execute(
+            sqlite_insert(TaxForm)
+            .values(
+                document_id=doc_row.id,
+                user_id=user_id,
+                tax_year=tax_year,
+                form_type=form.form_type,
+                role=FORM_ROLE[form.form_type],
+                payer_name=form.payer_name,
+                payer_tin_last4=form.payer_tin_last4,
+                account_last4=form.account_last4,
+                is_corrected=form.is_corrected,
+                filing_status=form.filing_status,
+                agi_minor=form.agi_minor,
+                taxable_income_minor=form.taxable_income_minor,
+                fingerprint=fingerprint,
+                extraction_method=form.extraction_method,
+                is_user_edited=False,
+                created_at=_utcnow_iso(),
+            )
+            .on_conflict_do_nothing(index_elements=["user_id", "tax_year", "fingerprint"])
+            .returning(TaxForm.id)
+        ).scalar_one_or_none()
+        if form_id is None:
+            skipped += 1
+            earlier = session.execute(
+                select(TaxDocument.id, TaxDocument.original_name)
+                .join(TaxForm, TaxForm.document_id == TaxDocument.id)
+                .where(
+                    TaxForm.user_id == user_id,
+                    TaxForm.tax_year == tax_year,
+                    TaxForm.fingerprint == fingerprint,
+                )
+                .limit(1)
+            ).first()
+            if earlier is not None:
+                skipped_from.append((earlier[0], earlier[1], form.form_type))
+            continue
+        inserted_forms += 1
+        llm_forms += form.extraction_method == "llm"
+        inserted_types.append(form.form_type)
+        if form.income:
+            session.execute(
+                sqlite_insert(IncomeItem).values(
+                    [
+                        {
+                            "form_id": form_id,
+                            "user_id": user_id,
+                            "tax_year": tax_year,
+                            "category": i.category,
+                            "amount_minor": i.amount_minor,
+                            "currency": "USD",
+                            "source_form": i.source_form,
+                            "box": i.box,
+                            "label": i.label,
+                            "is_memo": i.is_memo,
+                            "origin": i.origin,
+                        }
+                        for i in form.income
+                    ]
+                )
+            )
+            income_n += len(form.income)
+        if form.taxes:
+            session.execute(
+                sqlite_insert(TaxItem).values(
+                    [
+                        {
+                            "form_id": form_id,
+                            "user_id": user_id,
+                            "tax_year": tax_year,
+                            "category": t.category,
+                            "amount_minor": t.amount_minor,
+                            "currency": "USD",
+                            "source_form": t.source_form,
+                            "box": t.box,
+                            "label": t.label,
+                            "jurisdiction": t.jurisdiction,
+                            "is_estimate": t.is_estimate,
+                            "origin": t.origin,
+                        }
+                        for t in form.taxes
+                    ]
+                )
+            )
+            tax_n += len(form.taxes)
+        if strength == "weak":
+            session.flush()
+            note = _lookalike_warning(session, doc_row.id, user_id, tax_year, form_id, form)
+            if note is not None:
+                soft_warnings.append(note)
+    return StoredForms(
+        inserted_forms=inserted_forms,
+        skipped=skipped,
+        income_n=income_n,
+        tax_n=tax_n,
+        llm_forms=llm_forms,
+        dropped_empty=dropped_empty,
+        inserted_types=inserted_types,
+        skipped_from=skipped_from,
+        soft_warnings=soft_warnings,
+        kept_forms=kept_forms,
+    )
+
+
 def _import(
     session: Session,
     pdf_path: Path,
@@ -500,125 +661,21 @@ def _import(
         doc_row.parser_id = fallback.id
         doc_row.parser_version = fallback.version
 
-    inserted_forms = skipped = income_n = tax_n = llm_forms = 0
-    inserted_types: list[str] = []
-    skipped_from: list[tuple[int, str, str]] = []
-    soft_warnings: list[str] = []
-    dropped_empty = 0
-    kept_forms: list[ParsedTaxForm] = []
-    seen_content: Counter[str] = Counter()
-    for ordinal, form in enumerate(parsed.forms):
-        if not (
-            form.income
-            or form.taxes
-            or form.agi_minor is not None
-            or form.taxable_income_minor is not None
-        ):
-            dropped_empty += 1  # parsers no longer emit these; nothing to store or dedupe
-            continue
-        kept_forms.append(form)
-        content_key = _form_fingerprint(user_id, parsed.tax_year, form)
-        repeat = seen_content[content_key]
-        seen_content[content_key] += 1
-        fingerprint, strength = _form_identity(
-            user_id,
-            parsed.tax_year,
-            form,
-            file_sha256=file_sha256,
-            ordinal=ordinal,
-            repeat=repeat,
-        )
-        form_id = session.execute(
-            sqlite_insert(TaxForm)
-            .values(
-                document_id=doc_row.id,
-                user_id=user_id,
-                tax_year=parsed.tax_year,
-                form_type=form.form_type,
-                role=FORM_ROLE[form.form_type],
-                payer_name=form.payer_name,
-                payer_tin_last4=form.payer_tin_last4,
-                account_last4=form.account_last4,
-                is_corrected=form.is_corrected,
-                filing_status=form.filing_status,
-                agi_minor=form.agi_minor,
-                taxable_income_minor=form.taxable_income_minor,
-                fingerprint=fingerprint,
-                extraction_method=form.extraction_method,
-                is_user_edited=False,
-                created_at=_utcnow_iso(),
-            )
-            .on_conflict_do_nothing(index_elements=["user_id", "tax_year", "fingerprint"])
-            .returning(TaxForm.id)
-        ).scalar_one_or_none()
-        if form_id is None:
-            skipped += 1
-            earlier = session.execute(
-                select(TaxDocument.id, TaxDocument.original_name)
-                .join(TaxForm, TaxForm.document_id == TaxDocument.id)
-                .where(
-                    TaxForm.user_id == user_id,
-                    TaxForm.tax_year == parsed.tax_year,
-                    TaxForm.fingerprint == fingerprint,
-                )
-                .limit(1)
-            ).first()
-            if earlier is not None:
-                skipped_from.append((earlier[0], earlier[1], form.form_type))
-            continue
-        inserted_forms += 1
-        llm_forms += form.extraction_method == "llm"
-        inserted_types.append(form.form_type)
-        if form.income:
-            session.execute(
-                sqlite_insert(IncomeItem).values(
-                    [
-                        {
-                            "form_id": form_id,
-                            "user_id": user_id,
-                            "tax_year": parsed.tax_year,
-                            "category": i.category,
-                            "amount_minor": i.amount_minor,
-                            "currency": "USD",
-                            "source_form": i.source_form,
-                            "box": i.box,
-                            "label": i.label,
-                            "is_memo": i.is_memo,
-                            "origin": i.origin,
-                        }
-                        for i in form.income
-                    ]
-                )
-            )
-            income_n += len(form.income)
-        if form.taxes:
-            session.execute(
-                sqlite_insert(TaxItem).values(
-                    [
-                        {
-                            "form_id": form_id,
-                            "user_id": user_id,
-                            "tax_year": parsed.tax_year,
-                            "category": t.category,
-                            "amount_minor": t.amount_minor,
-                            "currency": "USD",
-                            "source_form": t.source_form,
-                            "box": t.box,
-                            "label": t.label,
-                            "jurisdiction": t.jurisdiction,
-                            "is_estimate": t.is_estimate,
-                            "origin": t.origin,
-                        }
-                        for t in form.taxes
-                    ]
-                )
-            )
-            tax_n += len(form.taxes)
-        if strength == "weak":
-            session.flush()
-            note = _lookalike_warning(session, doc_row.id, user_id, parsed.tax_year, form_id, form)
-            if note is not None:
-                soft_warnings.append(note)
+    stored = store_forms(
+        session,
+        doc_row,
+        parsed.forms,
+        tax_year=parsed.tax_year,
+        user_id=user_id,
+        file_sha256=file_sha256,
+    )
+    inserted_forms, skipped, income_n = stored.inserted_forms, stored.skipped, stored.income_n
+    tax_n, llm_forms, dropped_empty = stored.tax_n, stored.llm_forms, stored.dropped_empty
+    skipped_from, soft_warnings, kept_forms = (
+        stored.skipped_from,
+        stored.soft_warnings,
+        stored.kept_forms,
+    )
 
     warnings = list(parsed.warnings)
     for form in kept_forms:

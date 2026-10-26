@@ -40,7 +40,7 @@ from spend_analyzer.ingest.tax.year import detect_tax_year
 logger = get_logger("ingest.tax.fallback")
 
 FALLBACK_FAILED_WARNING = "The LLM fallback failed unexpectedly; the file was imported without it."
-_REVIEW_WARNING = "Some values were read by your LLM; review them."
+REVIEW_WARNING = "Some values were read by your LLM; review them."
 
 
 @dataclass(frozen=True, slots=True)
@@ -94,6 +94,36 @@ def _whole_file_regions(doc: ExtractedDoc) -> tuple[UnparsedRegion, ...]:
     return (UnparsedRegion(kind="unknown", pages=tuple(pages), reason="unreadable"),)
 
 
+def fallback_targets(
+    extracted: ExtractedDoc, outcome: ParseOutcome | None, *, tax_year: int | None
+) -> tuple[tuple[UnparsedRegion, ...], int | None]:
+    """``(regions, year)`` the fallback would address: the deterministic result's unparsed regions
+    (and its year), or, when nothing parsed, the W-2 / 1099 pages of the whole file (and the
+    user's / detected year). Pure; the year is not range-checked."""
+    det = outcome.document if outcome is not None else None
+    if det is not None:
+        return det.unparsed, det.tax_year
+    regions = _whole_file_regions(extracted)
+    year = tax_year if tax_year is not None else detect_tax_year(normalize_doc(extracted))
+    return regions, year
+
+
+def other_form_pages(doc: ExtractedDoc) -> frozenset[int]:
+    """Pages that show another form (Form 1040) or continue one (pages after its heading, up to
+    the next W-2 / 1099 heading). Such pages are never sent to the LLM."""
+    pages: set[int] = set()
+    inside = False
+    for page in doc.pages:
+        evidence = _page_evidence(page) if page.text.strip() else None
+        if evidence == "other":
+            inside = True
+        elif evidence == "form":
+            inside = False
+        if inside:
+            pages.add(page.page_number)
+    return frozenset(pages)
+
+
 def _same_account(llm: ParsedTaxForm, target: ParsedTaxForm) -> bool:
     for a, b in (
         (llm.account_last4, target.account_last4),
@@ -115,7 +145,7 @@ def _merge_into(target: ParsedTaxForm, llm: ParsedTaxForm) -> ParsedTaxForm | No
     )
     if not income and not taxes:
         return None
-    warnings = tuple(dict.fromkeys((*target.warnings, _REVIEW_WARNING)))
+    warnings = tuple(dict.fromkeys((*target.warnings, REVIEW_WARNING)))
     return replace(
         target,
         income=(*target.income, *income),
@@ -190,12 +220,7 @@ def apply_fallback(
     det = outcome.document if outcome is not None else None
     if fallback is None or not extracted.has_text_layer:
         return FallbackRun(det, 0, False)
-    if det is not None:
-        regions: tuple[UnparsedRegion, ...] = det.unparsed
-        year: int | None = det.tax_year
-    else:
-        regions = _whole_file_regions(extracted)
-        year = tax_year if tax_year is not None else detect_tax_year(normalize_doc(extracted))
+    regions, year = fallback_targets(extracted, outcome, tax_year=tax_year)
     if not regions or year is None or not MIN_TAX_YEAR <= year <= MAX_TAX_YEAR:
         return FallbackRun(det, 0, False)
 

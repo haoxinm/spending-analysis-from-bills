@@ -68,7 +68,12 @@ from spend_analyzer.ingest.tax.parsers._boxes import (
 )
 from spend_analyzer.ingest.tax.tin import mask_tin, scrub
 from spend_analyzer.llm import client
-from spend_analyzer.llm.statement_parser import _to_decimal, _to_minor, redact
+from spend_analyzer.llm.statement_parser import (
+    _to_decimal,
+    _to_minor,
+    count_redactions,
+    redact,
+)
 
 LLM_TAX_PARSER_ID: Final = "llm_tax"
 PROMPT_VERSION: Final = "2026-10-25.1"
@@ -737,9 +742,24 @@ class TaxLLMExtractor:
         self._pii_terms = tuple(pii_terms)
         self.requests_sent = 0
 
+    def sendable_requests(
+        self, doc: ExtractedDoc, regions: Sequence[UnparsedRegion]
+    ) -> tuple[list[Request], bool]:
+        """``(requests, truncated)`` that `extract` would actually send: a chunk without any
+        amount-like token is skipped. Pure; no network."""
+        requests, truncated = build_requests(doc, regions, self._pii_terms)
+        return [r for r in requests if _AMOUNT_TOKEN.search(r.text)], truncated
+
     def preview(self, doc: ExtractedDoc, regions: Sequence[UnparsedRegion]) -> list[str]:
-        requests, _ = build_requests(doc, regions, self._pii_terms)
+        requests, _ = self.sendable_requests(doc, regions)
         return [r.text for r in requests]
+
+    def count_redactions(self, doc: ExtractedDoc, pages: Sequence[int]) -> int:
+        """Replacements the user's personal-info entries make across the given pages' raw text
+        (each page once). Pure; for the preview."""
+        if not pages:
+            return 0
+        return count_redactions(doc.select_pages(pages), self._pii_terms)
 
     def extract(
         self, doc: ExtractedDoc, regions: Sequence[UnparsedRegion], *, tax_year: int
@@ -747,15 +767,13 @@ class TaxLLMExtractor:
         self.requests_sent = 0
         if not self._cfg.is_configured:
             return FallbackResult(warnings=("The LLM fallback is not configured.",))
-        requests, truncated = build_requests(doc, regions, self._pii_terms)
+        requests, truncated = self.sendable_requests(doc, regions)
         warnings: list[str] = []
         forms: list[ParsedTaxForm] = []
         rejections = Rejections()
         schema = LLMTaxResult.model_json_schema()
         sent = 0
         for request in requests:
-            if not _AMOUNT_TOKEN.search(request.text):
-                continue  # nothing that could be a figure: not worth a request
             sent += 1
             self.requests_sent = sent
             try:

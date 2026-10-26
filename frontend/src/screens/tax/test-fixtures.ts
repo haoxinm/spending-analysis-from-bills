@@ -72,6 +72,7 @@ export function document(over: Partial<TaxDocument> = {}): TaxDocument {
     warnings: [],
     error_detail: null,
     created_at: "2026-10-25T12:00:00+00:00",
+    has_pdf: false,
     ...over,
   };
 }

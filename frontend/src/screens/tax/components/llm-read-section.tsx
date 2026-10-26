@@ -1,0 +1,131 @@
+import * as React from "react";
+
+import { useSettings } from "@/api/hooks";
+import { LlmEgressNotice, LlmRequestPreview, PagePicker, hostOf, type PagePickerPage } from "@/components/llm-preview";
+import { Button } from "@/components/ui/button";
+import { useToast } from "@/components/ui/use-toast";
+import { taxPageImageUrl } from "@/screens/import/spend-token";
+
+import { fetchTaxLlmPreview, useReadPagesWithLlm, useTaxDocumentPages } from "../hooks";
+import { LLM_READ_MASKED, errorMessage, type TaxDocument } from "../logic";
+
+/**
+ * Per-document, explicit LLM read: choose pages (preselected = what the automatic fallback would
+ * send), see exactly the redacted text (collapsed until asked for), then confirm to send them.
+ * Allowed whenever an LLM is configured, whatever the automatic tax setting says.
+ */
+export function LlmReadSection({ document: d }: { document: TaxDocument }) {
+  const settings = useSettings();
+  const { toast } = useToast();
+  const mode = settings.data?.llm?.mode;
+  const endpoint = settings.data?.llm?.base_url ?? "";
+  const hasPdf = d.has_pdf;
+  const pagesQuery = useTaxDocumentPages(d.id, d.user_id, hasPdf);
+  const read = useReadPagesWithLlm(d.user_id);
+  const [chosen, setChosen] = React.useState<number[] | null>(null);
+  const [confirming, setConfirming] = React.useState(false);
+
+  const infos = pagesQuery.data;
+  const suggested = React.useMemo(
+    () => (infos ?? []).filter((p) => p.suggested).map((p) => p.page_number),
+    [infos],
+  );
+  const selected = chosen ?? suggested;
+  const total = d.page_count ?? infos?.length ?? 0;
+  const pickerPages = React.useMemo<PagePickerPage[]>(
+    () =>
+      (infos ?? []).map((p) => ({
+        pageNumber: p.page_number,
+        charCount: p.char_count,
+        disabledReason: p.excluded_reason,
+        suggested: p.suggested,
+      })),
+    [infos],
+  );
+
+  if (!hasPdf) {
+    return (
+      <p className="text-xs text-muted-foreground" data-testid="llm-read-section">
+        No copy of this PDF is kept, so its pages can’t be shown or read later. Turn on{" "}
+        <code>store_tax_pdf_copies</code> under <code>[privacy]</code> in config.toml and import the file again.
+      </p>
+    );
+  }
+
+  async function onSend() {
+    setConfirming(false);
+    try {
+      const r = await read.mutateAsync({ documentId: d.id, pages: selected });
+      const stored = r.inserted_forms + r.merged_forms;
+      toast({
+        variant: stored > 0 ? "success" : "default",
+        title: stored > 0 ? `Read ${stored} form${stored === 1 ? "" : "s"} with the LLM` : "The LLM found nothing new",
+        description:
+          stored > 0
+            ? "Review the figures marked “Read by LLM — needs review”."
+            : (r.warnings[0] ?? "No new figures were stored."),
+      });
+      setChosen(null);
+    } catch (e) {
+      toast({ variant: "destructive", title: "Could not read the pages", description: errorMessage(e) });
+    }
+  }
+
+  return (
+    <div className="flex flex-col gap-3 rounded-md border border-input p-3" data-testid="llm-read-section">
+      <p className="text-xs text-muted-foreground">
+        Pick the pages the LLM should read. Nothing is sent until you confirm; Form 1040 pages are never sent.
+      </p>
+      {pagesQuery.isPending ? <p className="text-xs text-muted-foreground">Loading pages…</p> : null}
+      {pagesQuery.isError ? (
+        <p role="alert" className="text-xs text-destructive">
+          Could not load the pages: {errorMessage(pagesQuery.error)}
+        </p>
+      ) : null}
+      {infos ? (
+        <PagePicker
+          total={total}
+          pages={pickerPages}
+          selected={selected}
+          onChange={setChosen}
+          imageUrl={(page, width) => taxPageImageUrl(d.id, page, width, d.user_id)}
+          emptyMessage="Select at least one page to read."
+        />
+      ) : null}
+      <LlmEgressNotice mode={mode} url={endpoint} masked={LLM_READ_MASKED} />
+      <LlmRequestPreview
+        queryKey={["tax", d.id, selected.join(",")]}
+        fetchPreview={() => fetchTaxLlmPreview(d.id, d.user_id, selected)}
+        enabled={selected.length > 0}
+        mode={mode}
+        endpoint={endpoint}
+        selectedPageCount={selected.length}
+      />
+      <div className="flex flex-wrap items-center gap-2">
+        {confirming ? (
+          <>
+            <span className="text-xs">
+              Send the redacted text of {selected.length} page{selected.length === 1 ? "" : "s"} to{" "}
+              {mode === "local" ? "your local model" : hostOf(endpoint)}?
+            </span>
+            <Button size="sm" disabled={read.isPending} onClick={() => void onSend()}>
+              Confirm send
+            </Button>
+            <Button size="sm" variant="outline" onClick={() => setConfirming(false)}>
+              Cancel send
+            </Button>
+          </>
+        ) : (
+          <Button size="sm" disabled={selected.length === 0 || read.isPending} onClick={() => setConfirming(true)}>
+            Send selected pages to LLM
+          </Button>
+        )}
+        {read.isPending ? (
+          <span role="status" className="text-xs text-muted-foreground">
+            Waiting for the LLM…
+          </span>
+        ) : null}
+      </div>
+    </div>
+  );
+}

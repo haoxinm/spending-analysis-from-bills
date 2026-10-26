@@ -381,6 +381,18 @@ values were read by your LLM; review them." Items filled into a consolidated sta
 form as `parser` and are marked per item. A file that still yields nothing says so, and suggests
 turning the fallback on when an LLM is configured but it is off, or entering the figures manually.
 
+### Reading chosen pages on demand
+
+With an LLM configured, a document in the Tax screen offers **Read pages with LLM...** (whatever
+`tax_llm_fallback` says): page thumbnails to pick from (preselected = the pages the automatic
+fallback would send), a collapsed **Show what would be sent** preview of the exact redacted text
+(no network call), and **Send selected pages to LLM** after a confirmation. Form 1040 pages and
+pages without text are never sent. New forms are tagged like the automatic fallback's and a form
+already stored is skipped. This needs the PDF copy (`store_tax_pdf_copies = true`, see below), so
+thumbnails and the preview are only available for files imported with that switch on.
+API: `GET /api/tax/documents/{id}/pages`, `.../pages/{n}/image`, `.../llm-preview?pages=1,2` and
+`POST .../llm-fallback {"pages": [...]}` (all take the optional `user_id` ownership check).
+
 ## Where the data lives
 
 Imported figures are stored in the local database (`tax_documents`, `tax_forms`, `income_items`,

@@ -12,6 +12,7 @@ import { useToast } from "@/components/ui/use-toast";
 import {
   useCreateManualDocument,
   useDeleteTaxDocument,
+  useLlmReadAvailable,
   useReassignTaxDocument,
   useUploadTaxDocument,
   type TaxImportResponse,
@@ -25,6 +26,7 @@ import {
   type TaxDocument,
 } from "../logic";
 import { DocumentDetail } from "./document-detail";
+import { LlmReadSection } from "./llm-read-section";
 
 type User = components["schemas"]["User"];
 
@@ -89,7 +91,12 @@ function DocumentRow({
   const [open, setOpen] = React.useState(false);
   const [adding, setAdding] = React.useState(false);
   const [confirming, setConfirming] = React.useState(false);
-  const detailId = `tax-doc-detail-${d.id}`;
+  // Unique per rendered row: compare mode renders the same document in two panes.
+  const uid = React.useId();
+  const detailId = `tax-doc-detail-${d.id}-${uid}`;
+  const llmId = `tax-doc-llm-${d.id}-${uid}`;
+  const [llmOpen, setLlmOpen] = React.useState(false);
+  const canReadWithLlm = useLlmReadAvailable(d);
   const requestN = request?.id === d.id ? request.n : 0;
 
   React.useEffect(() => {
@@ -177,6 +184,18 @@ function DocumentRow({
               Add figures manually
             </Button>
           ) : null}
+          {canReadWithLlm ? (
+            <Button
+              size="sm"
+              variant="outline"
+              aria-expanded={llmOpen}
+              aria-controls={llmId}
+              aria-label={`Read pages of ${d.original_name} with LLM`}
+              onClick={() => setLlmOpen((v) => !v)}
+            >
+              Read pages with LLM…
+            </Button>
+          ) : null}
           <Button
             size="sm"
             variant="outline"
@@ -211,6 +230,11 @@ function DocumentRow({
             <li key={i}>{w}</li>
           ))}
         </ul>
+      ) : null}
+      {canReadWithLlm && llmOpen ? (
+        <div id={llmId}>
+          <LlmReadSection document={d} />
+        </div>
       ) : null}
       {open ? (
         <div id={detailId} className="rounded-md bg-muted/30 p-2">

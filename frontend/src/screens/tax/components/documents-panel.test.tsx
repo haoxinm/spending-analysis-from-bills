@@ -62,7 +62,7 @@ describe("review figures disclosure", () => {
     renderPanel();
     const toggle = screen.getByRole("button", { name: /Review figures for/ });
     expect(toggle).toHaveAttribute("aria-expanded", "false");
-    expect(get).not.toHaveBeenCalled();
+    expect(get).not.toHaveBeenCalledWith("/tax/documents/{document_id}", expect.anything());
     const detail = await openFirst();
     expect(toggle).toHaveAttribute("aria-expanded", "true");
     expect(within(detail).getByText("Parsed")).toBeInTheDocument();
@@ -337,5 +337,123 @@ describe("upload outcome", () => {
     expect(within(list).getByText("Imported 1 form.", { exact: false })).toBeInTheDocument();
     expect(within(list).getByText('1 form was already imported from "x.pdf" and was skipped.')).toBeInTheDocument();
     expect(within(list).getByText("Payer name was inferred from the page header.")).toBeInTheDocument();
+  });
+});
+
+
+describe("read pages with the LLM", () => {
+  const PREVIEW = {
+    mode: "remote",
+    resolved_url: "https://api.example.com/v1",
+    model: "m1",
+    pages: [2],
+    requests: ["=== PAGE 2 ===\nInterest 1,234.56"],
+    total_chars: 33,
+    redactions: 2,
+  };
+  const PAGES = [
+    { page_number: 1, char_count: 100, suggested: false, excluded_reason: null },
+    { page_number: 2, char_count: 200, suggested: true, excluded_reason: null },
+    { page_number: 3, char_count: 300, suggested: false, excluded_reason: "Form 1040 pages are never sent." },
+  ];
+
+  function setupLlm(mode: "none" | "remote" = "remote") {
+    get.mockImplementation((path: string, opts?: { params?: { query?: { pages?: string } } }) => {
+      if (path === "/settings") return ok({ llm: { mode, base_url: "https://api.example.com/v1" } });
+      if (path === "/tax/documents/{document_id}/pages") return ok(PAGES);
+      if (path === "/tax/documents/{document_id}/llm-preview") {
+        return ok({ ...PREVIEW, pages: (opts?.params?.query?.pages ?? "2").split(",").map(Number) });
+      }
+      if (path === "/tax/documents/{document_id}") return ok({ ...document(), forms: detailForms });
+      return ok([]);
+    });
+  }
+  const failed = () => document({ id: 5, status: "unsupported", form_types: [], has_pdf: true, page_count: 3 });
+
+  async function openSection() {
+    await userEvent.click(await screen.findByRole("button", { name: /Read pages of .* with LLM/ }));
+    return screen.findByTestId("llm-read-section");
+  }
+
+  it("is offered only when an LLM is configured", async () => {
+    setupLlm("none");
+    renderPanel([failed()]);
+    await screen.findByText("tax_w2_normal.pdf");
+    await waitFor(() => expect(get).toHaveBeenCalledWith("/settings"));
+    expect(screen.queryByRole("button", { name: /with LLM/ })).not.toBeInTheDocument();
+  });
+
+  it("preselects the fallback pages, previews collapsed, and sends after confirming", async () => {
+    setupLlm();
+    post.mockImplementation(() =>
+      ok({
+        document: { ...document({ id: 5 }), forms: [] },
+        pages: [2],
+        requests_sent: 1,
+        inserted_forms: 1,
+        skipped_duplicate_forms: 0,
+        merged_forms: 0,
+        income_item_count: 2,
+        tax_item_count: 0,
+        warnings: [],
+      }),
+    );
+    renderPanel([failed()]);
+    const section = await openSection();
+    await within(section).findByLabelText("Page 2");
+    expect(within(section).getByLabelText("Page 2")).toBeChecked();
+    expect(within(section).getByLabelText("Page 1")).not.toBeChecked();
+    expect(within(section).getByLabelText("Page 3")).toBeDisabled();
+    expect(within(section).getByAltText("Page 1 preview").getAttribute("src")).toContain(
+      "/api/tax/documents/5/pages/1/image",
+    );
+
+    // The preview is not fetched until expanded.
+    expect(get).not.toHaveBeenCalledWith("/tax/documents/{document_id}/llm-preview", expect.anything());
+    await userEvent.click(within(section).getByRole("button", { name: "Show what would be sent" }));
+    expect(await within(section).findByTestId("llm-request")).toHaveTextContent("Interest 1,234.56");
+
+    // Changing the selection re-queries with exactly the chosen pages.
+    await userEvent.click(within(section).getByLabelText("Page 1"));
+    await waitFor(() =>
+      expect(get).toHaveBeenCalledWith(
+        "/tax/documents/{document_id}/llm-preview",
+        { params: { path: { document_id: 5 }, query: { user_id: 1, pages: "1,2" } } },
+      ),
+    );
+
+    expect(post).not.toHaveBeenCalled();
+    await userEvent.click(within(section).getByRole("button", { name: "Send selected pages to LLM" }));
+    expect(within(section).getByText(/Send the redacted text of 2 pages to api\.example\.com\?/)).toBeInTheDocument();
+    expect(post).not.toHaveBeenCalled();
+    await userEvent.click(within(section).getByRole("button", { name: "Confirm send" }));
+    await waitFor(() =>
+      expect(post).toHaveBeenCalledWith("/tax/documents/{document_id}/llm-fallback", {
+        params: { path: { document_id: 5 }, query: { user_id: 1 } },
+        body: { pages: [1, 2] },
+      }),
+    );
+    expect(await screen.findByText("Read 1 form with the LLM")).toBeInTheDocument();
+  });
+
+  it("explains when no PDF copy is kept", async () => {
+    setupLlm();
+    renderPanel([{ ...failed(), has_pdf: false }]);
+    const section = await openSection();
+    expect(within(section).getByText(/No copy of this PDF is kept/)).toBeInTheDocument();
+    expect(get).not.toHaveBeenCalledWith("/tax/documents/{document_id}/pages", expect.anything());
+  });
+
+  it("gives each pane's detail region a unique id in compare mode", () => {
+    render(
+      <>
+        <DocumentsPanel documents={[document()]} users={USERS} selectedUserId={1} />
+        <DocumentsPanel documents={[document()]} users={USERS} selectedUserId={1} />
+      </>,
+      { wrapper: Wrapper },
+    );
+    const toggles = screen.getAllByRole("button", { name: /Review figures for/ });
+    const ids = toggles.map((t) => t.getAttribute("aria-controls"));
+    expect(new Set(ids).size).toBe(2);
   });
 });

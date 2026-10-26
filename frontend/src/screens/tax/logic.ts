@@ -290,6 +290,10 @@ export function resolveYear(selected: number | null, years: readonly number[]): 
 export const TAX_PRIVACY_NOTE =
   "Only the last 4 digits of ID numbers are kept; files stay on this computer.";
 
+/** What is masked before page text goes to the LLM (shown next to the preview). */
+export const LLM_READ_MASKED =
+  "Names, addresses, taxpayer ID numbers (SSN/EIN), emails, phone and account numbers";
+
 // ---- Manual overrides ------------------------------------------------------------------------
 
 export interface Option<T extends string = string> {

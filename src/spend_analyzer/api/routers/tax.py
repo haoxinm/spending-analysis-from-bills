@@ -6,7 +6,10 @@ synchronous step (`gateway.import_tax_document`); all tax SQL lives in `analytic
 Privacy: responses expose only the last four digits of a taxpayer identifier and never
 `stored_path`; `payer_name` is local-only data. Tax data is never sent to an LLM unless the user opts in
 (`[ingest] tax_llm_fallback`, see `api/services/tax_llm.py`); then only redacted pages the built-in
-parsers could not read are sent.
+parsers could not read are sent. A user can also pick pages of a document (whose PDF copy is kept,
+`[privacy] store_tax_pdf_copies`), preview the exact redacted text and send just those pages
+(`/tax/documents/{id}/llm-preview`, `/llm-fallback`): that click is the consent, so it works
+whenever an LLM is configured.
 """
 
 from __future__ import annotations
@@ -14,6 +17,7 @@ from __future__ import annotations
 import json
 from collections.abc import Mapping
 from enum import StrEnum
+from pathlib import Path
 from typing import Annotated, Literal
 
 from fastapi import APIRouter, Depends, Form, HTTPException, Query, Response, UploadFile
@@ -24,13 +28,14 @@ from starlette.concurrency import run_in_threadpool
 from spend_analyzer.analytics import tax_query
 from spend_analyzer.analytics.tax_query import TaxQuery
 from spend_analyzer.api import schemas
-from spend_analyzer.api.deps import SessionDep
-from spend_analyzer.api.services import crud, gateway, tax_llm
+from spend_analyzer.api.deps import SessionDep, SettingsDep
+from spend_analyzer.api.services import crud, gateway, statement_preview, tax_llm
 from spend_analyzer.api.services.uploads import (
     read_pdf_upload,
     sanitize_original_name,
     save_upload,
 )
+from spend_analyzer.core.errors import SpendAnalyzerError
 from spend_analyzer.core.tax_types import (
     INCOME_CATEGORY_LABELS,
     MEMO_INCOME_CATEGORIES,
@@ -38,7 +43,8 @@ from spend_analyzer.core.tax_types import (
     TaxCategory,
 )
 from spend_analyzer.db.models import IncomeItem, TaxDocument, TaxForm, TaxItem
-from spend_analyzer.ingest.tax import edit
+from spend_analyzer.ingest.pages import parse_page_spec
+from spend_analyzer.ingest.tax import edit, on_demand
 from spend_analyzer.ingest.tax.pipeline import delete_tax_document
 
 router = APIRouter(tags=["tax"])
@@ -128,7 +134,16 @@ def _document(doc: TaxDocument) -> schemas.TaxDocument:
         warnings=_warnings(doc),
         error_detail=doc.error_detail,
         created_at=doc.ingested_at,
+        has_pdf=_stored_pdf(doc) is not None,
     )
+
+
+def _stored_pdf(doc: TaxDocument) -> Path | None:
+    """The kept PDF copy (`[privacy] store_tax_pdf_copies`), or `None`."""
+    if not doc.stored_path:
+        return None
+    path = Path(doc.stored_path)
+    return path if path.is_file() else None
 
 
 def _document_detail(doc: TaxDocument) -> schemas.TaxDocumentDetail:
@@ -255,6 +270,137 @@ def get_document(document_id: int, session: SessionDep) -> schemas.TaxDocumentDe
     if doc is None:
         raise HTTPException(status_code=404, detail="tax document not found")
     return _document_detail(doc)
+
+
+def _document_with_pdf(session: Session, document_id: int) -> tuple[TaxDocument, Path]:
+    doc = tax_query.get_tax_document(session, document_id)
+    if doc is None:
+        raise HTTPException(status_code=404, detail="tax document not found")
+    pdf = _stored_pdf(doc)
+    if pdf is None:
+        raise HTTPException(
+            status_code=404,
+            detail=(
+                "no PDF copy is kept for this document "
+                "(turn on [privacy] store_tax_pdf_copies and import the file again)"
+            ),
+        )
+    return doc, pdf
+
+
+@router.get(
+    "/tax/documents/{document_id}/pages",
+    response_model=list[schemas.TaxPageInfo],
+    dependencies=_DOC_OWNER,
+)
+def list_document_pages(
+    document_id: int, session: SessionDep, settings: SettingsDep
+) -> list[schemas.TaxPageInfo]:
+    """Per-page facts for choosing pages to read with the LLM: size, whether the automatic
+    fallback would send it, and why a page can never be sent. Local-only; no network."""
+    doc, pdf = _document_with_pdf(session, document_id)
+    terms = tax_llm.pii_terms_for(session, doc.user_id, settings)
+    try:
+        plan = on_demand.load_plan(pdf, pii_terms=terms, document_year=doc.tax_year)
+    except SpendAnalyzerError as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from None
+    return [
+        schemas.TaxPageInfo(
+            page_number=f.page_number,
+            char_count=f.char_count,
+            suggested=f.suggested,
+            excluded_reason=f.excluded_reason,
+        )
+        for f in plan.facts
+    ]
+
+
+@router.get("/tax/documents/{document_id}/pages/{page_number}/image", dependencies=_DOC_OWNER)
+def document_page_image(
+    document_id: int, page_number: int, session: SessionDep, width: int = 400
+) -> Response:
+    """PNG thumbnail of one page of the kept PDF (local-only; same as the statements one)."""
+    _doc, pdf = _document_with_pdf(session, document_id)
+    width = max(100, min(1600, width))
+    try:
+        png = statement_preview.render_page_png(pdf, page_number, width)
+    except statement_preview.PagePreviewNotFound as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from None
+    return Response(
+        content=png, media_type="image/png", headers={"Cache-Control": "private, max-age=300"}
+    )
+
+
+@router.get(
+    "/tax/documents/{document_id}/llm-preview",
+    response_model=schemas.LlmParsePreview,
+    dependencies=_DOC_OWNER,
+)
+def llm_preview(
+    document_id: int, session: SessionDep, settings: SettingsDep, pages: str | None = None
+) -> schemas.LlmParsePreview:
+    """Exactly the redacted text the LLM would receive for ``pages`` (default: the pages the
+    automatic fallback would send). No network call; works even when the automatic fallback is
+    off. Without a configured LLM, ``mode`` is ``none`` and nothing is listed."""
+    doc, pdf = _document_with_pdf(session, document_id)
+    selection: list[int] | None = None
+    if pages:
+        try:
+            selection = parse_page_spec(pages)
+        except ValueError as exc:
+            raise HTTPException(status_code=422, detail=str(exc)) from None
+    try:
+        data = tax_llm.preview_pages(session, doc, pdf, selection, settings)
+    except SpendAnalyzerError as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from None
+    return schemas.LlmParsePreview(
+        mode=data.mode,
+        resolved_url=data.resolved_url,
+        model=data.model,
+        pages=data.pages,
+        requests=data.requests,
+        total_chars=data.total_chars,
+        redactions=data.redactions,
+    )
+
+
+@router.post(
+    "/tax/documents/{document_id}/llm-fallback",
+    response_model=schemas.TaxLlmReadResponse,
+    dependencies=_DOC_OWNER,
+)
+def read_pages_with_llm(
+    document_id: int, body: schemas.TaxLlmReadRequest, session: SessionDep, settings: SettingsDep
+) -> schemas.TaxLlmReadResponse:
+    """Send exactly the chosen pages (redacted like the preview) to the configured LLM and merge
+    what it reads into this document. Explicit per-document consent: allowed whenever the LLM
+    is configured, whatever ``[ingest] tax_llm_fallback`` says. Form 1040 pages and pages without
+    text are never sent. New forms are tagged as read by the LLM (needs review)."""
+    doc, pdf = _document_with_pdf(session, document_id)
+    extractor = tax_llm.build_on_demand_extractor(session, doc.user_id, settings)
+    if extractor is None:
+        raise HTTPException(status_code=409, detail="No LLM is configured (Settings, LLM).")
+    terms = tax_llm.pii_terms_for(session, doc.user_id, settings)
+    try:
+        result = on_demand.read_pages(
+            session, doc, pdf, extractor, pages=body.pages, pii_terms=terms
+        )
+    except on_demand.OnDemandError as exc:
+        raise HTTPException(status_code=exc.status, detail=str(exc)) from None
+    except SpendAnalyzerError as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from None
+    session.refresh(doc)
+    return schemas.TaxLlmReadResponse(
+        document=_document_detail(doc),
+        pages=list(result.pages),
+        requests_sent=result.requests_sent,
+        inserted_forms=result.inserted_forms,
+        skipped_duplicate_forms=result.skipped_duplicate_forms,
+        merged_forms=result.merged_forms,
+        income_item_count=result.income_item_count,
+        tax_item_count=result.tax_item_count,
+        warnings=list(result.warnings),
+    )
 
 
 @router.delete("/tax/documents/{document_id}", status_code=204, dependencies=_DOC_OWNER)

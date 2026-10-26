@@ -866,6 +866,92 @@ export interface paths {
         patch: operations["reassign_document_api_tax_documents__document_id__patch"];
         trace?: never;
     };
+    "/tax/documents/{document_id}/pages": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List Document Pages
+         * @description Per-page facts for choosing pages to read with the LLM: size, whether the automatic
+         *     fallback would send it, and why a page can never be sent. Local-only; no network.
+         */
+        get: operations["list_document_pages_api_tax_documents__document_id__pages_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/tax/documents/{document_id}/pages/{page_number}/image": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Document Page Image
+         * @description PNG thumbnail of one page of the kept PDF (local-only; same as the statements one).
+         */
+        get: operations["document_page_image_api_tax_documents__document_id__pages__page_number__image_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/tax/documents/{document_id}/llm-preview": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Llm Preview
+         * @description Exactly the redacted text the LLM would receive for ``pages`` (default: the pages the
+         *     automatic fallback would send). No network call; works even when the automatic fallback is
+         *     off. Without a configured LLM, ``mode`` is ``none`` and nothing is listed.
+         */
+        get: operations["llm_preview_api_tax_documents__document_id__llm_preview_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/tax/documents/{document_id}/llm-fallback": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Read Pages With Llm
+         * @description Send exactly the chosen pages (redacted like the preview) to the configured LLM and merge
+         *     what it reads into this document. Explicit per-document consent: allowed whenever the LLM
+         *     is configured, whatever ``[ingest] tax_llm_fallback`` says. Form 1040 pages and pages without
+         *     text are never sent. New forms are tagged as read by the LLM (needs review).
+         */
+        post: operations["read_pages_with_llm_api_tax_documents__document_id__llm_fallback_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/tax/years": {
         parameters: {
             query?: never;
@@ -2062,6 +2148,8 @@ export interface components {
             error_detail: string | null;
             /** Created At */
             created_at: string;
+            /** Has Pdf */
+            has_pdf: boolean;
         };
         /** TaxDocumentDetail */
         TaxDocumentDetail: {
@@ -2088,6 +2176,8 @@ export interface components {
             error_detail: string | null;
             /** Created At */
             created_at: string;
+            /** Has Pdf */
+            has_pdf: boolean;
             /** Forms */
             forms: components["schemas"]["TaxFormDetail"][];
         };
@@ -2300,6 +2390,34 @@ export interface components {
             /** Source Form */
             source_form?: string | null;
         };
+        /**
+         * TaxLlmReadRequest
+         * @description `POST /api/tax/documents/{id}/llm-fallback`: the pages the user agreed to send.
+         */
+        TaxLlmReadRequest: {
+            /** Pages */
+            pages: number[];
+        };
+        /** TaxLlmReadResponse */
+        TaxLlmReadResponse: {
+            document: components["schemas"]["TaxDocumentDetail"];
+            /** Pages */
+            pages: number[];
+            /** Requests Sent */
+            requests_sent: number;
+            /** Inserted Forms */
+            inserted_forms: number;
+            /** Skipped Duplicate Forms */
+            skipped_duplicate_forms: number;
+            /** Merged Forms */
+            merged_forms: number;
+            /** Income Item Count */
+            income_item_count: number;
+            /** Tax Item Count */
+            tax_item_count: number;
+            /** Warnings */
+            warnings: string[];
+        };
         /** TaxManualDocumentCreate */
         TaxManualDocumentCreate: {
             /** User Id */
@@ -2320,6 +2438,21 @@ export interface components {
             label: string;
             /** Amount Minor */
             amount_minor: number;
+        };
+        /**
+         * TaxPageInfo
+         * @description `GET /api/tax/documents/{id}/pages` row. A thumbnail is at
+         *     `GET /api/tax/documents/{id}/pages/{page_number}/image`.
+         */
+        TaxPageInfo: {
+            /** Page Number */
+            page_number: number;
+            /** Char Count */
+            char_count: number;
+            /** Suggested */
+            suggested: boolean;
+            /** Excluded Reason */
+            excluded_reason: string | null;
         };
         /**
          * TaxSkippedFrom
@@ -4577,6 +4710,145 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["TaxDocument"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    list_document_pages_api_tax_documents__document_id__pages_get: {
+        parameters: {
+            query?: {
+                user_id?: number | null;
+            };
+            header?: never;
+            path: {
+                document_id: number;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["TaxPageInfo"][];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    document_page_image_api_tax_documents__document_id__pages__page_number__image_get: {
+        parameters: {
+            query?: {
+                width?: number;
+                user_id?: number | null;
+            };
+            header?: never;
+            path: {
+                document_id: number;
+                page_number: number;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": unknown;
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    llm_preview_api_tax_documents__document_id__llm_preview_get: {
+        parameters: {
+            query?: {
+                pages?: string | null;
+                user_id?: number | null;
+            };
+            header?: never;
+            path: {
+                document_id: number;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["LlmParsePreview"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    read_pages_with_llm_api_tax_documents__document_id__llm_fallback_post: {
+        parameters: {
+            query?: {
+                user_id?: number | null;
+            };
+            header?: never;
+            path: {
+                document_id: number;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["TaxLlmReadRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["TaxLlmReadResponse"];
                 };
             };
             /** @description Validation Error */

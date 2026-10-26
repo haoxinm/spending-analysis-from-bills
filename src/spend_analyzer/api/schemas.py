@@ -773,10 +773,47 @@ class TaxDocument(_Model):
     warnings: list[str]
     error_detail: str | None
     created_at: str
+    #: Is a PDF copy kept (`[privacy] store_tax_pdf_copies`)? Page thumbnails and reading chosen
+    #: pages with the LLM need it.
+    has_pdf: bool
 
 
 class TaxDocumentDetail(TaxDocument):
     forms: list[TaxFormDetail]
+
+
+class TaxPageInfo(_Model):
+    """`GET /api/tax/documents/{id}/pages` row. A thumbnail is at
+    `GET /api/tax/documents/{id}/pages/{page_number}/image`."""
+
+    page_number: int
+    char_count: int
+    #: Would the automatic LLM fallback send (part of) this page?
+    suggested: bool
+    #: Why this page can never be sent (no text, Form 1040); `None` = it can.
+    excluded_reason: str | None
+
+
+class TaxLlmReadRequest(BaseModel):
+    """`POST /api/tax/documents/{id}/llm-fallback`: the pages the user agreed to send."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    pages: list[int] = Field(min_length=1, max_length=500)
+
+
+class TaxLlmReadResponse(_Model):
+    document: TaxDocumentDetail
+    #: The pages that were sent (after dropping pages that cannot be).
+    pages: list[int]
+    requests_sent: int
+    inserted_forms: int
+    skipped_duplicate_forms: int
+    #: Stored consolidated forms that received sections the parser had not read.
+    merged_forms: int
+    income_item_count: int
+    tax_item_count: int
+    warnings: list[str]
 
 
 # Manual edits (request bodies). Unknown fields are rejected; for the PATCH models only the fields

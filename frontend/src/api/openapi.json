@@ -3772,6 +3772,289 @@
         }
       }
     },
+    "/tax/documents/{document_id}/pages": {
+      "get": {
+        "tags": [
+          "tax"
+        ],
+        "summary": "List Document Pages",
+        "description": "Per-page facts for choosing pages to read with the LLM: size, whether the automatic\nfallback would send it, and why a page can never be sent. Local-only; no network.",
+        "operationId": "list_document_pages_api_tax_documents__document_id__pages_get",
+        "parameters": [
+          {
+            "name": "document_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "title": "Document Id"
+            }
+          },
+          {
+            "name": "user_id",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "integer"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "User Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/TaxPageInfo"
+                  },
+                  "title": "Response List Document Pages Api Tax Documents  Document Id  Pages Get"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/tax/documents/{document_id}/pages/{page_number}/image": {
+      "get": {
+        "tags": [
+          "tax"
+        ],
+        "summary": "Document Page Image",
+        "description": "PNG thumbnail of one page of the kept PDF (local-only; same as the statements one).",
+        "operationId": "document_page_image_api_tax_documents__document_id__pages__page_number__image_get",
+        "parameters": [
+          {
+            "name": "document_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "title": "Document Id"
+            }
+          },
+          {
+            "name": "page_number",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "title": "Page Number"
+            }
+          },
+          {
+            "name": "width",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "default": 400,
+              "title": "Width"
+            }
+          },
+          {
+            "name": "user_id",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "integer"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "User Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/tax/documents/{document_id}/llm-preview": {
+      "get": {
+        "tags": [
+          "tax"
+        ],
+        "summary": "Llm Preview",
+        "description": "Exactly the redacted text the LLM would receive for ``pages`` (default: the pages the\nautomatic fallback would send). No network call; works even when the automatic fallback is\noff. Without a configured LLM, ``mode`` is ``none`` and nothing is listed.",
+        "operationId": "llm_preview_api_tax_documents__document_id__llm_preview_get",
+        "parameters": [
+          {
+            "name": "document_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "title": "Document Id"
+            }
+          },
+          {
+            "name": "pages",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Pages"
+            }
+          },
+          {
+            "name": "user_id",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "integer"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "User Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LlmParsePreview"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/tax/documents/{document_id}/llm-fallback": {
+      "post": {
+        "tags": [
+          "tax"
+        ],
+        "summary": "Read Pages With Llm",
+        "description": "Send exactly the chosen pages (redacted like the preview) to the configured LLM and merge\nwhat it reads into this document. Explicit per-document consent: allowed whenever the LLM\nis configured, whatever ``[ingest] tax_llm_fallback`` says. Form 1040 pages and pages without\ntext are never sent. New forms are tagged as read by the LLM (needs review).",
+        "operationId": "read_pages_with_llm_api_tax_documents__document_id__llm_fallback_post",
+        "parameters": [
+          {
+            "name": "document_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "title": "Document Id"
+            }
+          },
+          {
+            "name": "user_id",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "integer"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "User Id"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/TaxLlmReadRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/TaxLlmReadResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/tax/years": {
       "get": {
         "tags": [
@@ -7542,6 +7825,10 @@
           "created_at": {
             "type": "string",
             "title": "Created At"
+          },
+          "has_pdf": {
+            "type": "boolean",
+            "title": "Has Pdf"
           }
         },
         "type": "object",
@@ -7555,7 +7842,8 @@
           "page_count",
           "warnings",
           "error_detail",
-          "created_at"
+          "created_at",
+          "has_pdf"
         ],
         "title": "TaxDocument"
       },
@@ -7633,6 +7921,10 @@
             "type": "string",
             "title": "Created At"
           },
+          "has_pdf": {
+            "type": "boolean",
+            "title": "Has Pdf"
+          },
           "forms": {
             "items": {
               "$ref": "#/components/schemas/TaxFormDetail"
@@ -7653,6 +7945,7 @@
           "warnings",
           "error_detail",
           "created_at",
+          "has_pdf",
           "forms"
         ],
         "title": "TaxDocumentDetail"
@@ -8454,6 +8747,84 @@
         "type": "object",
         "title": "TaxItemPatch"
       },
+      "TaxLlmReadRequest": {
+        "properties": {
+          "pages": {
+            "items": {
+              "type": "integer"
+            },
+            "type": "array",
+            "maxItems": 500,
+            "minItems": 1,
+            "title": "Pages"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "pages"
+        ],
+        "title": "TaxLlmReadRequest",
+        "description": "`POST /api/tax/documents/{id}/llm-fallback`: the pages the user agreed to send."
+      },
+      "TaxLlmReadResponse": {
+        "properties": {
+          "document": {
+            "$ref": "#/components/schemas/TaxDocumentDetail"
+          },
+          "pages": {
+            "items": {
+              "type": "integer"
+            },
+            "type": "array",
+            "title": "Pages"
+          },
+          "requests_sent": {
+            "type": "integer",
+            "title": "Requests Sent"
+          },
+          "inserted_forms": {
+            "type": "integer",
+            "title": "Inserted Forms"
+          },
+          "skipped_duplicate_forms": {
+            "type": "integer",
+            "title": "Skipped Duplicate Forms"
+          },
+          "merged_forms": {
+            "type": "integer",
+            "title": "Merged Forms"
+          },
+          "income_item_count": {
+            "type": "integer",
+            "title": "Income Item Count"
+          },
+          "tax_item_count": {
+            "type": "integer",
+            "title": "Tax Item Count"
+          },
+          "warnings": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Warnings"
+          }
+        },
+        "type": "object",
+        "required": [
+          "document",
+          "pages",
+          "requests_sent",
+          "inserted_forms",
+          "skipped_duplicate_forms",
+          "merged_forms",
+          "income_item_count",
+          "tax_item_count",
+          "warnings"
+        ],
+        "title": "TaxLlmReadResponse"
+      },
       "TaxManualDocumentCreate": {
         "properties": {
           "user_id": {
@@ -8510,6 +8881,42 @@
         ],
         "title": "TaxMemoAmount",
         "description": "A memo line (not part of total income): `qualified_dividends` or `tax_exempt`."
+      },
+      "TaxPageInfo": {
+        "properties": {
+          "page_number": {
+            "type": "integer",
+            "title": "Page Number"
+          },
+          "char_count": {
+            "type": "integer",
+            "title": "Char Count"
+          },
+          "suggested": {
+            "type": "boolean",
+            "title": "Suggested"
+          },
+          "excluded_reason": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Excluded Reason"
+          }
+        },
+        "type": "object",
+        "required": [
+          "page_number",
+          "char_count",
+          "suggested",
+          "excluded_reason"
+        ],
+        "title": "TaxPageInfo",
+        "description": "`GET /api/tax/documents/{id}/pages` row. A thumbnail is at\n`GET /api/tax/documents/{id}/pages/{page_number}/image`."
       },
       "TaxSkippedFrom": {
         "properties": {

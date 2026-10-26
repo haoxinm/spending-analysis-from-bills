@@ -180,19 +180,15 @@ export function useStatementPages(statementId: number | undefined, enabled: bool
   });
 }
 
-/** Exactly what the LLM parser would send for `pages` (null = all). Fetched on demand. */
-export function useLlmPreview(statementId: number | undefined, pages: number[] | null, enabled: boolean) {
-  const pagesParam = pages === null ? undefined : pages.join(",");
-  return useQuery({
-    queryKey: ["llm-preview", statementId, pagesParam ?? "all"],
-    enabled: enabled && statementId !== undefined && pages?.length !== 0,
-    queryFn: async () => {
-      const { data, error } = await apiClient.GET("/statements/{statement_id}/llm-preview", {
-        params: { path: { statement_id: statementId as number }, query: { pages: pagesParam } },
-      });
-      throwIfError(error);
-      if (!data) throw new Error("preview returned no data");
-      return data;
+/** Exactly what the LLM parser would send for `pages` (null = all). Called only on demand. */
+export async function fetchStatementLlmPreview(statementId: number, pages: number[] | null) {
+  const { data, error } = await apiClient.GET("/statements/{statement_id}/llm-preview", {
+    params: {
+      path: { statement_id: statementId },
+      query: { pages: pages === null ? undefined : pages.join(",") },
     },
   });
+  throwIfError(error);
+  if (!data) throw new Error("preview returned no data");
+  return data;
 }
