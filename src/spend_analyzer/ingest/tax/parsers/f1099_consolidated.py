@@ -8,7 +8,7 @@ merged before it is parsed, so its subtotals are counted once. Each
 account (a row starting ``Account number``) yields ONE `ParsedTaxForm` with
 ``form_type="1099-consolidated"``, ``account_last4`` set, and the union of its sections' items,
 each keeping its own ``source_form``. Payer name and TIN (last four) are read per account: the
-nearest payer row at or before the account row (else the first one inside the account block), so a
+payer block printed since the previous account row (else the first payer row inside the account's own block, else the payer carried over), so a
 file holding several payers' statements keeps each identity. An account none of whose sections
 yielded an amount is not emitted (an empty form has no identity and no value). Section headings are matched without the word "Form" (``1099-DIV  Dividends ...``) so
 the single-form parsers, which key on ``Form 1099-XXX``, stay quiet. Unsupported sections
@@ -23,8 +23,10 @@ marker scores 0.95; a single section behind that marker also 0.95; two sections 
 from __future__ import annotations
 
 import re
+from collections.abc import Sequence
 
 from spend_analyzer.core.errors import ParserError
+from spend_analyzer.core.pii import compile_redactor
 from spend_analyzer.core.tax_types import (
     FormType,
     ParsedIncomeItem,
@@ -37,6 +39,7 @@ from spend_analyzer.core.types import ExtractedDoc
 from spend_analyzer.ingest.layout import Row, cluster_rows
 from spend_analyzer.ingest.tax.common import (
     build_document,
+    current_pii_terms,
     distinct_1099_sections,
     require_year,
     sanitize_payer_name,
@@ -76,6 +79,14 @@ _ACCOUNT_RE = compile_label(r"^Account\s+(?:number\b|no\b\.?|#)\s*:?")
 _NOT_A_NAME = re.compile(
     r"\d|\bForm\b|\b1099\b|\bTax(?:payer)?\b|\bSummary\b|\bInformation\b|\bStatement\b"
     r"|\bYear\b|\bAccount\b|\bPage\b|\bNo\b|\bNumber\b|\bDate\b|:",
+    re.IGNORECASE,
+)
+#: Evidence that a header line names a company (a recipient's own name has none of these).
+_COMPANY_WORD = re.compile(
+    r"\b(?:inc|incorporated|llc|l\.l\.c|lp|l\.p|llp|ltd|limited|corp|corporation|co|company|"
+    r"bank|n\.?a|securities|brokers?|brokerage|investments?|investor|financial|trust|fund|funds|capital|"
+    r"group|services|markets|advisors?|wealth|partners|holdings|clearing|assets?|management|"
+    r"insurance|credit\s+union|savings)\b\.?",
     re.IGNORECASE,
 )
 #: A bare ``Federal Identification Number`` label counts as the payer's only inside a payer block.
@@ -149,19 +160,26 @@ def _payer_in_runs(
 
 def _payers_per_account(doc: ExtractedDoc, n_accounts: int) -> list[tuple[str | None, str | None]]:
     """``(payer name, payer TIN last4)`` for each account block, in order (one entry when the
-    document has no account rows). Each account takes the nearest payer rows at or before its
-    account row; when none precede it, the first payer rows found inside its own block."""
-    snapshots: list[tuple[str | None, str | None]] = []
+    document has no account rows). An account takes the payer rows printed since the previous
+    account row (a payer block above its own account); a payer that was already used by an earlier
+    account is replaced by the first payer rows inside this account's own block (after its
+    account row), and kept when the block has none (one payer heading several accounts)."""
+    # per account row: the payer carried into it, and whether it is new since the previous
+    # account row (a payer printed above its own account) rather than the one that account
+    # inherits from an earlier block.
+    snapshots: list[tuple[str | None, str | None, bool, bool]] = []
     inside: list[list[str | None]] = []  # first name / tin seen after each account row
     name: str | None = None
     tin: str | None = None
+    fresh_name = fresh_tin = False
     first: list[str | None] = [None, None]  # first name / tin in the whole document
     for page in doc.pages:
         rows = cluster_rows(page.words)
         last_payer_row = -_PAYER_BLOCK_ROWS - 1
         for index, row in enumerate(rows):
             if n_accounts and _ACCOUNT_START.search(row.text):
-                snapshots.append((name, tin))
+                snapshots.append((name, tin, fresh_name, fresh_tin))
+                fresh_name = fresh_tin = False
                 inside.append([None, None])
                 continue
             row_name, row_tin = payer_from_row(row.text)
@@ -172,12 +190,14 @@ def _payers_per_account(doc: ExtractedDoc, n_accounts: int) -> list[tuple[str | 
             if row_name is not None:
                 last_payer_row = index
                 name = sanitize_payer_name(row_name)
+                fresh_name = True
                 if first[0] is None:
                     first[0] = name
                 if inside and inside[-1][0] is None:
                     inside[-1][0] = name
             if row_tin is not None:
                 tin = row_tin
+                fresh_tin = True
                 if first[1] is None:
                     first[1] = tin
                 if inside and inside[-1][1] is None:
@@ -185,14 +205,19 @@ def _payers_per_account(doc: ExtractedDoc, n_accounts: int) -> list[tuple[str | 
     if not n_accounts:
         return [(first[0], first[1])]
     return [
-        (snap[0] or after[0], snap[1] or after[1])
-        for snap, after in zip(snapshots, inside, strict=True)
+        (
+            snap_name if fresh_n else (after[0] or snap_name),
+            snap_tin if fresh_t else (after[1] or snap_tin),
+        )
+        for (snap_name, snap_tin, fresh_n, fresh_t), after in zip(snapshots, inside, strict=True)
     ]
 
 
-def _header_payer_name(doc: ExtractedDoc) -> str | None:
-    """The first non-empty line of page 1 when it looks like a company name (letters, no digits,
-    not a form title or a label); `None` otherwise."""
+def _header_payer_name(doc: ExtractedDoc, pii_terms: Sequence[str] = ()) -> str | None:
+    """The first non-empty line of page 1 when it looks like a company name: letters, no digits,
+    not a form title or a label, carrying a company word (Inc, LLC, Bank, Securities ...) and not
+    matching any of the user's personal-info terms (the recipient's own name often heads page 1).
+    `None` otherwise."""
     if not doc.pages:
         return None
     for row in cluster_rows(doc.pages[0].words):
@@ -200,6 +225,10 @@ def _header_payer_name(doc: ExtractedDoc) -> str | None:
         if not text:
             continue
         if _NOT_A_NAME.search(text) or _MARKER_RE.search(text) or not re.search(r"[A-Za-z]", text):
+            return None
+        if _COMPANY_WORD.search(text) is None:
+            return None
+        if pii_terms and compile_redactor(pii_terms).redact(text)[1]:
             return None
         return sanitize_payer_name(text)
     return None
@@ -255,7 +284,7 @@ class Form1099ConsolidatedParser:
         corrected = corrected_marker(doc)
         accounts = split_blocks(doc, _ACCOUNT_START)
         payers = _payers_per_account(doc, len(accounts))
-        header_name = _header_payer_name(doc)
+        header_name = _header_payer_name(doc, current_pii_terms())
         forms: list[ParsedTaxForm] = []
         unparsed: list[UnparsedRegion] = []
         found_sections = False

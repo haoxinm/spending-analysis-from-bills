@@ -19,11 +19,12 @@ the same user is a no-op, status ``duplicate``; another user may import the same
 row's owner is never changed); `tax_forms` additionally dedupe on (user_id, tax_year, fingerprint), so the same
 W-2 delivered in two different PDFs is stored once and reported as a skipped duplicate form.
 
-Only forms with a *strong* identity (at least one amount AND a payer TIN or account last four) are
-deduped across files. A *weak* form (nothing that tells it apart from another provider's form) gets
+Forms with a *strong* identity (at least one amount AND a payer TIN or account last four) are
+deduped across files. A *weak* form that names its payer is deduped on the normalized name plus
+identical amounts (a different name never collides). A weak form with no payer name at all gets
 the file hash and its position in the file mixed into its fingerprint, so it is never dropped as a
-duplicate of another file's form; a soft warning is added when it looks identical (same payer name
-and amounts) to a form of another document.
+duplicate of another file's form; a soft warning is added when it has the same amounts as a
+nameless form of another document.
 """
 
 from __future__ import annotations
@@ -51,8 +52,10 @@ from spend_analyzer.core.tax_types import (
     TaxFallbackExtractor,
 )
 from spend_analyzer.db.models import IncomeItem, TaxDocument, TaxForm, TaxItem
+from spend_analyzer.db.pii_terms import user_pii_terms
 from spend_analyzer.ingest.extract import extract, sha256_file
 from spend_analyzer.ingest.pipeline import NO_TEXT_LAYER_MESSAGE
+from spend_analyzer.ingest.tax.common import parsing_with_pii_terms
 from spend_analyzer.ingest.tax.fallback import apply_fallback
 from spend_analyzer.ingest.tax.orchestrator import ParseOutcome, parse_document
 from spend_analyzer.ingest.tax.tin import has_long_digit_run, scrub, scrub_display_name
@@ -143,15 +146,31 @@ def _form_fingerprint(
 
 
 def _form_identity(
-    user_id: int, tax_year: int, form: ParsedTaxForm, *, file_sha256: str, ordinal: int
+    user_id: int,
+    tax_year: int,
+    form: ParsedTaxForm,
+    *,
+    file_sha256: str,
+    ordinal: int,
+    repeat: int = 0,
 ) -> tuple[str, Literal["strong", "weak"]]:
     """``(fingerprint, strength)``. Strong = at least one item AND a payer TIN or account last
     four: the content fingerprint, shared across files (the same form delivered twice dedupes).
-    Weak = anything else: the fingerprint also includes the file hash and the form's position, so
-    it never matches a form of another file (and two weak forms of one file both stay)."""
+    Weak = anything else. A weak form that still names its payer keeps the content fingerprint
+    (same normalized payer name and identical items = the same form delivered again; a different
+    name never collides). A weak form with no payer name has nothing to tell it from another
+    provider's: the fingerprint also includes the file hash and the form's position, so it is
+    always kept. ``repeat`` counts identical weak forms earlier in the same file: they are real
+    separate forms (two identical W-2s), numbered so they stay while the whole set still dedupes
+    when the file is delivered again."""
     strong = bool(form.income or form.taxes) and bool(form.payer_tin_last4 or form.account_last4)
     if strong:
         return _form_fingerprint(user_id, tax_year, form), "strong"
+    if " ".join((form.payer_name or "").split()):
+        content = _form_fingerprint(user_id, tax_year, form)
+        if repeat:
+            content = hashlib.sha256(f"{content}|repeat|{repeat}".encode()).hexdigest()
+        return content, "weak"
     return (
         _form_fingerprint(user_id, tax_year, form, doc_scope=f"{file_sha256}|{ordinal}"),
         "weak",
@@ -198,9 +217,10 @@ def _amount_multiset(session: Session, form_id: int) -> Counter[tuple[str, int]]
 def _lookalike_warning(
     session: Session, doc_id: int, user_id: int, tax_year: int, form_id: int, form: ParsedTaxForm
 ) -> str | None:
-    """A soft warning when a (kept) weak form has the same payer name and amounts as a form of
-    another document of the same user and year; `None` otherwise."""
-    if not form.payer_name:
+    """A soft warning when a kept form without any identifier has the same amounts as a form
+    without a payer name or identifier in another document of the same user and year (only such
+    forms are kept despite looking identical); `None` otherwise."""
+    if form.payer_name:
         return None
     mine = _amount_multiset(session, form_id)
     candidates = session.execute(
@@ -210,14 +230,16 @@ def _lookalike_warning(
             TaxForm.user_id == user_id,
             TaxForm.tax_year == tax_year,
             TaxForm.form_type == form.form_type,
-            func.lower(TaxForm.payer_name) == form.payer_name.lower(),
+            func.coalesce(TaxForm.payer_name, "") == "",
+            TaxForm.payer_tin_last4.is_(None),
+            TaxForm.account_last4.is_(None),
             TaxForm.document_id != doc_id,
         )
     ).all()
     for other_id, name in candidates:
         if _amount_multiset(session, other_id) == mine:
             return (
-                f'Looks identical to a form in "{name}" (same payer name and amounts), but no '
+                f'Looks identical to a form in "{name}" (same amounts), but no payer name or '
                 "identifier could be read so it was kept. Delete one if it is a duplicate."
             )
     return None
@@ -304,6 +326,7 @@ def import_tax_document(
     original_name: str,
     tax_year: int | None = None,
     fallback: TaxFallbackExtractor | None = None,
+    pii_terms: Sequence[str] | None = None,
 ) -> TaxImportResult:
     """Import one tax PDF for ``user_id``. Commits; never raises for bad documents.
 
@@ -316,6 +339,8 @@ def import_tax_document(
         fallback: the opt-in LLM fallback (`None` = fully deterministic, nothing leaves the
             machine). It is consulted only for what the parsers could not read, and before any
             database write, so no network call happens inside a write transaction.
+        pii_terms: the user's personal-info terms; parsers never take a match for a payer name.
+            ``None`` = `[privacy] pii_terms` plus this user's aliases (`db.pii_terms`).
 
     Returns:
         A `TaxImportResult`. ``status`` is 'parsed', 'duplicate' (same file already parsed for this
@@ -325,7 +350,10 @@ def import_tax_document(
         reused when the same file is imported again.
     """
     file_sha256 = sha256_file(pdf_path)
-    keep = load_settings().privacy.store_tax_pdf_copies
+    settings = load_settings()
+    keep = settings.privacy.store_tax_pdf_copies
+    if pii_terms is None:
+        pii_terms = user_pii_terms(session, settings, user_id)
     original_name = scrub_display_name(original_name)
     try:
         return _import(
@@ -337,6 +365,7 @@ def import_tax_document(
             original_name=original_name,
             tax_year=tax_year,
             fallback=fallback,
+            pii_terms=pii_terms,
         )
     except EgressViolation:
         raise
@@ -395,6 +424,7 @@ def _import(
     original_name: str,
     tax_year: int | None,
     fallback: TaxFallbackExtractor | None = None,
+    pii_terms: Sequence[str] = (),
 ) -> TaxImportResult:
     doc_row = _find_document(session, user_id, file_sha256)
     if doc_row is not None and doc_row.status == STATUS_PARSED:
@@ -435,7 +465,8 @@ def _import(
         failure = (STATUS_UNSUPPORTED, NO_TEXT_LAYER_MESSAGE)
     else:
         try:
-            outcome = parse_document(extracted, tax_year=tax_year)
+            with parsing_with_pii_terms(pii_terms):
+                outcome = parse_document(extracted, tax_year=tax_year)
         except UnsupportedLayoutError:
             failure = (STATUS_UNSUPPORTED, UNSUPPORTED_MESSAGE)
         except ParserError as exc:
@@ -475,6 +506,7 @@ def _import(
     soft_warnings: list[str] = []
     dropped_empty = 0
     kept_forms: list[ParsedTaxForm] = []
+    seen_content: Counter[str] = Counter()
     for ordinal, form in enumerate(parsed.forms):
         if not (
             form.income
@@ -485,8 +517,16 @@ def _import(
             dropped_empty += 1  # parsers no longer emit these; nothing to store or dedupe
             continue
         kept_forms.append(form)
+        content_key = _form_fingerprint(user_id, parsed.tax_year, form)
+        repeat = seen_content[content_key]
+        seen_content[content_key] += 1
         fingerprint, strength = _form_identity(
-            user_id, parsed.tax_year, form, file_sha256=file_sha256, ordinal=ordinal
+            user_id,
+            parsed.tax_year,
+            form,
+            file_sha256=file_sha256,
+            ordinal=ordinal,
+            repeat=repeat,
         )
         form_id = session.execute(
             sqlite_insert(TaxForm)

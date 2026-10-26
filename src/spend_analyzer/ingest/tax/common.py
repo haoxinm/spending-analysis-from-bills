@@ -7,7 +7,9 @@ Helper module: exposes no object with `id`/`version`/`form_types`/`detect`/`pars
 from __future__ import annotations
 
 import re
-from collections.abc import Callable, Collection, Iterable, Sequence
+from collections.abc import Callable, Collection, Iterable, Iterator, Sequence
+from contextlib import contextmanager
+from contextvars import ContextVar
 from dataclasses import dataclass
 
 from spend_analyzer.core.errors import ParserError
@@ -24,6 +26,25 @@ _SECTION_RE = re.compile(r"\b(?:Form\s*)?1099-([A-Z]{1,4})\b")
 _NINE_DIGITS = re.compile(r"(?:\d[\s-]*){9,}")
 _HAS_LETTER = re.compile(r"[A-Za-z]")
 _WS = re.compile(r"\s+")
+
+
+_PII_TERMS: ContextVar[tuple[str, ...]] = ContextVar("tax_parse_pii_terms", default=())
+
+
+@contextmanager
+def parsing_with_pii_terms(terms: Sequence[str]) -> Iterator[None]:
+    """Make the user's personal-info terms (`[privacy] pii_terms` + aliases) visible to the
+    parsers while a document is parsed, so a parser never takes the recipient's own name for a
+    payer. Scoped to the current thread / task; the parser signature stays unchanged."""
+    token = _PII_TERMS.set(tuple(t for t in terms if t.strip()))
+    try:
+        yield
+    finally:
+        _PII_TERMS.reset(token)
+
+
+def current_pii_terms() -> tuple[str, ...]:
+    return _PII_TERMS.get()
 
 
 def require_year(doc: ExtractedDoc, override: int | None) -> int:

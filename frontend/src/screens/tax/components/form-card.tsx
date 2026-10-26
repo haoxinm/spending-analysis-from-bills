@@ -49,11 +49,12 @@ function draftOf(f: TaxFormDetail): Draft {
   };
 }
 
-function moneyError(text: string): string | null {
-  return text.trim() === "" || dollarsToMinor(text, true) !== null ? null : "Enter a valid dollar amount";
+function moneyError(text: string, allowNegative = true): string | null {
+  if (text.trim() === "" || dollarsToMinor(text, allowNegative) !== null) return null;
+  return !allowNegative && dollarsToMinor(text, true) !== null ? "Amount cannot be negative" : "Enter a valid dollar amount";
 }
 
-function FormFields({ formId, form }: { formId: number; form: TaxFormDetail }) {
+function FormFields({ formId, form, siblings }: { formId: number; form: TaxFormDetail; siblings: number }) {
   const { toast } = useToast();
   const update = useUpdateTaxForm();
   const initial = React.useMemo(() => draftOf(form), [form]);
@@ -65,7 +66,7 @@ function FormFields({ formId, form }: { formId: number; form: TaxFormDetail }) {
     payerLast4: last4Error(draft.payerLast4),
     accountLast4: last4Error(draft.accountLast4),
     agi: moneyError(draft.agi),
-    taxable: moneyError(draft.taxable),
+    taxable: moneyError(draft.taxable, false),
   };
   const invalid = Object.values(errors).some(Boolean);
   const is1040 = draft.formType === "1040";
@@ -83,11 +84,18 @@ function FormFields({ formId, form }: { formId: number; form: TaxFormDetail }) {
     if (draft.filingStatus !== initial.filingStatus) patch.filing_status = draft.filingStatus || null;
     if (draft.agi !== initial.agi) patch.agi_minor = draft.agi.trim() ? dollarsToMinor(draft.agi, true) : null;
     if (draft.taxable !== initial.taxable) {
-      patch.taxable_income_minor = draft.taxable.trim() ? dollarsToMinor(draft.taxable, true) : null;
+      patch.taxable_income_minor = draft.taxable.trim() ? dollarsToMinor(draft.taxable) : null;
     }
     try {
       await update.mutateAsync({ formId, patch });
-      toast({ variant: "success", title: "Form updated" });
+      const moved = patch.tax_year !== undefined && siblings > 0;
+      toast({
+        variant: "success",
+        title: "Form updated",
+        description: moved
+          ? `All ${siblings + 1} forms in this file moved to tax year ${patch.tax_year}.`
+          : undefined,
+      });
     } catch (err) {
       toast({ variant: "destructive", title: "Could not save form", description: errorMessage(err) });
     }
@@ -176,7 +184,8 @@ function FormFields({ formId, form }: { formId: number; form: TaxFormDetail }) {
   );
 }
 
-export function FormCard({ form }: { form: TaxFormDetail }) {
+/** `siblings`: how many other forms the document holds (they move with this form's tax year). */
+export function FormCard({ form, siblings = 0 }: { form: TaxFormDetail; siblings?: number }) {
   const { toast } = useToast();
   const remove = useDeleteTaxForm();
   const confirm = useConfirmTaxForm();
@@ -229,7 +238,7 @@ export function FormCard({ form }: { form: TaxFormDetail }) {
           )}
         </span>
       </header>
-      <FormFields key={JSON.stringify([form.form_type, form.tax_year, form.payer_name, form.payer_tin_last4, form.account_last4, form.is_corrected, form.filing_status, form.agi_minor, form.taxable_income_minor])} formId={form.id} form={form} />
+      <FormFields key={JSON.stringify([form.form_type, form.tax_year, form.payer_name, form.payer_tin_last4, form.account_last4, form.is_corrected, form.filing_status, form.agi_minor, form.taxable_income_minor])} formId={form.id} form={form} siblings={siblings} />
       <ItemTable kind="income" items={form.income_items} formId={form.id} />
       <ItemTable kind="tax" items={form.tax_items} formId={form.id} />
     </section>

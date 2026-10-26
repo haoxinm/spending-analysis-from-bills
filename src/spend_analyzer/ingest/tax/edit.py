@@ -447,13 +447,27 @@ def update_form(session: Session, form_id: int, patch: Mapping[str, object]) -> 
         raise
     new_year = values.get("tax_year")
     if isinstance(new_year, int) and new_year != form.tax_year:
-        if _other_year_forms(session, form.document_id, new_year, exclude=form.id):
+        # A document holds one tax year, so the year of one form moves the whole document: all
+        # its forms and their items, in this one transaction (a fingerprint collision on any of
+        # them rolls everything back with a 409). Forms already in some other year than this
+        # form's cannot be reconciled by a single change.
+        if _other_year_forms(session, form.document_id, form.tax_year, exclude=form.id):
             raise YearMismatch("the form's tax year differs from the document's other forms")
-        _document(session, form.document_id).tax_year = new_year
-        session.execute(
-            update(IncomeItem).where(IncomeItem.form_id == form.id).values(tax_year=new_year)
-        )
-        session.execute(update(TaxItem).where(TaxItem.form_id == form.id).values(tax_year=new_year))
+        try:
+            _document(session, form.document_id).tax_year = new_year
+            form_ids = select(TaxForm.id).where(TaxForm.document_id == form.document_id)
+            session.execute(
+                update(TaxForm)
+                .where(TaxForm.document_id == form.document_id, TaxForm.id != form.id)
+                .values(tax_year=new_year)
+            )
+            for model in (IncomeItem, TaxItem):
+                session.execute(
+                    update(model).where(model.form_id.in_(form_ids)).values(tax_year=new_year)
+                )
+        except IntegrityError:
+            session.rollback()
+            raise Conflict("the change conflicts with an existing tax form") from None
     for key, value in values.items():
         setattr(form, key, value)
     if patch:
@@ -513,7 +527,12 @@ def update_income_item(session: Session, item_id: int, patch: Mapping[str, objec
     _check_income_sign(category, amount)
     box = _short_text(patch["box"], "box", MAX_BOX_LEN) if "box" in patch else item.box
     label = _short_text(patch["label"], "label", MAX_LABEL_LEN) if "label" in patch else item.label
-    is_memo = _flag(patch["is_memo"], "is_memo") if "is_memo" in patch else item.is_memo
+    if "is_memo" in patch:
+        is_memo = _flag(patch["is_memo"], "is_memo")
+    elif category != item.category:
+        is_memo = False  # re-derived below from the new category, never carried over
+    else:
+        is_memo = item.is_memo
     source = item.source_form
     if "source_form" in patch:
         source = (

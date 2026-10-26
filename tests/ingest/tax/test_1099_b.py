@@ -279,3 +279,41 @@ def test_running_heading_on_each_page_does_not_split_the_table() -> None:
     parsed = PARSER.parse(doc_from_pages(pages), tax_year=2024)
     (form,) = parsed.forms
     assert [(i.box, i.amount_minor) for i in form.income] == [("ST", -10_000)]
+
+
+def test_trade_with_a_trailing_code_letter_is_kept() -> None:
+    lines = [
+        "Form 1099-B Proceeds From Broker",
+        "SHORT TERM CAPITAL GAINS AND LOSSES",
+        "10.0000 Sale 01/02/24 03/04/24 1,000.00 800.00 0.00 200.00 W",
+        "10.0000 Sale 01/02/24 03/05/24 500.00 400.00 0.00 100.00*",
+    ]
+    form = parse_b_section(doc_from_lines(lines), 2024)
+    assert [(i.box, i.amount_minor) for i in form.income] == [("ST", 30_000)]
+    assert form.warnings == ()
+
+
+def test_trade_with_an_unreadable_tail_is_counted_in_the_warning() -> None:
+    lines = [
+        "Form 1099-B Proceeds From Broker",
+        "SHORT TERM CAPITAL GAINS AND LOSSES",
+        "10.0000 Sale 01/02/24 03/04/24 1,000.00 800.00 0.00 200.00 see note",
+        "10.0000 Sale 01/02/24 03/05/24 500.00 400.00 0.00 100.00",
+    ]
+    form = parse_b_section(doc_from_lines(lines), 2024)
+    assert "Some 1099-B transaction rows could not be read." in form.warnings
+
+
+def test_net_line_printed_twice_is_not_doubled() -> None:
+    net = "NET SHORT TERM CAPITAL GAINS AND LOSSES 1,500.00 1,700.00 0.00 0.00 (200.00)"
+    lines = ["Form 1099-B Proceeds From Broker", net, *_TRADES[1:], net]
+    assert _gains(lines) == {"ST": -20_000}
+
+
+def test_subtotal_printed_twice_is_not_doubled_but_categories_still_add() -> None:
+    cov = (
+        "Covered Short Term Capital Gains and Losses Subtotal 1,500.00 1,700.00 0.00 0.00 (200.00)"
+    )
+    non = "Noncovered Short Term Capital Gains and Losses Subtotal 300.00 100.00 0.00 0.00 200.00"
+    assert _gains(["Form 1099-B Proceeds", cov, non, cov, non]) == {"ST": 0}
+    assert _gains(["Form 1099-B Proceeds", cov, cov]) == {"ST": -20_000}

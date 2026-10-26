@@ -188,12 +188,16 @@ def test_patch_form_year_moves_items(client: TestClient, user_id: int) -> None:
     assert client.get(f"/api/tax/documents/{doc['id']}").json()["tax_year"] == 2023
 
 
-def test_patch_form_year_conflicting_with_sibling_is_400(client: TestClient, user_id: int) -> None:
+def test_patch_form_year_moves_sibling_forms_too(client: TestClient, user_id: int) -> None:
     doc = _manual_doc(client, user_id)
-    _form(client, doc["id"])
+    first = _form(client, doc["id"])
     second = _form(client, doc["id"])
     r = client.patch(f"/api/tax/forms/{second['id']}", json={"tax_year": 2023})
-    assert r.status_code == 400
+    assert r.status_code == 200 and r.json()["tax_year"] == 2023
+    detail = client.get(f"/api/tax/documents/{doc['id']}").json()
+    assert detail["tax_year"] == 2023
+    assert {f["tax_year"] for f in detail["forms"]} == {2023}
+    assert first["id"] in {f["id"] for f in detail["forms"]}
 
 
 def test_delete_form_updates_summary(client: TestClient, user_id: int) -> None:

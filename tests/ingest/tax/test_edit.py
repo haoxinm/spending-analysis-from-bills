@@ -191,14 +191,83 @@ def test_changing_tax_year_moves_items_and_document(session: Session, uid: int) 
     assert _total(session, uid, 2024) == 0
 
 
-def test_changing_tax_year_with_sibling_in_other_year_is_rejected(
+def test_changing_tax_year_moves_every_form_of_the_document(session: Session, uid: int) -> None:
+    doc = edit.create_manual_document(session, uid, 2024, None)
+    edit.add_form(session, doc.id, _w2())
+    second = edit.add_form(session, doc.id, _w2(payer_name="Other Co", payer_tin_last4="9999"))
+    edit.update_form(session, second.id, {"tax_year": 2023})
+    session.refresh(doc)
+    assert doc.tax_year == 2023
+    assert {f.tax_year for f in session.scalars(select(TaxForm))} == {2023}
+    assert {i.tax_year for i in session.scalars(select(IncomeItem))} == {2023}
+    assert {t.tax_year for t in session.scalars(select(TaxItem))} == {2023}
+    assert _total(session, uid, 2023) == 200_000_00
+    assert _total(session, uid, 2024) == 0
+
+
+def test_changing_tax_year_with_sibling_already_in_another_year_is_rejected(
     session: Session, uid: int
 ) -> None:
     doc = edit.create_manual_document(session, uid, 2024, None)
     edit.add_form(session, doc.id, _w2())
     second = edit.add_form(session, doc.id, _w2())
+    other = session.scalars(select(TaxForm).where(TaxForm.id != second.id)).one()
+    other.tax_year = 2022
+    session.commit()
     with pytest.raises(edit.YearMismatch):
         edit.update_form(session, second.id, {"tax_year": 2023})
+
+
+def test_multi_form_year_change_conflict_rolls_everything_back(session: Session, uid: int) -> None:
+    doc = edit.create_manual_document(session, uid, 2024, None)
+    first = edit.add_form(session, doc.id, _w2())
+    second = edit.add_form(session, doc.id, _w2(payer_name="Other Co", payer_tin_last4="9999"))
+    other_doc = edit.create_manual_document(session, uid, 2023, None)
+    twin = edit.add_form(session, other_doc.id, _w2())
+    twin.fingerprint = first.fingerprint
+    session.commit()
+    with pytest.raises(edit.Conflict):
+        edit.update_form(session, second.id, {"tax_year": 2023})
+    session.refresh(doc)
+    assert doc.tax_year == 2024
+    assert {
+        f.tax_year for f in session.scalars(select(TaxForm).where(TaxForm.document_id == doc.id))
+    } == {2024}
+
+
+def test_changing_category_away_from_memo_drops_the_memo_flag(session: Session, uid: int) -> None:
+    doc = edit.create_manual_document(session, uid, 2024, None)
+    form = edit.add_form(
+        session,
+        doc.id,
+        edit.FormData(
+            "1099-div", income_items=(edit.IncomeItemData("qualified_dividends", 500_00),)
+        ),
+    )
+    item = form.income_items[0]
+    assert item.is_memo
+    assert _total(session, uid) == 0
+    edit.update_income_item(session, item.id, {"category": "ordinary_dividends", "is_memo": True})
+    # an explicit flag from a client is honoured, but omitting it re-derives from the category
+    edit.update_income_item(session, item.id, {"category": "qualified_dividends"})
+    assert item.is_memo
+    edit.update_income_item(session, item.id, {"category": "ordinary_dividends"})
+    assert not item.is_memo
+    assert _total(session, uid) == 500_00
+
+
+def test_unchanged_category_keeps_a_parsed_memo_flag(session: Session, uid: int) -> None:
+    doc = edit.create_manual_document(session, uid, 2024, None)
+    form = edit.add_form(
+        session,
+        doc.id,
+        edit.FormData(
+            "1099-int", income_items=(edit.IncomeItemData("other", 50_00, is_memo=True),)
+        ),
+    )
+    item = form.income_items[0]
+    edit.update_income_item(session, item.id, {"amount_minor": 60_00})
+    assert item.is_memo and item.amount_minor == 60_00
 
 
 def test_year_change_colliding_with_existing_fingerprint_is_conflict(

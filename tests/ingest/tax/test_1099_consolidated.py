@@ -9,6 +9,8 @@ import pytest
 
 from spend_analyzer.core.errors import ParserError
 from spend_analyzer.core.tax_types import ParsedTaxDocument
+from spend_analyzer.core.types import ExtractedDoc
+from spend_analyzer.ingest.tax.common import parsing_with_pii_terms
 from spend_analyzer.ingest.tax.parsers import f1099_b
 from spend_analyzer.ingest.tax.parsers.f1099_consolidated import PARSER
 from tests.ingest.tax_support import (
@@ -329,3 +331,64 @@ def test_section_without_amounts_is_reported_as_an_unparsed_region() -> None:
     ]
     parsed = PARSER.parse(doc_from_lines(lines))
     assert [(r.kind, r.reason) for r in parsed.unparsed] == [("1099-DIV", "no amounts")]
+
+
+def _header_doc(first_line: str) -> ExtractedDoc:
+    return doc_from_lines(
+        [
+            first_line,
+            "Consolidated Form 1099 Tax Information",
+            "Tax Year 2024",
+            "1099-INT  Interest Income",
+            "Interest income (Box 1)   25.00",
+        ]
+    )
+
+
+def test_header_line_without_company_evidence_is_not_a_payer() -> None:
+    form = PARSER.parse(_header_doc("Jane Q Sample")).forms[0]
+    assert form.payer_name is None
+    assert "Payer name was inferred from the page header." not in form.warnings
+
+
+def test_header_company_matching_a_pii_term_is_not_a_payer() -> None:
+    doc = _header_doc("Sample Family Trust")
+    assert PARSER.parse(doc).forms[0].payer_name == "Sample Family Trust"
+    with parsing_with_pii_terms(["Sample Family"]):
+        assert PARSER.parse(doc).forms[0].payer_name is None
+
+
+def test_payer_printed_after_a_later_accounts_row_is_that_accounts_payer() -> None:
+    lines = [
+        "Consolidated Form 1099 Tax Information",
+        "Tax Year 2024",
+        "Payer: Alder Brokerage Group",
+        "Account number: 1111",
+        "1099-INT  Interest Income",
+        "Interest income (Box 1)   25.00",
+        "Account number: 2222",
+        "Payer: Birchwood Securities",
+        "1099-INT  Interest Income",
+        "Interest income (Box 1)   30.00",
+    ]
+    forms = PARSER.parse(doc_from_lines(lines)).forms
+    assert [(f.payer_name, f.account_last4) for f in forms] == [
+        ("Alder Brokerage Group", "1111"),
+        ("Birchwood Securities", "2222"),
+    ]
+
+
+def test_one_payer_heading_several_accounts_is_kept_for_each() -> None:
+    lines = [
+        "Consolidated Form 1099 Tax Information",
+        "Tax Year 2024",
+        "Payer: Alder Brokerage Group",
+        "Account number: 1111",
+        "1099-INT  Interest Income",
+        "Interest income (Box 1)   25.00",
+        "Account number: 2222",
+        "1099-INT  Interest Income",
+        "Interest income (Box 1)   30.00",
+    ]
+    forms = PARSER.parse(doc_from_lines(lines)).forms
+    assert [f.payer_name for f in forms] == ["Alder Brokerage Group"] * 2

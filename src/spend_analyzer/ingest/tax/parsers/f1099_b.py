@@ -76,6 +76,9 @@ _OTHER_HEADING = re.compile(r"^other\s+transactions\b", re.I)
 _STATE_ROW = re.compile(r"^State\s+([A-Z]{2})\s+State\s+income\s+tax\s+withheld\b")
 _DATE_TOKEN = re.compile(r"^(?:\d{1,2}/\d{1,2}/\d{2,4}|various)$", re.IGNORECASE)
 _FOOTNOTE = re.compile(r"^\([A-Za-z0-9]{1,3}\)$")
+_TRAILING_MARKS = "*\u2020\u2021"
+#: A short code printed after a trade's amounts (adjustment code, footnote letter, marker).
+_CODE_TOKEN = re.compile(r"^(?:[A-Za-z]{1,2}|[*\u2020\u2021#]+)$")
 _NOT_COMPUTED = re.compile(r"^(?:N/?C|N/?A|--+)$", re.I)
 #: A term total printed by the broker: "NET SHORT TERM CAPITAL GAINS AND LOSSES  <amounts>".
 _NET_RE = re.compile(r"^NET\s+(short|long)[-\s]?term\b", re.I)
@@ -127,6 +130,9 @@ class _Scan:
     net_lines: dict[str, int] = field(default_factory=dict)  # "NET SHORT TERM ..." totals
     category_subtotals: dict[str, int] = field(default_factory=dict)  # covered + noncovered
     recaps: dict[str, int] = field(default_factory=dict)  # one-figure recap rows
+    #: term -> printed label -> value. A total line printed twice (summary, then after the
+    #: detail) is one figure (the last one printed); distinct labels are summed in `_scan`.
+    labelled: dict[str, dict[str, dict[str, int]]] = field(default_factory=dict)
     grand_total: bool = False  # the whole-statement total row was seen: the table is finished
     unreadable_rows: bool = False
     not_computed_rows: bool = False  # trades printed with "N/C" in place of a gain
@@ -150,10 +156,16 @@ def _trade_tail(words: list[str], last_date: int) -> list[int] | str | None:
             continue
         if _NOT_COMPUTED.match(token):
             return "not_computed"
-        money = parse_money(token)
+        money = parse_money(token.rstrip(_TRAILING_MARKS) or token)
         if money is None:
-            return None
+            if not amounts:
+                return None  # a word right after the dates: not a trade row
+            if _CODE_TOKEN.match(token):
+                continue  # a trailing adjustment code such as W, D or X
+            return "unreadable"
         amounts.append(-money.magnitude_minor if money.printed_negative else money.magnitude_minor)
+    if not amounts:
+        return None
     return amounts if len(amounts) >= 3 else "unreadable"
 
 
@@ -187,17 +199,17 @@ def _scan(block: ExtractedDoc) -> _Scan:
             net = _NET_RE.match(row.text)
             if net is not None:
                 key = net.group(1).lower()
-                scan.net_lines[key] = scan.net_lines.get(key, 0) + last
+                _record(scan, "net", key, row, last)
                 continue
             sub = _CATEGORY_SUBTOTAL_RE.match(row.text)
             if sub is not None:
                 key = sub.group(1).lower()
-                scan.category_subtotals[key] = scan.category_subtotals.get(key, 0) + last
+                _record(scan, "sub", key, row, last)
                 continue
             recap = _RECAP_RE.match(row.text)
             if recap is not None and len(money) == 1:
                 key = recap.group(1).lower()
-                scan.recaps[key] = scan.recaps.get(key, 0) + last
+                _record(scan, "recap", key, row, last)
             continue
         if current is None:
             continue
@@ -212,7 +224,19 @@ def _scan(block: ExtractedDoc) -> _Scan:
             continue
         proceeds, cost, wash, gain = tail[0], tail[1], (tail[-2] if len(tail) >= 4 else 0), tail[-1]
         scan.detail.setdefault(current, _Totals()).add(proceeds, cost, wash, gain)
+    for kind, target in (
+        ("net", scan.net_lines),
+        ("sub", scan.category_subtotals),
+        ("recap", scan.recaps),
+    ):
+        for key, by_label in scan.labelled.get(kind, {}).items():
+            target[key] = sum(by_label.values())
     return scan
+
+
+def _record(scan: _Scan, kind: str, key: str, row: Row, value: int) -> None:
+    label = " ".join(w.text.lower() for w in row.words if parse_money(w.text) is None)
+    scan.labelled.setdefault(kind, {}).setdefault(key, {})[label] = value
 
 
 def _row_money_last(row: Row) -> int | None:

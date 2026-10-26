@@ -115,3 +115,35 @@ def test_page_after_instructions_with_amounts_is_kept() -> None:
 def test_number_intact_but_suffix_letter_spaced() -> None:
     doc = doc_from_lines(["Form 1099 - I N T 2024", "Form 1099 - D I V 2024"])
     assert _rows(normalize_doc(doc)) == ["Form 1099-INT 2024", "Form 1099-DIV 2024"]
+
+
+def test_inline_mention_of_instructions_does_not_cut_figures_below() -> None:
+    doc = doc_from_lines(
+        [
+            "For details see the Instructions for Recipient on the back of this page.",
+            "1 Interest income   25.00",
+        ]
+    )
+    assert "25.00" in "\n".join(_rows(normalize_doc(doc)))
+
+
+def test_form_title_row_with_notice_phrase_does_not_cut() -> None:
+    doc = doc_from_lines(
+        [
+            "Form 1099-INT Interest Income Notice to Recipients",
+            "1 Interest income   25.00",
+        ]
+    )
+    assert normalize_doc(doc) is doc
+
+
+def test_amount_rows_below_a_heading_on_the_same_page_survive() -> None:
+    doc = doc_from_lines(
+        [
+            "INSTRUCTIONS FOR RECIPIENT",
+            "Report the amounts shown on your return.",
+            "1 Interest income   25.00",
+        ]
+    )
+    text = "\n".join(_rows(normalize_doc(doc)))
+    assert "25.00" in text and "Report the amounts" not in text

@@ -293,12 +293,29 @@ def _drop_instructions(pages: list[list[list[Word]]]) -> bool:
                 changed = True
             continue
         for index, row in enumerate(rows):
-            if _INSTRUCTIONS.search(" ".join(w.text for w in row)):
-                del rows[index:]
-                seen_marker = True
-                changed = True
-                break
+            if not _is_instructions_heading(row):
+                continue
+            later = next((j for j in range(index + 1, len(rows)) if _has_amount(rows[j])), None)
+            # Amount rows below the heading (a form sharing the page) must survive: drop only
+            # the heading and the prose directly under it; otherwise cut to the page end.
+            del rows[index : len(rows) if later is None else later]
+            seen_marker = True
+            changed = True
+            break
     return changed
+
+
+_HEADING_MAX_WORDS = 12
+
+
+def _is_instructions_heading(row: Sequence[Word]) -> bool:
+    """A standalone heading row ("INSTRUCTIONS FOR RECIPIENT OF FORMS 1099"): short, no amount,
+    starting with the phrase. Inline prose that merely mentions it, or a form title row that
+    also carries a notice phrase, is not one."""
+    if len(row) > _HEADING_MAX_WORDS or _has_amount(row):
+        return False
+    match = _INSTRUCTIONS.search(" ".join(w.text for w in row))
+    return match is not None and not re.search(r"[A-Za-z]{3}", match.string[: match.start()])
 
 
 def _is_prose_or_empty(rows: Sequence[Sequence[Word]]) -> bool:

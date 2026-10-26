@@ -112,7 +112,15 @@ function ItemRow({
         if (item) {
           await updateIncome.mutateAsync({
             id: item.id,
-            patch: { category, amount_minor, box, label, is_memo: draft.memo },
+            // Only a flag the user changed is sent: the server derives memo from the category
+            // otherwise, so a stale flag cannot pin an item as memo after a category change.
+            patch: {
+              category,
+              amount_minor,
+              box,
+              label,
+              ...(draft.memo !== ("is_memo" in item && item.is_memo) ? { is_memo: draft.memo } : {}),
+            },
           });
         } else {
           await createIncome.mutateAsync({
@@ -172,7 +180,14 @@ function ItemRow({
         label="Category"
         value={draft.category}
         options={options}
-        onChange={(v) => set({ category: v })}
+        onChange={(v) =>
+          set({
+            category: v,
+            // Memo follows the category (qualified dividends are always memo); an item
+            // returned to its own category gets its stored flag back.
+            memo: item && v === item.category && "is_memo" in item ? item.is_memo : v === "qualified_dividends",
+          })
+        }
         className="w-52"
       />
       <TextField

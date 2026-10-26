@@ -107,7 +107,7 @@ export function DocumentDetail({
         <p className="text-xs text-muted-foreground">This document has no forms.</p>
       ) : null}
       {forms.map((f) => (
-        <FormCard key={f.id} form={f} />
+        <FormCard key={f.id} form={f} siblings={forms.length - 1} />
       ))}
       {adding ? (
         <AddFormEditor document={document} onClose={() => onAddingChange(false)} />
