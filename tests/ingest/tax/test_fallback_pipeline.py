@@ -26,7 +26,7 @@ from tests.ingest.tax_support import generated_pdf
 from tests.llm_fakes import FakeLLM, install, remote_cfg
 
 _UNREADABLE = [
-    "Year-End Statement  Tax Year 2024",
+    "Form 1099-INT  Year-End Statement  Tax Year 2024",
     "Granite Fund Trust  summary of income paid to you during the year",
     "Payer identification  99-0000042      Account  SYN-000123456789",
     "Recipient  Jordan Q. Testperson    SSN 912-34-5678",
@@ -250,3 +250,80 @@ def test_consolidated_llm_items_fill_only_sections_the_parser_did_not_read() -> 
     ]
     assert any("review them" in w for w in merged.warnings)
     assert isinstance(ParsedTaxItem, type)
+
+
+# --- whole-file sends need evidence of a W-2 / 1099 form -----------------------------------
+
+_BANK_STATEMENT = [
+    [
+        "Granite Savings Bank   Annual Account Summary 2024",
+        "Account number  SYN-000123456789",
+        "Interest earned this year                 1,234.56",
+        "Fees charged this year                       12.00",
+        "Your 1099-INT will be mailed separately if interest exceeds $10.",
+    ],
+    ["Page 2 of 2", "Month by month activity", "January interest   100.00"],
+]
+
+
+def test_bank_annual_statement_with_year_and_fallback_sends_nothing(
+    session: Session, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    fake = install(monkeypatch, FakeLLM(default=_reply()))
+    result = _import(
+        session,
+        _pdf(tmp_path, "bank.pdf", _BANK_STATEMENT),
+        _user(session),
+        _extractor(),
+        tax_year=2024,
+    )
+    assert fake.requests == [] and not result.llm_used
+    assert result.status == "unsupported"
+
+
+def test_only_pages_with_form_evidence_and_their_continuations_are_sent() -> None:
+    from spend_analyzer.ingest.tax.fallback import _whole_file_regions
+    from tests.ingest.tax_support import doc_from_pages
+
+    pages = [
+        ["Cover letter from Granite Bank   total 999.00"],
+        ["Form 1099-INT  Tax Year 2024", "PAYER'S name Granite Fund Trust", "Interest paid   5.00"],
+        ["Details continued", "Fees   7.00"],
+        ["Form 1040 U.S. Individual Income Tax Return 2024", "Wages 55,000.00"],
+        ["Schedule notes", "Refund   123.00"],
+        ["Form W-2 Wage and Tax Statement 2024", "1 Wages, tips, other compensation  9.00"],
+    ]
+    (region,) = _whole_file_regions(doc_from_pages(pages))
+    assert region.pages == (2, 3, 6)  # not the cover, nor the 1040 and what follows it
+    assert _whole_file_regions(doc_from_pages(_BANK_STATEMENT)) == ()
+
+
+def test_a_1040_alone_is_never_sent(
+    session: Session, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    fake = install(monkeypatch, FakeLLM(default=_reply()))
+    pages = [["Form 1040 U.S. Individual Income Tax Return 2024", "Wages   55,000.00"]]
+    _import(session, _pdf(tmp_path, "r.pdf", pages), _user(session), _extractor(), tax_year=2024)
+    assert fake.requests == []
+
+
+def test_requests_sent_is_reported_when_the_extractor_raises() -> None:
+    from spend_analyzer.core.tax_types import FallbackResult
+    from spend_analyzer.ingest.tax.fallback import apply_fallback
+    from tests.ingest.tax_support import doc_from_pages
+
+    class Boom:
+        id = "boom"
+        version = "1"
+        requests_sent = 0
+
+        def preview(self, doc: Any, regions: Any) -> list[str]:
+            return []
+
+        def extract(self, doc: Any, regions: Any, *, tax_year: int) -> FallbackResult:
+            self.requests_sent = 2  # two requests went out, then something unexpected happened
+            raise RuntimeError("unexpected")
+
+    doc = doc_from_pages([["Form 1099-INT  Tax Year 2024", "Interest   5.00"]])
+    run = apply_fallback(doc, None, Boom(), tax_year=2024)
+    assert run.attempted and run.requests_sent == 2 and run.document is None

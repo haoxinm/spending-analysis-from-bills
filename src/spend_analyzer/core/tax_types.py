@@ -217,6 +217,10 @@ class ParsedTaxForm:
     extraction_method: TaxOrigin = "parser"
 
 
+#: ``(original page number, x0, top, x1, bottom)`` in PDF points (origin top-left).
+PageBox = tuple[int, float, float, float, float]
+
+
 @dataclass(frozen=True, slots=True)
 class UnparsedRegion:
     """A part of a file that looks like a tax form (or section) but yielded no figures.
@@ -225,11 +229,16 @@ class UnparsedRegion:
     the pages involved. `kind` is a form type or section name such as ``"1099-INT"`` or
     ``"unknown"``; `pages` are 1-based page numbers of the original file; `reason` is fixed
     generic text. Never holds document text.
+
+    `boxes` (optional) are the rectangles of those pages that the region occupies, so a fallback
+    can send only that part of a page (a page with two forms side by side where only one failed).
+    A page of `pages` without a box is the whole page.
     """
 
     kind: str
     pages: tuple[int, ...]
     reason: str
+    boxes: tuple[PageBox, ...] = ()
 
 
 @dataclass(frozen=True, slots=True)
@@ -267,6 +276,9 @@ class TaxFallbackExtractor(Protocol):
 
     id: str
     version: str
+    #: Requests sent so far by the latest `extract` call, kept up to date while it runs so a caller
+    #: can still report them when `extract` raises.
+    requests_sent: int
 
     def preview(self, doc: ExtractedDoc, regions: Sequence[UnparsedRegion]) -> list[str]:
         """Exactly the redacted texts that `extract` would send. No network."""

@@ -229,7 +229,7 @@ def test_import_and_classify_send_no_tax_content_to_the_llm(
 # --- opt-in LLM fallback -------------------------------------------------------------------------
 
 _UNREADABLE_PAGE = [
-    "Year-End Statement  Tax Year 2024",
+    "Form 1099-INT  Year-End Statement  Tax Year 2024",
     "Granite Fund Trust  summary of income paid to you during the year",
     "Payer identification  99-0000042      Account  SYN-000123456789",
     "RECIPIENT'S name: Jordan Q. Testperson",

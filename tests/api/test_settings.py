@@ -309,6 +309,7 @@ def test_pii_test_defaults_to_saved_terms(
 def test_tax_llm_fallback_defaults_off_and_round_trips(client: TestClient) -> None:
     body = client.get("/api/settings").json()
     assert body["ingest"]["tax_llm_fallback"] is False
+    body["llm"].update(enabled=True, base_url="http://localhost:11434", model="m")
     body["ingest"]["tax_llm_fallback"] = True
     assert client.put("/api/settings", json=body).json()["ingest"]["tax_llm_fallback"] is True
     assert client.get("/api/settings").json()["ingest"]["tax_llm_fallback"] is True
@@ -317,3 +318,18 @@ def test_tax_llm_fallback_defaults_off_and_round_trips(client: TestClient) -> No
     body["llm"]["batch_size"] = 12
     client.put("/api/settings", json=body)
     assert client.get("/api/settings").json()["ingest"]["tax_llm_fallback"] is True
+
+
+def test_disabling_the_llm_clears_the_tax_fallback_opt_in(client: TestClient) -> None:
+    body = client.get("/api/settings").json()
+    body["llm"].update(enabled=True, base_url="http://localhost:11434", model="m")
+    body["ingest"]["tax_llm_fallback"] = True
+    assert client.put("/api/settings", json=body).json()["ingest"]["tax_llm_fallback"] is True
+    body["llm"]["enabled"] = False
+    saved = client.put("/api/settings", json=body).json()
+    assert saved["ingest"]["tax_llm_fallback"] is False
+    body["llm"]["enabled"] = True  # re-enabling does not resume tax sending
+    body["ingest"]["tax_llm_fallback"] = client.get("/api/settings").json()["ingest"][
+        "tax_llm_fallback"
+    ]
+    assert client.put("/api/settings", json=body).json()["ingest"]["tax_llm_fallback"] is False

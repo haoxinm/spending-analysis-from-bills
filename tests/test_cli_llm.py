@@ -224,3 +224,17 @@ def test_tax_llm_fallback_flag(home: Path) -> None:
     assert "[ingest] tax_llm_fallback: true" in runner.invoke(app, ["llm", "show"]).output
     runner.invoke(app, ["llm", "set", "--no-tax-llm-fallback"])
     assert load_settings().ingest.tax_llm_fallback is False
+
+
+def test_disabling_the_llm_clears_the_tax_fallback_opt_in(home: Path) -> None:
+    runner.invoke(app, ["llm", "set", "--base-url", "http://localhost:11434", "--model", "m"])
+    runner.invoke(app, ["llm", "enable"])
+    runner.invoke(app, ["llm", "set", "--tax-llm-fallback"])
+    assert load_settings().ingest.tax_llm_fallback is True
+    runner.invoke(app, ["llm", "disable"])
+    assert load_settings().ingest.tax_llm_fallback is False
+    runner.invoke(app, ["llm", "enable"])
+    assert load_settings().ingest.tax_llm_fallback is False
+    runner.invoke(app, ["llm", "set", "--tax-llm-fallback"])
+    runner.invoke(app, ["llm", "set", "--disable"])
+    assert load_settings().ingest.tax_llm_fallback is False

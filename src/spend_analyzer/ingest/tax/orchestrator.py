@@ -19,10 +19,12 @@ Forms whose tax year differs from the file's majority year are dropped with a wa
 from __future__ import annotations
 
 from collections import Counter
+from collections.abc import Collection
 from dataclasses import dataclass, replace
 
 from spend_analyzer.core.errors import ParserError, UnsupportedLayoutError
 from spend_analyzer.core.tax_types import (
+    PageBox,
     ParsedTaxDocument,
     ParsedTaxForm,
     TaxFormParser,
@@ -119,9 +121,41 @@ def _coalesce_consolidated(segments: list[Segment]) -> list[Segment]:
     return out
 
 
+def _boxes(segment: Segment, pages: Collection[int]) -> tuple[PageBox, ...]:
+    """One rectangle per original page: the extent of the words of the segment pages `pages`
+    (segment page numbers). Pages without words get no box (the whole page is meant)."""
+    extents: dict[int, tuple[float, float, float, float]] = {}
+    for page in segment.doc.pages:
+        if page.page_number not in pages or not page.words:
+            continue
+        original = segment.page_map.get(page.page_number, page.page_number)
+        x0 = min(w.x0 for w in page.words)
+        top = min(w.top for w in page.words)
+        x1 = max(w.x1 for w in page.words)
+        bottom = max(w.bottom for w in page.words)
+        old = extents.get(original)
+        if old is not None:
+            x0, top = min(x0, old[0]), min(top, old[1])
+            x1, bottom = max(x1, old[2]), max(bottom, old[3])
+        extents[original] = (x0, top, x1, bottom)
+    return tuple((n, *box) for n, box in sorted(extents.items()))
+
+
 def _remap(region: UnparsedRegion, segment: Segment) -> UnparsedRegion:
     pages = tuple(sorted({segment.page_map.get(p, p) for p in region.pages}))
-    return replace(region, pages=pages)
+    boxes = _boxes(segment, set(region.pages))
+    covered = {b[0] for b in boxes}
+    if covered != set(pages):
+        boxes = ()  # a page without words: send it whole
+    return replace(region, pages=pages, boxes=boxes)
+
+
+def _segment_region(segment: Segment, reason: str) -> UnparsedRegion:
+    pages = segment.original_pages
+    boxes = _boxes(segment, set(segment.page_map))
+    if {b[0] for b in boxes} != set(pages):
+        boxes = ()
+    return UnparsedRegion(_kind(segment), pages, reason, boxes)
 
 
 def _kind(segment: Segment) -> str:
@@ -166,9 +200,7 @@ def parse_document(doc: ExtractedDoc, *, tax_year: int | None = None) -> ParseOu
         except UnsupportedLayoutError:
             if segment.anchors and _has_amounts(segment.doc):
                 warnings.append(_UNRECOGNIZED_WARNING)
-                unparsed.append(
-                    UnparsedRegion(_kind(segment), segment.original_pages, "unrecognized")
-                )
+                unparsed.append(_segment_region(segment, "unrecognized"))
             continue
         try:
             parsed = parser.parse(segment.doc, tax_year=year)
@@ -177,7 +209,7 @@ def parse_document(doc: ExtractedDoc, *, tax_year: int | None = None) -> ParseOu
             warnings.append(
                 check_warning(f"{str(exc).rstrip('.')}; that part of the file was skipped.")
             )
-            unparsed.append(UnparsedRegion(_kind(segment), segment.original_pages, "unreadable"))
+            unparsed.append(_segment_region(segment, "unreadable"))
             continue
         used[parser.id] = parser.version
         forms.extend(parsed.forms)

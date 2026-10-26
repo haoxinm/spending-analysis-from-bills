@@ -219,6 +219,8 @@ def golden_dict(doc: ParsedTaxDocument) -> dict[str, Any]:
     result: dict[str, Any] = json.loads(json.dumps(asdict(doc), sort_keys=True))
     if not result.get("unparsed"):
         result.pop("unparsed", None)  # absent in goldens that predate partial-success reporting
+    for region in result.get("unparsed", []):
+        region.pop("boxes", None)  # geometry for the LLM fallback's crop, not a parse result
     # Provenance defaults (all deterministic output) are absent in goldens that predate the
     # LLM fallback; a non-default value (``llm``) stays visible.
     for form in result.get("forms", []):

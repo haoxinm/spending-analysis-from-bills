@@ -51,6 +51,7 @@ from spend_analyzer.core.tax_types import (
     FallbackResult,
     FormType,
     IncomeCategory,
+    PageBox,
     ParsedIncomeItem,
     ParsedTaxForm,
     ParsedTaxItem,
@@ -163,7 +164,8 @@ class LLMTaxResult(BaseModel):
 # Redaction of the outgoing page text
 # ------------------------------------------------------------------------------------------------
 
-#: Labels whose value cell (under or beside the label) identifies the recipient / employee.
+#: Labels whose value cell (under or beside the label) identifies a person: the recipient /
+#: employee, a spouse or dependent, the paid preparer.
 _IDENTITY_LABELS: Final = tuple(
     re.compile(p, re.IGNORECASE)
     for p in (
@@ -178,13 +180,21 @@ _IDENTITY_LABELS: Final = tuple(
         r"(?:Mailing|Home)\s+address",
         r"Your\s+(?:first\s+name|name|social\s+security\s+number)",
         r"Name\(s\)\s+shown\s+on\s+return",
-        r"Spouse'?s\s+(?:name|social\s+security\s+number)",
+        r"(?:Your\s+)?Spouse'?s\s+(?:first\s+name|name|social\s+security\s+number)",
+        r"Paid\s+preparer(?:'?s)?(?:\s+use\s+only)?",
+        r"Preparer'?s\s+(?:name|signature|PTIN|address)",
+        r"Firm'?s\s+(?:name|address|EIN)",
+        r"Third[- ]party\s+designee",
+        r"Dependents?(?:'?s)?(?:\s+\(see\s+instructions\))?(?:\s+(?:name|first\s+name))?",
     )
 )
-#: A row below an identity label that starts a new box (stop dropping).
-_NEXT_BOX: Final = re.compile(
-    r"\b(?:wages|tax|income|interest|dividend|number|code|box|payer|employer|state|control|"
-    r"withh?eld|federal|distribution|proceeds|gain|account|TIN|copy)\b",
+#: A cell below an identity label that is itself a printed box label (stop dropping). A closed set
+#: of form phrases: a value such as "100 State Street" or "Federal St" never matches.
+_KNOWN_LABEL: Final = re.compile(
+    r"^box\b|\bPAYER'?S?\b|\bEmployer'?s\b|\bControl\s+number\b|"
+    r"\bAccount\s+number\b|\bFederal\s+income\s+tax\b|\bState\s+(?:income\s+tax|tax|ID|code|"
+    r"wages|identification)\b|\bWages,?\s+tips\b|\bSocial\s+security\s+(?:wages|tax)\b|"
+    r"\bTIN\b|\bFATCA\b|\bCopy\s+[A-Z0-9]\b",
     re.IGNORECASE,
 )
 _PAYER_LABEL_TAIL: Final = re.compile(r"(?:name|address),?\s*$", re.IGNORECASE)
@@ -192,8 +202,40 @@ _X_TOL: Final = 6.0
 _MAX_ROWS_BELOW: Final = 4
 _SAME_ROW_GAP: Final = 8.0
 _LABEL_GAP: Final = 24.0
+#: A vertical distance (row top to row top) beyond this many glyph heights is a blank row.
+_GAP_FACTOR: Final = 1.8
 _LONG_DIGITS: Final = re.compile(r"(?<![\d.,$])\d{6,}(?!\d|[.,]\d)")
 _AMOUNT_TOKEN: Final = re.compile(r"\d[\d,]*\.\d{2}\b")
+
+_STREET_SUFFIX: Final = (
+    r"(?:St|Street|Ave|Avenue|Rd|Road|Ln|Lane|Dr|Drive|Blvd|Boulevard|Ct|Court|Way|Pl|Place|"
+    r"Pkwy|Parkway|Hwy|Highway|Cir|Circle|Ter|Terrace|Trl|Trail|Sq|Square|Loop|Pike|Plaza)"
+)
+#: Address-shaped text, anywhere on the page: street lines, "CITY ST ZIP", ZIP+4, PO boxes.
+_ADDRESS_SHAPES: Final = (
+    re.compile(
+        rf"(?<![\d.,$/-])\d{{1,6}}[A-Za-z]?\s+(?:[A-Za-z0-9.'-]+\s+){{0,3}}?{_STREET_SUFFIX}\b\.?"
+        r"(?:[\s,]+(?:(?:Apt|Apartment|Unit|Suite|Ste|Bldg|Building|Fl|Floor|Rm|Room)\.?\s*#?\s*"
+        r"[\w-]+|#\s*[\w-]+))?",
+        re.IGNORECASE,
+    ),
+    re.compile(r"(?:[A-Za-z][A-Za-z.'-]*,?\s+){1,3}[A-Z]{2}\s+\d{5}(?:-\d{4})?\b"),
+    re.compile(r"\b[A-Z]{2}\s+\d{5}(?:-\d{4})?\b"),
+    re.compile(r"(?<![\d-])\d{5}-\d{4}(?![\d-])"),
+    re.compile(r"\b(?:P\.?\s?O\.?\s*Box|Post\s+Office\s+Box)\s*\w+", re.IGNORECASE),
+)
+#: Headings that end the unlabeled mailing block at the top of page 1.
+_HEADING: Final = re.compile(
+    r"\b(?:1099|W-?2|Form|Tax\s+Year|Year[- ]End|Consolidated|Statement|Wage\s+and\s+Tax|Copy)\b",
+    re.IGNORECASE,
+)
+#: A line of the leading block that names the payer / a company (kept).
+_PAYERISH: Final = re.compile(
+    r"\bPAYER\b|\b(?:Inc|LLC|Corp|Corporation|Co|Company|Bank|Trust|Fund|Financial|Brokerage|"
+    r"Securities|Services|Group|Partners|Holdings|Capital|Investments|Credit\s+Union)\b",
+    re.IGNORECASE,
+)
+_PAYER_LABEL: Final = re.compile(r"\bPAYER'?S?\b", re.IGNORECASE)
 
 
 def _is_amount(token: str) -> bool:
@@ -203,18 +245,12 @@ def _is_amount(token: str) -> bool:
 def _label_spans(row: Row) -> list[tuple[int, int, re.Match[str]]]:
     """``(first word index, last word index, match)`` for each identity label match in `row`."""
     out: list[tuple[int, int, re.Match[str]]] = []
-    offsets: list[tuple[int, int]] = []
-    pos = 0
-    for word in row.words:
-        offsets.append((pos, pos + len(word.text)))
-        pos += len(word.text) + 1
+    offsets = _word_offsets(row)
     for label in _IDENTITY_LABELS:
         for match in label.finditer(row.text):
             if match.end() <= match.start():
                 continue
-            covered = [
-                i for i, (s, e) in enumerate(offsets) if s < match.end() and e > match.start()
-            ]
+            covered = _covered(offsets, match.start(), match.end())
             if not covered:
                 continue
             if _PAYER_LABEL_TAIL.search(row.text[max(0, match.start() - 24) : match.start()]):
@@ -223,8 +259,25 @@ def _label_spans(row: Row) -> list[tuple[int, int, re.Match[str]]]:
     return out
 
 
+def _word_offsets(row: Row) -> list[tuple[int, int]]:
+    offsets: list[tuple[int, int]] = []
+    pos = 0
+    for word in row.words:
+        offsets.append((pos, pos + len(word.text)))
+        pos += len(word.text) + 1
+    return offsets
+
+
+def _covered(offsets: Sequence[tuple[int, int]], start: int, end: int) -> list[int]:
+    return [i for i, (s, e) in enumerate(offsets) if s < end and e > start]
+
+
 def _identity_drops(rows: Sequence[Row]) -> set[tuple[int, int]]:
-    """``(row index, word index)`` of the words to remove: the value cells of identity labels."""
+    """``(row index, word index)`` of the words to remove: the value cells of identity labels.
+
+    The walk below a label stops on layout, not on words: a blank row (nothing in the label's
+    column, or a vertical gap), an amount, another label, or `_MAX_ROWS_BELOW` rows.
+    """
     drops: set[tuple[int, int]] = set()
     for r_index, row in enumerate(rows):
         for first, last, _match in _label_spans(row):
@@ -239,31 +292,85 @@ def _identity_drops(rows: Sequence[Row]) -> set[tuple[int, int]]:
                     break
                 drops.add((r_index, w_index))
                 prev = word
-            # rows below: the words inside the label's x-range, until another box starts
+            # rows below: the words inside the label's x-range
+            above = row
             for offset in range(1, _MAX_ROWS_BELOW + 1):
                 if r_index + offset >= len(rows):
                     break
                 below = rows[r_index + offset]
+                if below.top - above.top > _GAP_FACTOR * max(above.bottom - above.top, 8.0):
+                    break  # a blank row
                 inside = [
                     i
                     for i, w in enumerate(below.words)
                     if w.x1 >= lo and w.x0 <= hi  # overlaps the label's cell
                 ]
                 if not inside:
-                    continue
-                text = " ".join(below.words[i].text for i in inside)
-                if _NEXT_BOX.search(text) or any(_is_amount(below.words[i].text) for i in inside):
                     break
+                text = " ".join(below.words[i].text for i in inside)
+                if _KNOWN_LABEL.search(text) or any(
+                    _is_amount(below.words[i].text) for i in inside
+                ):
+                    break
+                if any(set(range(f, la + 1)) & set(inside) for f, la, _ in _label_spans(below)):
+                    break  # another identity label starts its own cell
                 drops.update((r_index + offset, i) for i in inside)
+                above = below
     return drops
 
 
-def _drop_identity_by_words(words: Sequence[Word]) -> str | None:
-    """The page text without identity cells, or `None` when nothing was removed."""
-    rows = cluster_rows(words)
-    drops = _identity_drops(rows)
-    if not drops:
-        return None
+def _address_drops(rows: Sequence[Row]) -> set[tuple[int, int]]:
+    """Words of address-shaped text (street lines, city/state/ZIP, ZIP+4, PO boxes) anywhere."""
+    drops: set[tuple[int, int]] = set()
+    for r_index, row in enumerate(rows):
+        offsets = _word_offsets(row)
+        for shape in _ADDRESS_SHAPES:
+            for match in shape.finditer(row.text):
+                drops.update((r_index, i) for i in _covered(offsets, match.start(), match.end()))
+    return drops
+
+
+def _leading_block_drops(rows: Sequence[Row]) -> set[tuple[int, int]]:
+    """Rows above the first heading / amount of page 1 (the mailing block of a statement), except
+    lines that name the payer."""
+    drops: set[tuple[int, int]] = set()
+    for r_index, row in enumerate(rows):
+        payerish = _PAYERISH.search(row.text) is not None
+        if (
+            _HEADING.search(row.text)
+            or _AMOUNT_TOKEN.search(row.text)
+            or _label_spans(row)
+            or (_KNOWN_LABEL.search(row.text) and not payerish)
+        ):
+            break  # the form proper starts here
+        if not payerish:
+            drops.update((r_index, i) for i in range(len(row.words)))
+    return drops
+
+
+def _grid_rows(text: str) -> tuple[Row, ...]:
+    """Rows for text without word boxes: one row per line, words on a character grid, so that a
+    blank line is a vertical gap and a value under a label overlaps it."""
+    words: list[Word] = []
+    for index, line in enumerate(text.split("\n")):
+        top = index * 12.0
+        for match in re.finditer(r"\S+", line):
+            words.append(
+                Word(
+                    text=match.group(0),
+                    x0=match.start() * 6.0,
+                    x1=match.end() * 6.0,
+                    top=top,
+                    bottom=top + 9.0,
+                )
+            )
+    return cluster_rows(words)
+
+
+def _redact_rows(rows: Sequence[Row], *, first_page: bool) -> str:
+    drops = _identity_drops(rows) | _address_drops(rows)
+    if first_page:
+        drops |= _leading_block_drops(rows)
     lines: list[str] = []
     for r_index, row in enumerate(rows):
         kept = [w.text for w_index, w in enumerate(row.words) if (r_index, w_index) not in drops]
@@ -272,38 +379,15 @@ def _drop_identity_by_words(words: Sequence[Word]) -> str | None:
     return "\n".join(lines)
 
 
-def _drop_identity_by_lines(text: str) -> str:
-    """Line-based fallback for pages without word boxes."""
-    lines = text.split("\n")
-    out: list[str] = []
-    skip = 0
-    for line in lines:
-        if skip and not _NEXT_BOX.search(line) and not _AMOUNT_TOKEN.search(line):
-            skip -= 1
-            continue
-        skip = 0
-        label_end = max(
-            (m.end() for label in _IDENTITY_LABELS for m in [label.search(line)] if m), default=-1
-        )
-        if label_end >= 0:
-            rest = line[label_end:]
-            kept = line[:label_end] + (rest if _AMOUNT_TOKEN.search(rest) else "")
-            out.append(kept)
-            skip = 2
-            continue
-        out.append(line)
-    return "\n".join(out)
-
-
 def _mask_long_digits(text: str) -> str:
     return _LONG_DIGITS.sub(lambda m: "*" * (len(m.group(0)) - 4) + m.group(0)[-4:], text)
 
 
-def redact_tax_text(text: str, pii_terms: Sequence[str] = ()) -> str:
-    """Redact already-extracted text (no word boxes): identity rows by label, TIN shapes,
-    e-mails / personal-info terms / account numbers, other long digit runs. See the module
-    docstring."""
-    return _finish(_drop_identity_by_lines(text), pii_terms)
+def redact_tax_text(text: str, pii_terms: Sequence[str] = (), *, first_page: bool = False) -> str:
+    """Redact already-extracted text (no word boxes): identity rows by label, address-shaped
+    lines, TIN shapes, e-mails / personal-info terms / account numbers, other long digit runs.
+    See the module docstring."""
+    return _finish(_redact_rows(_grid_rows(text), first_page=first_page), pii_terms)
 
 
 def _finish(text: str, pii_terms: Sequence[str]) -> str:
@@ -314,12 +398,28 @@ def _finish(text: str, pii_terms: Sequence[str]) -> str:
 
 def redact_page(page: PageText, pii_terms: Sequence[str] = ()) -> str:
     """The text of `page` as it may leave the machine (see the module docstring)."""
-    if page.words:
-        by_words = _drop_identity_by_words(page.words)
-        text = by_words if by_words is not None else page.text
-    else:
-        text = _drop_identity_by_lines(page.text)
-    return _finish(text, pii_terms)
+    rows = cluster_rows(page.words) if page.words else _grid_rows(page.text)
+    return _finish(_redact_rows(rows, first_page=page.page_number == 1), pii_terms)
+
+
+def crop_page(page: PageText, boxes: Sequence[PageBox]) -> PageText:
+    """`page` reduced to the words inside `boxes` (the part of a page an unparsed region
+    occupies). A page without word boxes, or without boxes to crop to, is returned unchanged."""
+    mine = [b for b in boxes if b[0] == page.page_number]
+    if not page.words or not mine:
+        return page
+    tol = 1.0
+    kept = tuple(
+        w
+        for w in page.words
+        if any(
+            b[1] - tol <= (w.x0 + w.x1) / 2 <= b[3] + tol
+            and b[2] - tol <= (w.top + w.bottom) / 2 <= b[4] + tol
+            for b in mine
+        )
+    )
+    text = "\n".join(r.text for r in cluster_rows(kept))
+    return PageText(page_number=page.page_number, text=text, words=kept, char_count=len(text))
 
 
 # ------------------------------------------------------------------------------------------------
@@ -344,6 +444,20 @@ def _region_pages(doc: ExtractedDoc, regions: Sequence[UnparsedRegion]) -> list[
     return sorted(wanted & have)
 
 
+def _page_for_regions(page: PageText, regions: Sequence[UnparsedRegion]) -> PageText:
+    """The part of `page` the regions that cover it occupy: the whole page when any of them has no
+    box for it, else only the words inside the boxes (so a form that parsed is not re-sent)."""
+    boxes: list[PageBox] = []
+    for region in regions:
+        if page.page_number not in region.pages:
+            continue
+        mine = [b for b in region.boxes if b[0] == page.page_number]
+        if not mine:
+            return page
+        boxes.extend(mine)
+    return crop_page(page, boxes)
+
+
 def build_requests(
     doc: ExtractedDoc, regions: Sequence[UnparsedRegion], pii_terms: Sequence[str] = ()
 ) -> tuple[list[Request], bool]:
@@ -354,6 +468,8 @@ def build_requests(
     by_number = {p.page_number: p for p in doc.pages}
     first_page = doc.pages[0]
     header = redact_page(first_page, pii_terms)[:CONTEXT_CHARS]
+    if not _PAYER_LABEL.search(header):
+        header = ""  # only a header that names the payer helps; anything else is just exposure
     kinds = list(
         dict.fromkeys(r.kind for r in regions if _SAFE_KIND.match(r.kind) and r.kind != "unknown")
     )
@@ -363,7 +479,9 @@ def build_requests(
     current: list[tuple[int, str]] = []
     size = 0
     for number in pages:
-        text = redact_page(by_number[number], pii_terms)[:MAX_CHARS_PER_REQUEST]
+        text = redact_page(_page_for_regions(by_number[number], regions), pii_terms)[
+            :MAX_CHARS_PER_REQUEST
+        ]
         if current and (
             len(current) >= MAX_PAGES_PER_REQUEST or size + len(text) > MAX_CHARS_PER_REQUEST
         ):
@@ -410,14 +528,28 @@ def _grounded(minor: int, text: str) -> bool:
     return False
 
 
+def _identifier_context(value: str) -> re.Pattern[str]:
+    """`value` as the tail of a masked token (``***1234``, ``XXXX1234``, ``xxx-xx-1234``) or right
+    after an identifier label (TIN / EIN / account / acct / ID): not just any four digits."""
+    digits = rf"(?<!\d){value}(?!\d)"
+    masked = rf"(?<![A-Za-z])[*Xx\u2022]{{2,}}(?:-?[*Xx\u2022]+)*-?{value}(?!\d)"
+    labelled = (
+        r"\b(?:TIN|EIN|account|acct|ID)\b[\s:#.]*(?:(?:number|no\.?|num)\b[\s:#.]*)?"
+        rf"[\w*Xx\u2022-]*?{digits}"
+    )
+    return re.compile(f"{masked}|{labelled}", re.IGNORECASE)
+
+
 def _last4(raw: object, text: str) -> str | None:
-    """Exactly four digits (a longer value is cut to its last four), present in the sent text."""
+    """Exactly four digits (a longer value is cut to its last four) that appear in the sent text
+    as a masked identifier or next to an identifier label; any other four digits (a year, an
+    amount) are not accepted."""
     if raw is None:
         return None
     value = mask_tin(str(raw))
     if value is None or not re.fullmatch(r"\d{4}", value):
         return None
-    return value if value in text else None
+    return value if _identifier_context(value).search(text) else None
 
 
 def _state(raw: str | None) -> str | None:
@@ -603,6 +735,7 @@ class TaxLLMExtractor:
     def __init__(self, cfg: LLMConfig, pii_terms: Sequence[str] = ()) -> None:
         self._cfg = cfg
         self._pii_terms = tuple(pii_terms)
+        self.requests_sent = 0
 
     def preview(self, doc: ExtractedDoc, regions: Sequence[UnparsedRegion]) -> list[str]:
         requests, _ = build_requests(doc, regions, self._pii_terms)
@@ -611,6 +744,7 @@ class TaxLLMExtractor:
     def extract(
         self, doc: ExtractedDoc, regions: Sequence[UnparsedRegion], *, tax_year: int
     ) -> FallbackResult:
+        self.requests_sent = 0
         if not self._cfg.is_configured:
             return FallbackResult(warnings=("The LLM fallback is not configured.",))
         requests, truncated = build_requests(doc, regions, self._pii_terms)
@@ -623,6 +757,7 @@ class TaxLLMExtractor:
             if not _AMOUNT_TOKEN.search(request.text):
                 continue  # nothing that could be a figure: not worth a request
             sent += 1
+            self.requests_sent = sent
             try:
                 response = client.complete(
                     self._cfg,

@@ -433,7 +433,7 @@ def test_upload_uses_the_llm_fallback_only_when_opted_in(
     from tests.llm_fakes import FakeLLM, install, remote_cfg
 
     lines = [
-        "Year-End Statement  Tax Year 2024",
+        "Form 1099-INT  Year-End Statement  Tax Year 2024",
         "Granite Fund Trust  summary of income paid to you during the year",
         "Interest paid to you                      1,234.56",
         "Please keep this statement with your tax records for the year.",

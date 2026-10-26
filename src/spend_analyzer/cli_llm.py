@@ -18,6 +18,7 @@ from spend_analyzer.config import (
     load_settings,
     save_settings,
     set_api_key,
+    without_stale_tax_consent,
 )
 from spend_analyzer.core.paths import config_path
 from spend_analyzer.llm.diagnostics import check_connection
@@ -226,6 +227,8 @@ def set_cmd(
     except ValueError as exc:
         raise _fail(f"invalid settings: {exc}") from None
     new_settings = settings.model_copy(update={"llm": new_llm, "ingest": new_ingest})
+    if enable is False:
+        new_settings = without_stale_tax_consent(new_settings)
     save_settings(new_settings)
     typer.echo(f"saved to {config_path()}")
     _describe(new_settings)
@@ -236,6 +239,8 @@ def _set_enabled(value: bool) -> None:
     new_settings = settings.model_copy(
         update={"llm": settings.llm.model_copy(update={"enabled": value})}
     )
+    if not value:
+        new_settings = without_stale_tax_consent(new_settings)
     save_settings(new_settings)
     typer.echo(f"LLM {'enabled' if value else 'disabled'}.")
     _describe(new_settings)

@@ -193,6 +193,19 @@ class Settings(BaseModel):
     server: ServerConfig = ServerConfig()
 
 
+def without_stale_tax_consent(settings: Settings) -> Settings:
+    """`settings` with the tax LLM opt-in cleared when the LLM is disabled.
+
+    The consent was given for an LLM the user was using; switching the LLM off must not leave a
+    flag behind that silently resumes sending tax pages when it is switched on again.
+    """
+    if settings.llm.enabled or not settings.ingest.tax_llm_fallback:
+        return settings
+    return settings.model_copy(
+        update={"ingest": settings.ingest.model_copy(update={"tax_llm_fallback": False})}
+    )
+
+
 def load_settings(path: Path | None = None) -> Settings:
     """Load settings: defaults -> `config.toml` (if present) -> environment variable overrides.
 

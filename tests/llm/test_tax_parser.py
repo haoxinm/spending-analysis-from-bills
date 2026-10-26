@@ -222,11 +222,14 @@ def test_chunking_limits(monkeypatch: pytest.MonkeyPatch) -> None:
     requests, truncated = tp.build_requests(doc, region)
     assert len(requests) == tp.MAX_REQUESTS and truncated
     assert all(len(r.pages) <= tp.MAX_PAGES_PER_REQUEST for r in requests)
+    with_payer = [["Tax Year 2024", "PAYER'S name: Granite Fund Trust", "Interest income   1.25"]]
     three, trunc = tp.build_requests(
-        doc_from_pages(pages[:3]), (UnparsedRegion("x", (1, 2, 3), "r"),)
+        doc_from_pages([*with_payer, *pages[1:3]]), (UnparsedRegion("x", (1, 2, 3), "r"),)
     )
     assert [r.pages for r in three] == [(1, 2), (3,)] and not trunc
-    assert "context only" in three[1].text
+    assert "context only" in three[1].text and "Granite Fund Trust" in three[1].text
+    bare, _ = tp.build_requests(doc_from_pages(pages[:3]), (UnparsedRegion("x", (1, 2, 3), "r"),))
+    assert "context only" not in bare[1].text  # no payer label on page 1: no header
     fake = install(monkeypatch, FakeLLM(default=_reply()))
     result = _extractor().extract(doc, region, tax_year=2024)
     assert len(fake.requests) == tp.MAX_REQUESTS
@@ -271,3 +274,108 @@ def test_consolidated_keys_use_the_section_prefix(monkeypatch: pytest.MonkeyPatc
         ("1099-INT", "1", "interest"),
         ("1099-DIV", "1a", "ordinary_dividends"),
     }
+
+
+# --- last-four grounding -------------------------------------------------------------------
+
+
+@pytest.mark.parametrize(
+    ("text", "value", "kept"),
+    [
+        ("Tax Year 2024\nInterest income 5.00", "2024", False),  # a year is not an identifier
+        ("Interest income 2,024.00 on 1234 shares", "1234", False),
+        ("Payer EIN **-***0042", "0042", True),
+        ("acct ***1234", "1234", True),
+        ("Account XXXX1234", "1234", True),
+        ("SSN xxx-xx-1234", "1234", True),
+        ("Account number: 1234", "1234", True),
+        ("Payer ID 4455", "4455", True),
+        ("TIN: 4455", "4455", True),
+        ("Routing 4455", "4455", False),
+    ],
+)
+def test_last4_must_be_masked_or_next_to_an_identifier_label(
+    text: str, value: str, kept: bool
+) -> None:
+    assert (tp._last4(value, text) == value) is kept
+
+
+# --- 2-up pages: only the unparsed form is sent and re-read forms are dropped ----------------
+
+_RIGHT = 62
+
+
+def _two(left: str, right: str) -> str:
+    return left.ljust(_RIGHT) + right
+
+
+_TWO_UP = [
+    "Payment statement Tax Year 2024",
+    _two("Form 1099-INT Interest Income", "Form 1099-INT Interest Income"),
+    _two("PAYER'S name Alpha Bank", "PAYER'S name Beta Credit"),
+    _two("Account number 000011116789", "Account number 000022224321"),
+    _two("1 Interest income   100.00", "1 Interest income"),
+    _two("4 Federal tax withheld   1.00", "4 Federal tax withheld   2.00"),
+]
+
+
+def test_two_up_page_only_the_failed_form_is_sent(monkeypatch: pytest.MonkeyPatch) -> None:
+    from spend_analyzer.ingest.tax.fallback import apply_fallback
+    from spend_analyzer.ingest.tax.orchestrator import parse_document
+
+    doc = doc_from_lines(_TWO_UP)
+    outcome = parse_document(doc)
+    assert outcome.document is not None and len(outcome.document.forms) == 1
+    (region,) = outcome.document.unparsed
+    assert region.pages == (1,) and region.boxes  # the rectangle of the right-hand form
+    left = {"box": "1", "amount": "100.00"}
+    right = {"box": "4", "amount": "2.00"}
+    reply = _reply(
+        _form(payer_name="Alpha Bank", account_last4="6789", items=[left]),  # re-read left form
+        _form(payer_name="Beta Credit", account_last4="4321", payer_tin_last4=None, items=[right]),
+    )
+    fake = install(monkeypatch, FakeLLM(default=reply))
+    run = apply_fallback(doc, outcome, _extractor(), tax_year=None)
+    wire = json.dumps(fake.requests)
+    assert "Beta Credit" in wire and "2.00" in wire
+    for left_only in ("Alpha Bank", "100.00", "6789"):
+        assert left_only not in wire, left_only
+    assert run.document is not None
+    # the parser's form stays, plus the one new LLM form: nothing is counted twice
+    assert [f.extraction_method for f in run.document.forms] == ["parser", "llm"]
+    totals = sorted(i.amount_minor for f in run.document.forms for i in f.income)
+    assert totals == [10000]
+
+
+def test_llm_form_that_repeats_a_parsed_form_is_dropped_by_amounts_and_by_account() -> None:
+    from spend_analyzer.core.tax_types import ParsedIncomeItem, ParsedTaxForm
+    from spend_analyzer.ingest.tax.fallback import _merge_forms
+
+    def form(amounts: list[int], acct: str | None, tin: str | None, method: str) -> ParsedTaxForm:
+        return ParsedTaxForm(
+            form_type="1099-int",
+            tax_year=2024,
+            payer_name=None,
+            payer_tin_last4=tin,
+            account_last4=acct,
+            is_corrected=False,
+            filing_status=None,
+            agi_minor=None,
+            taxable_income_minor=None,
+            income=tuple(
+                ParsedIncomeItem("interest", a, "1099-INT", str(n), None)
+                for n, a in enumerate(amounts, start=1)
+            ),
+            taxes=(),
+            extraction_method=method,  # type: ignore[arg-type]
+        )
+
+    det = form([10000, 500], "6789", "0042", "parser")
+    same_acct = form([99999], "6789", None, "llm")
+    same_tin = form([77777], None, "0042", "llm")
+    mostly_same = form([10000, 31337], None, None, "llm")  # one of two items matches
+    other = form([20000], "4321", "9999", "llm")
+    assert _merge_forms((det,), (same_acct, same_tin, mostly_same)) == (det,)
+    assert _merge_forms((det,), (other,)) == (det, other)
+    # two forms of one payer with different accounts are not duplicates of each other
+    assert _merge_forms((det,), (form([77777], "4321", "0042", "llm"),))[1:] != ()

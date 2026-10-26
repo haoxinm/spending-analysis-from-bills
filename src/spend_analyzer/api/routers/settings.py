@@ -26,6 +26,7 @@ from spend_analyzer.config import (
     get_llm_api_key,
     save_settings,
     set_api_key,
+    without_stale_tax_consent,
 )
 from spend_analyzer.core.pii import compile_redactor
 from spend_analyzer.llm.diagnostics import check_connection
@@ -128,6 +129,7 @@ def put_settings(body: schemas.Settings, current: SettingsDep) -> schemas.Settin
         ),
         server=ServerConfig(port=body.server.port),
     )
+    new_settings = without_stale_tax_consent(new_settings)
     save_settings(new_settings)
     return _settings_schema(new_settings)
 
