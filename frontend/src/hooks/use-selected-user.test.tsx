@@ -8,6 +8,7 @@ import { apiClient } from "@/api/client";
 
 import {
   resolveSelectedUser,
+  useCompareUser,
   SELECTED_USER_STORAGE_KEY,
   useSelectedUser,
 } from "./use-selected-user";
@@ -36,6 +37,12 @@ describe("resolveSelectedUser", () => {
   it("ignores stale or malformed ids", () => {
     expect(resolveSelectedUser("99", "1", USERS)).toBe(1);
     expect(resolveSelectedUser("abc", "99", USERS)).toBeNull();
+  });
+  it("with exactly one user, ignores 'all' from the URL or storage", () => {
+    const one = USERS.slice(0, 1);
+    expect(resolveSelectedUser("all", null, one)).toBe(1);
+    expect(resolveSelectedUser(null, "all", one)).toBe(1);
+    expect(resolveSelectedUser("all", "all", one)).toBe(1);
   });
   it("defaults to the only user, else All", () => {
     expect(resolveSelectedUser(null, null, USERS.slice(0, 1))).toBe(1);
@@ -123,5 +130,24 @@ describe("useSelectedUser", () => {
     expect(result.current.sp[0].get("user")).toBe("all");
     expect(window.localStorage.getItem(SELECTED_USER_STORAGE_KEY)).toBe("all");
     expect(result.current.sel.selectedUserId).toBeNull();
+  });
+});
+
+describe("useCompareUser", () => {
+  function useCompare(primary: number | null) {
+    return { compare: useCompareUser(primary, USERS, false), sp: useSearchParams() };
+  }
+
+  it("drops ?compare from the URL when it equals the primary user", async () => {
+    const { result } = renderHook(() => useCompare(1), { wrapper: makeWrapper("/?user=1&compare=1") });
+    await waitFor(() => expect(result.current.sp[0].get("compare")).toBeNull());
+    expect(result.current.compare.active).toBe(false);
+    expect(result.current.sp[0].get("user")).toBe("1");
+  });
+
+  it("keeps a valid ?compare", () => {
+    const { result } = renderHook(() => useCompare(1), { wrapper: makeWrapper("/?user=1&compare=2") });
+    expect(result.current.compare.active).toBe(true);
+    expect(result.current.sp[0].get("compare")).toBe("2");
   });
 });

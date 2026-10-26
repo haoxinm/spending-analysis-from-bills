@@ -40,6 +40,9 @@ export function LlmReadSection({ document: d }: { document: TaxDocument }) {
   const expired = hasPdf && !d.has_pdf && isPdfNeeded(pagesQuery.error);
   const [chosen, setChosen] = React.useState<number[] | null>(null);
   const [confirming, setConfirming] = React.useState(false);
+  // True while the expanded preview for the current selection is loading: sending is blocked so
+  // the text shown is always the text that would be sent.
+  const [previewPending, setPreviewPending] = React.useState(false);
 
   const infos = pagesQuery.data;
   const suggested = React.useMemo(
@@ -160,7 +163,8 @@ export function LlmReadSection({ document: d }: { document: TaxDocument }) {
       ) : null}
       <LlmEgressNotice mode={mode} url={endpoint} masked={LLM_READ_MASKED} />
       <LlmRequestPreview
-        queryKey={["tax", d.id, selected.join(",")]}
+        queryKey={["tax", d.id, d.user_id, selected.join(",")]}
+        onPendingChange={setPreviewPending}
         fetchPreview={() => fetchTaxLlmPreview(d.id, d.user_id, selected)}
         enabled={selected.length > 0}
         mode={mode}
@@ -177,7 +181,7 @@ export function LlmReadSection({ document: d }: { document: TaxDocument }) {
             </span>
             <Button
               size="sm"
-              disabled={read.isPending}
+              disabled={read.isPending || previewPending}
               onClick={() => void onSend()}
             >
               Confirm send
@@ -193,7 +197,7 @@ export function LlmReadSection({ document: d }: { document: TaxDocument }) {
         ) : (
           <Button
             size="sm"
-            disabled={selected.length === 0 || read.isPending}
+            disabled={selected.length === 0 || read.isPending || previewPending}
             onClick={() => setConfirming(true)}
           >
             Send selected pages to LLM

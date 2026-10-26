@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import re
+from pathlib import Path
 from typing import Any
 
 import pytest
@@ -10,6 +11,7 @@ from fastapi.testclient import TestClient
 from sqlalchemy.orm import Session
 
 from spend_analyzer.db.models import TaxDocument, TaxForm, User
+from spend_analyzer.ingest.tax.pipeline import import_tax_document
 from tests.ingest.tax_support import generated_pdf
 
 _SSN_SHAPE = re.compile(r"\b\d{3}-\d{2}-\d{4}\b")
@@ -528,24 +530,71 @@ def test_reassign_document_errors(client: TestClient, user_id: int) -> None:
     assert client.patch("/api/tax/documents/9999", json={"user_id": user_id}).status_code == 404
 
 
-def test_reassign_collision_is_409_and_rolls_back(
-    client: TestClient, session: Session, user_id: int, other_user_id: int
-) -> None:
-    ids = _owned_ids(client, user_id)
-    other_form = _owned_ids(client, other_user_id)["form"]
-    # Give both users the same imported identity so the move would violate the unique key.
-    session.expire_all()
-    mine = session.get(TaxForm, ids["form"])
-    theirs = session.get(TaxForm, other_form)
-    assert mine is not None and theirs is not None
-    theirs.fingerprint = mine.fingerprint
+def _import_w2(session: Session, user: int, tmp_path: Path, tag: str) -> int:
+    """Import the same W-2 content as a byte-different file (a different sha) for `user`."""
+    path = tmp_path / f"w2_{tag}.pdf"
+    path.write_bytes(generated_pdf("tax_w2", "normal").read_bytes() + f"\n% {tag}\n".encode())
+    result = import_tax_document(session, path, user_id=user, original_name=path.name)
     session.commit()
-    r = client.patch(f"/api/tax/documents/{ids['doc']}", json={"user_id": other_user_id})
+    assert result.status == "parsed" and result.inserted_forms == 1
+    return result.document_id
+
+
+def test_reassign_collision_is_409_and_rolls_back(
+    client: TestClient, session: Session, user_id: int, other_user_id: int, tmp_path: Path
+) -> None:
+    mine_doc = _import_w2(session, user_id, tmp_path, "scan-a")
+    _import_w2(session, other_user_id, tmp_path, "scan-b")
+    r = client.patch(f"/api/tax/documents/{mine_doc}", json={"user_id": other_user_id})
     assert r.status_code == 409
     assert "W-2" in r.json()["detail"] and "bob" in r.json()["detail"]
     session.expire_all()
-    doc = session.get(TaxDocument, ids["doc"])
+    doc = session.get(TaxDocument, mine_doc)
     assert doc is not None and doc.user_id == user_id and doc.warnings is None
-    form = session.get(TaxForm, ids["form"])
-    assert form is not None and form.user_id == user_id
+    form = doc.forms[0]
+    assert form.user_id == user_id
     assert {i.user_id for i in form.income_items} == {user_id}
+
+
+def test_reassign_rederives_fingerprints_so_later_imports_dedupe(
+    client: TestClient, session: Session, user_id: int, other_user_id: int, tmp_path: Path
+) -> None:
+    doc_id = _import_w2(session, user_id, tmp_path, "scan-a")
+    r = client.patch(f"/api/tax/documents/{doc_id}", json={"user_id": other_user_id})
+    assert r.status_code == 200, r.text
+    # Same content again for the new owner, from a different file: deduped by fingerprint.
+    path = tmp_path / "w2_scan-c.pdf"
+    path.write_bytes(generated_pdf("tax_w2", "normal").read_bytes() + b"\n% scan-c\n")
+    again = import_tax_document(session, path, user_id=other_user_id, original_name=path.name)
+    assert again.inserted_forms == 0 and again.skipped_duplicate_forms == 1
+    # Alice can import it afresh (her copy left with the move).
+    path2 = tmp_path / "w2_scan-d.pdf"
+    path2.write_bytes(generated_pdf("tax_w2", "normal").read_bytes() + b"\n% scan-d\n")
+    mine = import_tax_document(session, path2, user_id=user_id, original_name=path2.name)
+    assert mine.inserted_forms == 1
+    # The identical original file for the new owner is the same document.
+    session.expire_all()
+    doc = session.get(TaxDocument, doc_id)
+    assert doc is not None
+    original = import_tax_document(
+        session, tmp_path / "w2_scan-a.pdf", user_id=other_user_id, original_name="x.pdf"
+    )
+    assert original.status == "duplicate" and original.document_id == doc_id
+
+
+def test_reassign_manual_form_keeps_its_fingerprint(
+    client: TestClient, session: Session, user_id: int, other_user_id: int
+) -> None:
+    ids = _owned_ids(client, user_id)
+    form = session.get(TaxForm, ids["form"])
+    assert form is not None
+    before = form.fingerprint
+    assert (
+        client.patch(
+            f"/api/tax/documents/{ids['doc']}", json={"user_id": other_user_id}
+        ).status_code
+        == 200
+    )
+    session.expire_all()
+    form = session.get(TaxForm, ids["form"])
+    assert form is not None and form.fingerprint == before and form.user_id == other_user_id

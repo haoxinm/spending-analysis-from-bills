@@ -20,6 +20,7 @@ from typing import Literal
 from sqlalchemy.orm import Session
 
 from spend_analyzer.config import Settings, load_settings
+from spend_analyzer.core.errors import SpendAnalyzerError
 from spend_analyzer.core.tax_types import TaxFallbackExtractor
 from spend_analyzer.db.models import TaxDocument
 from spend_analyzer.db.pii_terms import user_pii_terms
@@ -86,6 +87,14 @@ def preview_pages(
     plan = on_demand.load_plan(
         pdf_path, pii_terms=terms, document_year=document.tax_year, pages=pages
     )
+    if pages is not None:
+        present = {p.page_number for p in plan.extracted.pages}
+        bad = sorted(set(pages) - present)
+        if bad:
+            raise SpendAnalyzerError(
+                f"page(s) {', '.join(map(str, bad[:10]))} out of range "
+                f"(this document has {len(present)} page(s))"
+            )
     extractor = TaxLLMExtractor(cfg, terms)
     requests, _truncated = extractor.sendable_requests(plan.extracted, plan.regions)
     sent_pages = sorted({p for r in requests for p in r.pages})

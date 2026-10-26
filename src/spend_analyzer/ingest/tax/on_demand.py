@@ -172,13 +172,13 @@ def load_plan(
     excluded = _excluded_reason(extracted)
     default_pages = tuple(
         sorted(
-            {p for r in default_regions for p in r.pages if p in present}
+            {p for r in default_regions for p in r.pages if p in present and p not in excluded}
             if extracted.has_text_layer
             else set()
         )
     )
     if pages is None:
-        regions = default_regions if extracted.has_text_layer else ()
+        regions = _regions_for(default_regions, default_pages) if extracted.has_text_layer else ()
         chosen = default_pages
     else:
         chosen = tuple(sorted({p for p in pages if p in present and p not in excluded}))

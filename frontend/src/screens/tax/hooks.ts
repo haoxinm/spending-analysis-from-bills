@@ -9,6 +9,8 @@ import {
 import { useSettings } from "@/api/hooks";
 
 const ROOT_KEY = ["tax"] as const;
+/** Root key of every LLM "what would be sent" preview (tax and statements). */
+const PREVIEW_KEY = ["llm-preview"] as const;
 
 export type TaxImportResponse = components["schemas"]["TaxImportResponse"];
 
@@ -105,13 +107,13 @@ export function useUploadTaxDocument() {
 
 /**
  * Every id-addressed tax call sends the owning user's id (`ownerId`, the document's `user_id`), so
- * the server rejects (404) an id that belongs to someone else. Optional only for callers that do not
- * know the owner; the UI always has it from the documents list.
+ * the server rejects (404) an id that belongs to someone else. Required: the UI always has it from the
+ * documents list (and updates it from the response after a move).
  */
-export type OwnerId = number | null | undefined;
-const owner = (ownerId: OwnerId) => ({ user_id: ownerId ?? undefined });
+export type OwnerId = number;
+const owner = (ownerId: OwnerId) => ({ user_id: ownerId });
 
-export function useDeleteTaxDocument(ownerId?: OwnerId) {
+export function useDeleteTaxDocument(ownerId: OwnerId) {
   const queryClient = useQueryClient();
   return useMutation({
     mutationFn: async (id: number) => {
@@ -136,10 +138,10 @@ export type IncomeItemPatch = Schemas["IncomeItemPatch"];
 export type TaxItemIn = Schemas["TaxItemIn"];
 export type TaxItemPatch = Schemas["TaxItemPatch"];
 
-export function useTaxDocument(id: number, ownerId?: OwnerId, enabled = true) {
+export function useTaxDocument(id: number, ownerId: OwnerId, enabled = true) {
   return useQuery({
     enabled,
-    queryKey: [...ROOT_KEY, "document", id],
+    queryKey: [...ROOT_KEY, "document", id, ownerId],
     queryFn: async () => {
       const { data, error } = await apiClient.GET(
         "/tax/documents/{document_id}",
@@ -155,12 +157,14 @@ export function useTaxDocument(id: number, ownerId?: OwnerId, enabled = true) {
 }
 
 /** A mutation that refreshes every tax query (summary, years, payers, documents, details). */
-function useTaxMutation<V, R>(fn: (v: V) => Promise<R>) {
+function useTaxMutation<V, R>(fn: (v: V) => Promise<R>, alsoPreviews = false) {
   const queryClient = useQueryClient();
   return useMutation({
     mutationFn: fn,
     onSuccess: () => {
       void queryClient.invalidateQueries({ queryKey: ROOT_KEY });
+      if (alsoPreviews)
+        void queryClient.invalidateQueries({ queryKey: PREVIEW_KEY });
     },
   });
 }
@@ -186,7 +190,7 @@ export function useCreateManualDocument() {
   );
 }
 
-export function useCreateTaxForm(ownerId?: OwnerId) {
+export function useCreateTaxForm(ownerId: OwnerId) {
   return useTaxMutation(
     async ({
       documentId,
@@ -208,7 +212,7 @@ export function useCreateTaxForm(ownerId?: OwnerId) {
   );
 }
 
-export function useUpdateTaxForm(ownerId?: OwnerId) {
+export function useUpdateTaxForm(ownerId: OwnerId) {
   return useTaxMutation(
     async ({ formId, patch }: { formId: number; patch: TaxFormPatch }) => {
       const { data, error } = await apiClient.PATCH("/tax/forms/{form_id}", {
@@ -221,7 +225,7 @@ export function useUpdateTaxForm(ownerId?: OwnerId) {
   );
 }
 
-export function useDeleteTaxForm(ownerId?: OwnerId) {
+export function useDeleteTaxForm(ownerId: OwnerId) {
   return useTaxMutation(async (formId: number) => {
     const { error } = await apiClient.DELETE("/tax/forms/{form_id}", {
       params: { path: { form_id: formId }, query: owner(ownerId) },
@@ -230,7 +234,7 @@ export function useDeleteTaxForm(ownerId?: OwnerId) {
   });
 }
 
-export function useConfirmTaxForm(ownerId?: OwnerId) {
+export function useConfirmTaxForm(ownerId: OwnerId) {
   return useTaxMutation(async (formId: number) => {
     const { data, error } = await apiClient.POST(
       "/tax/forms/{form_id}/confirm",
@@ -243,7 +247,7 @@ export function useConfirmTaxForm(ownerId?: OwnerId) {
   });
 }
 
-export function useCreateIncomeItem(ownerId?: OwnerId) {
+export function useCreateIncomeItem(ownerId: OwnerId) {
   return useTaxMutation(
     async ({ formId, body }: { formId: number; body: IncomeItemIn }) => {
       const { data, error } = await apiClient.POST(
@@ -259,7 +263,7 @@ export function useCreateIncomeItem(ownerId?: OwnerId) {
   );
 }
 
-export function useUpdateIncomeItem(ownerId?: OwnerId) {
+export function useUpdateIncomeItem(ownerId: OwnerId) {
   return useTaxMutation(
     async ({ id, patch }: { id: number; patch: IncomeItemPatch }) => {
       const { data, error } = await apiClient.PATCH(
@@ -275,7 +279,7 @@ export function useUpdateIncomeItem(ownerId?: OwnerId) {
   );
 }
 
-export function useDeleteIncomeItem(ownerId?: OwnerId) {
+export function useDeleteIncomeItem(ownerId: OwnerId) {
   return useTaxMutation(async (id: number) => {
     const { error } = await apiClient.DELETE("/tax/income-items/{item_id}", {
       params: { path: { item_id: id }, query: owner(ownerId) },
@@ -284,7 +288,7 @@ export function useDeleteIncomeItem(ownerId?: OwnerId) {
   });
 }
 
-export function useCreateTaxItem(ownerId?: OwnerId) {
+export function useCreateTaxItem(ownerId: OwnerId) {
   return useTaxMutation(
     async ({ formId, body }: { formId: number; body: TaxItemIn }) => {
       const { data, error } = await apiClient.POST(
@@ -300,7 +304,7 @@ export function useCreateTaxItem(ownerId?: OwnerId) {
   );
 }
 
-export function useUpdateTaxItem(ownerId?: OwnerId) {
+export function useUpdateTaxItem(ownerId: OwnerId) {
   return useTaxMutation(
     async ({ id, patch }: { id: number; patch: TaxItemPatch }) => {
       const { data, error } = await apiClient.PATCH(
@@ -316,7 +320,7 @@ export function useUpdateTaxItem(ownerId?: OwnerId) {
   );
 }
 
-export function useDeleteTaxItem(ownerId?: OwnerId) {
+export function useDeleteTaxItem(ownerId: OwnerId) {
   return useTaxMutation(async (id: number) => {
     const { error } = await apiClient.DELETE("/tax/tax-items/{item_id}", {
       params: { path: { item_id: id }, query: owner(ownerId) },
@@ -326,7 +330,7 @@ export function useDeleteTaxItem(ownerId?: OwnerId) {
 }
 
 /** Move a document (with its forms and items) to another user. */
-export function useReassignTaxDocument(ownerId?: OwnerId) {
+export function useReassignTaxDocument(ownerId: OwnerId) {
   return useTaxMutation(
     async ({ documentId, userId }: { documentId: number; userId: number }) => {
       const { data, error } = await apiClient.PATCH(
@@ -339,6 +343,7 @@ export function useReassignTaxDocument(ownerId?: OwnerId) {
       throwIfError(error);
       return need(data);
     },
+    true,
   );
 }
 
@@ -356,7 +361,7 @@ export function useTaxDocumentPages(
 ) {
   return useQuery({
     enabled,
-    queryKey: [...ROOT_KEY, "pages", id],
+    queryKey: [...ROOT_KEY, "pages", id, ownerId],
     queryFn: async () => {
       const { data, error } = await apiClient.GET(
         "/tax/documents/{document_id}/pages",
@@ -409,7 +414,10 @@ export function useProvideTaxSource(ownerId: OwnerId) {
       );
       throwIfError(error);
       if (!data) throw new Error("the file could not be provided");
-      queryClient.setQueryData([...ROOT_KEY, "pages", documentId], data.pages);
+      queryClient.setQueryData(
+        [...ROOT_KEY, "pages", documentId, ownerId],
+        data.pages,
+      );
       return data;
     },
     onSettled: () => {
@@ -465,6 +473,7 @@ export function useReadPagesWithLlm(ownerId: OwnerId) {
     },
     onSuccess: () => {
       void queryClient.invalidateQueries({ queryKey: ROOT_KEY });
+      void queryClient.invalidateQueries({ queryKey: PREVIEW_KEY });
     },
   });
 }

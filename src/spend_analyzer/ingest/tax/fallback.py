@@ -59,6 +59,13 @@ _FORM_LINE = re.compile(
     re.IGNORECASE | re.MULTILINE,
 )
 
+#: A line that starts like a Form 1040 heading (for pages without word boxes).
+_FORM_1040_LINE = re.compile(
+    r"^\s*(?:(?:20\d{2}\s+)?Form\s+1040(?:\s*-\s*SR)?\b|1040(?:\s*-\s*SR)?\s+U\.?S\.?\b"
+    r"|U\.?S\.?\s+Individual\s+Income\s+Tax\s+Return)",
+    re.IGNORECASE | re.MULTILINE,
+)
+
 
 def _page_evidence(page: PageText) -> str | None:
     """``"form"`` when `page` shows a W-2 / 1099 form heading, ``"other"`` when it shows another
@@ -70,7 +77,9 @@ def _page_evidence(page: PageText) -> str | None:
         if "1040" in families:
             return "other"
         return None
-    return "form" if _FORM_LINE.search(page.text) else None
+    if _FORM_LINE.search(page.text):
+        return "form"
+    return "other" if _FORM_1040_LINE.search(page.text) else None
 
 
 def _whole_file_regions(doc: ExtractedDoc) -> tuple[UnparsedRegion, ...]:

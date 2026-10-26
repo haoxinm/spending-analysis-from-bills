@@ -21,7 +21,7 @@ function LlmNotice({ item, pages, total }: { item: ImportItem; pages: number[] |
         masked="Account numbers and emails"
       />
       <LlmRequestPreview
-        queryKey={["statement", statementId, pages === null ? "all" : pages.join(",")]}
+        queryKey={["statement", statementId, item.statement?.user_id ?? null, pages === null ? "all" : pages.join(",")]}
         fetchPreview={() => fetchStatementLlmPreview(statementId, pages)}
         enabled={pages?.length !== 0}
         mode={mode}

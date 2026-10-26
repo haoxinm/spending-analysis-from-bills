@@ -82,7 +82,7 @@ function outcomeFor(file: File, r: TaxImportResponse): UploadOutcome {
 }
 
 function DocumentRow({
-  d,
+  d: rowDoc,
   users,
   request,
 }: {
@@ -91,8 +91,16 @@ function DocumentRow({
   /** A request (from the upload outcome or manual creation) to open this row's add-form editor. */
   request: { id: number; n: number } | null;
 }) {
+  // The owner the server confirmed after a move; the documents list catches up on refetch. Until
+  // then every id-addressed call must already use the new owner (the old one would 404).
+  const [movedTo, setMovedTo] = React.useState<number | null>(null);
+  const doc =
+    movedTo !== null && movedTo !== rowDoc.user_id
+      ? { ...rowDoc, user_id: movedTo }
+      : rowDoc;
+  const d = doc;
   const remove = useDeleteTaxDocument(d.user_id);
-  const reassign = useReassignTaxDocument(d.user_id);
+  const reassign = useReassignTaxDocument(rowDoc.user_id);
   const [moveTo, setMoveTo] = React.useState<number | null>(null);
   const { toast } = useToast();
   const [open, setOpen] = React.useState(false);
@@ -129,7 +137,15 @@ function DocumentRow({
     if (moveTo === null) return;
     const target = userName(users, moveTo);
     try {
-      await reassign.mutateAsync({ documentId: d.id, userId: moveTo });
+      const moved = await reassign.mutateAsync({
+        documentId: d.id,
+        userId: moveTo,
+      });
+      setMovedTo(moved.user_id);
+      // Open editors were built for the previous owner; close them (they reopen with the new one).
+      setOpen(false);
+      setAdding(false);
+      setLlmOpen(false);
       toast({
         variant: "success",
         title: `Moved to ${target}`,

@@ -350,6 +350,31 @@ describe("owner and moving a document", () => {
     expect(await screen.findByText("Moved to Sam")).toBeInTheDocument();
   });
 
+  it("collapses open editors after a move and uses the new owner afterwards", async () => {
+    patch.mockImplementation(() =>
+      ok({ ...document({ user_id: 2 }), forms: detailForms }),
+    );
+    renderPanel();
+    await openFirst();
+    await userEvent.selectOptions(
+      screen.getByLabelText(/Move tax_w2_normal.pdf to another user/),
+      "2",
+    );
+    await userEvent.click(screen.getByRole("button", { name: "Confirm move" }));
+    await screen.findByText("Moved to Sam");
+    expect(screen.queryByTestId("document-detail")).not.toBeInTheDocument();
+
+    // The list prop still says user 1 (it refetches later); the row already uses the new owner.
+    get.mockClear();
+    await openFirst();
+    expect(get).toHaveBeenCalledWith("/tax/documents/{document_id}", {
+      params: { path: { document_id: 1 }, query: { user_id: 2 } },
+    });
+    expect(get).not.toHaveBeenCalledWith("/tax/documents/{document_id}", {
+      params: { path: { document_id: 1 }, query: { user_id: 1 } },
+    });
+  });
+
   it("can cancel a move and hides the control with a single user", async () => {
     const { unmount } = renderPanel();
     await userEvent.selectOptions(
@@ -670,6 +695,38 @@ describe("read pages with the LLM", () => {
     expect(
       await screen.findByText("Read 1 form with the LLM"),
     ).toBeInTheDocument();
+  });
+
+  it("disables Send while the expanded preview of the new selection loads, not when collapsed", async () => {
+    setupLlm();
+    renderPanel([failed()]);
+    const section = await openSection();
+    await within(section).findByLabelText("Page 2");
+    const send = () =>
+      within(section).getByRole("button", { name: "Send selected pages to LLM" });
+    // Collapsed: sending is allowed even though no preview was loaded.
+    expect(send()).toBeEnabled();
+    await userEvent.click(
+      within(section).getByRole("button", { name: "Show what would be sent" }),
+    );
+    await within(section).findByTestId("llm-request");
+    expect(send()).toBeEnabled();
+
+    // Now the preview of the next selection hangs: Send is blocked and old text is gone.
+    let release: (v: unknown) => void = () => {};
+    const base = get.getMockImplementation() as (p: string, o?: unknown) => unknown;
+    get.mockImplementation((path: string, opts?: unknown) =>
+      path === "/tax/documents/{document_id}/llm-preview"
+        ? new Promise((r) => (release = r))
+        : base(path, opts),
+    );
+    await userEvent.click(within(section).getByLabelText("Page 1"));
+    await within(section).findByText("Loading preview…");
+    expect(send()).toBeDisabled();
+    expect(within(section).queryByTestId("llm-request")).not.toBeInTheDocument();
+    release({ data: { ...PREVIEW, pages: [1, 2] }, error: undefined });
+    await within(section).findByTestId("llm-request");
+    expect(send()).toBeEnabled();
   });
 
   const PDF = () =>

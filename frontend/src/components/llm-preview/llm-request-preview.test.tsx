@@ -1,6 +1,7 @@
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
+import * as React from "react";
 import { describe, expect, it, vi } from "vitest";
 
 import { LlmRequestPreview, type LlmParsePreview } from "./llm-request-preview";
@@ -83,5 +84,88 @@ describe("LlmRequestPreview", () => {
     setup({ fetchPreview });
     await userEvent.click(screen.getByRole("button", { name: "Show what would be sent" }));
     expect(await screen.findByText(/No LLM is configured/)).toBeInTheDocument();
+  });
+});
+
+describe("LlmRequestPreview freshness", () => {
+  function Harness({
+    fetchPreview,
+    keyPart,
+    enabled = true,
+  }: {
+    fetchPreview: () => Promise<LlmParsePreview>;
+    keyPart: string;
+    enabled?: boolean;
+  }) {
+    const [pending, setPending] = React.useState(false);
+    return (
+      <>
+        <LlmRequestPreview
+          queryKey={["t", keyPart]}
+          fetchPreview={fetchPreview}
+          enabled={enabled}
+          defaultOpen
+          onPendingChange={setPending}
+        />
+        <button disabled={pending}>Send</button>
+      </>
+    );
+  }
+
+  function mount(fetchPreview: () => Promise<LlmParsePreview>, keyPart: string, enabled = true) {
+    const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+    const tree = (k: string, e: boolean) => (
+      <QueryClientProvider client={client}>
+        <Harness fetchPreview={fetchPreview} keyPart={k} enabled={e} />
+      </QueryClientProvider>
+    );
+    const view = render(tree(keyPart, enabled));
+    return { rerender: (k: string, e = true) => view.rerender(tree(k, e)) };
+  }
+
+  it("never shows the previous selection's text and blocks Send while the new one loads", async () => {
+    let release: (v: LlmParsePreview) => void = () => {};
+    const fetchPreview = vi
+      .fn<() => Promise<LlmParsePreview>>()
+      .mockResolvedValueOnce({ ...DATA, requests: ["OLD TEXT"] })
+      .mockImplementationOnce(() => new Promise((r) => (release = r)));
+    const { rerender } = mount(fetchPreview, "a");
+    expect(await screen.findByText("OLD TEXT")).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Send" })).toBeEnabled();
+
+    rerender("b");
+    await waitFor(() => expect(screen.queryByText("OLD TEXT")).not.toBeInTheDocument());
+    expect(screen.getByText("Loading preview…")).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Send" })).toBeDisabled();
+
+    release({ ...DATA, requests: ["NEW TEXT"] });
+    expect(await screen.findByText("NEW TEXT")).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Send" })).toBeEnabled();
+  });
+
+  it("hides old data when the selection becomes empty and does not block Send", async () => {
+    const fetchPreview = vi.fn(() => Promise.resolve({ ...DATA, requests: ["OLD TEXT"] }));
+    const { rerender } = mount(fetchPreview, "a");
+    expect(await screen.findByText("OLD TEXT")).toBeInTheDocument();
+    rerender("", false);
+    expect(screen.queryByText("OLD TEXT")).not.toBeInTheDocument();
+    expect(screen.queryByTestId("llm-preview-summary")).not.toHaveTextContent("characters total");
+    expect(screen.getByRole("button", { name: "Send" })).toBeEnabled();
+  });
+
+  it("does not serve a cached preview when remounted (staleTime and gcTime are 0)", async () => {
+    const fetchPreview = vi.fn(() => Promise.resolve(DATA));
+    const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+    const tree = (
+      <QueryClientProvider client={client}>
+        <LlmRequestPreview queryKey={["t", 1]} fetchPreview={fetchPreview} defaultOpen />
+      </QueryClientProvider>
+    );
+    const first = render(tree);
+    await screen.findAllByTestId("llm-request");
+    first.unmount();
+    render(tree);
+    await screen.findAllByTestId("llm-request");
+    expect(fetchPreview).toHaveBeenCalledTimes(2);
   });
 });

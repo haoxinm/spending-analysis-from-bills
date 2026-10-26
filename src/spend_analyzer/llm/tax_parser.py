@@ -472,7 +472,13 @@ def build_requests(
         return [], False
     by_number = {p.page_number: p for p in doc.pages}
     first_page = doc.pages[0]
-    header = redact_page(first_page, pii_terms)[:CONTEXT_CHARS]
+    # The first page's header is context for later chunks, so it is only ever added when that
+    # page is itself among the pages being sent (never an unselected or excluded page's text).
+    header = (
+        redact_page(first_page, pii_terms)[:CONTEXT_CHARS]
+        if first_page.page_number in pages
+        else ""
+    )
     if not _PAYER_LABEL.search(header):
         header = ""  # only a header that names the payer helps; anything else is just exposure
     kinds = list(

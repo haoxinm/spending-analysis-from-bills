@@ -312,3 +312,37 @@ def test_send_adds_a_form_to_a_partly_parsed_document(
     methods = {f["form_type"]: f["extraction_method"] for f in body["document"]["forms"]}
     assert methods == {"1099-int": "parser", "1099-misc": "llm"}
     assert "=== PAGE 2" in fake.last_user_text and "=== PAGE 1" not in fake.last_user_text
+
+
+def test_preview_huge_or_out_of_range_pages_is_422_without_expanding(
+    client: TestClient, doc: dict[str, Any]
+) -> None:
+    url = f"/api/tax/documents/{doc['id']}/llm-preview"
+    for spec in ("1-999999999999", "3", "1-3", "99999999999999"):
+        r = client.get(url, params={"pages": spec})
+        assert r.status_code == 422, (spec, r.text)
+    assert client.get(url, params={"pages": "1-2"}).status_code == 200
+
+
+def test_default_preview_never_includes_1040_pages(
+    client: TestClient, user_id: int, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    _settings()
+    install(monkeypatch, FakeLLM())
+    d = _post(client, user_id, generated_pdf("tax_1040", "with_investment_income"))["document"]
+    body = client.get(f"/api/tax/documents/{d['id']}/llm-preview").json()
+    assert body["pages"] == [] and body["requests"] == []
+
+
+def test_load_plan_without_pages_drops_excluded_default_pages(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    from spend_analyzer.core.tax_types import UnparsedRegion
+    from spend_analyzer.ingest.tax import on_demand
+
+    region = UnparsedRegion("unknown", (1,), "unreadable")
+    monkeypatch.setattr(on_demand, "fallback_targets", lambda *a, **k: ((region,), 2024))
+    plan = on_demand.load_plan(
+        generated_pdf("tax_1040", "with_investment_income"), pii_terms=(), pages=None
+    )
+    assert plan.pages == () and plan.default_pages == () and plan.regions == ()

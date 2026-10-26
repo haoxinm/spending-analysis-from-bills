@@ -22,7 +22,7 @@ function parseRaw(raw: string | null, users: readonly User[]): number | null | u
 
 /**
  * Pure resolution of the selected user. Precedence: explicit URL value, then the stored value,
- * then the default (the only user when there is exactly one, else "All users").
+ * then the default "All users". With exactly one user, that user always wins.
  * Returns a user id, or `null` for "All users". Ids not present in `users` (e.g. deleted) are
  * ignored and fall through to the next rule.
  */
@@ -31,6 +31,9 @@ export function resolveSelectedUser(
   storedValue: string | null,
   users: readonly User[],
 ): number | null {
+  // With exactly one user there is nothing to switch between (and the switcher is hidden), so
+  // "All users" would be a dead end: always show that user.
+  if (users.length === 1) return users[0]!.id;
   const fromUrl = parseRaw(urlParam, users);
   if (fromUrl !== undefined) return fromUrl;
   const fromStore = parseRaw(storedValue, users);
@@ -170,6 +173,20 @@ export function useCompareUser(primaryId: number | null, users: readonly User[],
   const raw = searchParams.get(COMPARE_USER_PARAM);
   const parsed = isLoading ? undefined : parseRaw(raw, users);
   const active = users.length > 1 && parsed !== undefined && parsed !== primaryId;
+
+  // A `?compare=` that cannot be shown (the primary pane's own user, or too few users) is dropped
+  // from the URL so the address never claims a comparison that is not on screen.
+  React.useEffect(() => {
+    if (isLoading || raw === null || active) return;
+    setSearchParams(
+      (prev) => {
+        const next = new URLSearchParams(prev);
+        next.delete(COMPARE_USER_PARAM);
+        return next;
+      },
+      { replace: true },
+    );
+  }, [isLoading, raw, active, setSearchParams]);
 
   const write = React.useCallback(
     (value: string | null) => {

@@ -18,6 +18,7 @@ import hashlib
 import json
 import re
 import uuid
+from collections import Counter
 from collections.abc import Mapping
 from dataclasses import dataclass, field
 from typing import Final, Literal, get_args
@@ -41,6 +42,7 @@ from spend_analyzer.ingest.tax.common import (
     sanitize_payer_name,
 )
 from spend_analyzer.ingest.tax.parsers._boxes import clean_jurisdiction
+from spend_analyzer.ingest.tax.pipeline import fingerprint_from_rows
 from spend_analyzer.ingest.tax.tin import scrub_display_name
 
 MANUAL_WARNING: Final = "Figures on this document were entered manually."
@@ -340,6 +342,27 @@ def create_manual_document(
     return doc
 
 
+def _fingerprints_for_user(doc: TaxDocument, user_id: int) -> dict[int, str]:
+    """``{form id: fingerprint}`` of `doc`'s forms as an import for `user_id` would store them.
+
+    Manual forms keep their random fingerprint (it carries no owner). The position in the file
+    (stored order) and the count of identical earlier forms re-create the import's ordinal and
+    repeat numbering."""
+    result: dict[int, str] = {}
+    seen: Counter[tuple[str, ...]] = Counter()
+    for ordinal, form in enumerate(sorted(doc.forms, key=lambda f: f.id)):
+        if form.extraction_method == "manual":
+            result[form.id] = form.fingerprint
+            continue
+        content = fingerprint_from_rows(user_id, form, file_sha256="", ordinal=-1)
+        repeat = seen[(content,)]
+        seen[(content,)] += 1
+        result[form.id] = fingerprint_from_rows(
+            user_id, form, file_sha256=doc.file_sha256, ordinal=ordinal, repeat=repeat
+        )
+    return result
+
+
 def reassign_document(session: Session, document_id: int, user_id: int) -> TaxDocument:
     """Move a document, its forms and their items to another user in one transaction.
 
@@ -360,12 +383,14 @@ def reassign_document(session: Session, document_id: int, user_id: int) -> TaxDo
         )
     ):
         raise Conflict(f"{target.name} already has this document")
+    new_fingerprints = _fingerprints_for_user(doc, user_id)
     for form in doc.forms:
+        new_fp = new_fingerprints[form.id]
         clash = session.scalar(
             select(TaxForm.id).where(
                 TaxForm.user_id == user_id,
                 TaxForm.tax_year == form.tax_year,
-                TaxForm.fingerprint == form.fingerprint,
+                TaxForm.fingerprint == new_fp,
             )
         )
         if clash is not None:
@@ -374,9 +399,14 @@ def reassign_document(session: Session, document_id: int, user_id: int) -> TaxDo
                 f"{target.name} already has a {label} form for {form.tax_year} "
                 "that matches this one"
             )
+    keys = [(f.tax_year, new_fingerprints[f.id]) for f in doc.forms]
+    if len(set(keys)) != len(keys):
+        raise Conflict("two forms in this document would become identical for the new owner")
     form_ids = [f.id for f in doc.forms]
     doc.user_id = user_id
     session.execute(update(TaxForm).where(TaxForm.document_id == doc.id).values(user_id=user_id))
+    for form in doc.forms:
+        form.fingerprint = new_fingerprints[form.id]
     if form_ids:
         for model in (IncomeItem, TaxItem):
             session.execute(

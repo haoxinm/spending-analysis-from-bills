@@ -74,7 +74,7 @@ function FormFields({
   formId: number;
   form: TaxFormDetail;
   siblings: number;
-  ownerId?: number;
+  ownerId: number;
 }) {
   const { toast } = useToast();
   const update = useUpdateTaxForm(ownerId);
@@ -242,7 +242,7 @@ export function FormCard({
   form: TaxFormDetail;
   siblings?: number;
   /** The owning user of the document; sent with every mutation as the ownership check. */
-  ownerId?: number;
+  ownerId: number;
 }) {
   const { toast } = useToast();
   const remove = useDeleteTaxForm(ownerId);

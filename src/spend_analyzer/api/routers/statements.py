@@ -223,7 +223,7 @@ def llm_preview(
     selection: list[int] | None
     if pages:
         try:
-            selection = parse_page_spec(pages)
+            selection = parse_page_spec(pages, statement.page_count)
         except ValueError as exc:
             raise HTTPException(status_code=422, detail=str(exc)) from None
     else:

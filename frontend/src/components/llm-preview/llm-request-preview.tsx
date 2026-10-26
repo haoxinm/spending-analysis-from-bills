@@ -1,4 +1,4 @@
-import { keepPreviousData, useQuery } from "@tanstack/react-query";
+import { useQuery } from "@tanstack/react-query";
 import * as React from "react";
 
 import type { components } from "@/api/client";
@@ -25,9 +25,18 @@ export interface LlmEgressNoticeProps {
 }
 
 /** The privacy line above a preview: remote = warning, local = reassurance, none = nothing. */
-export function LlmEgressNotice({ mode, url, masked, subject = "The text of the selected pages" }: LlmEgressNoticeProps) {
+export function LlmEgressNotice({
+  mode,
+  url,
+  masked,
+  subject = "The text of the selected pages",
+}: LlmEgressNoticeProps) {
   if (mode === "local") {
-    return <p className="text-xs text-muted-foreground">Page text is sent only to your local model at {url}</p>;
+    return (
+      <p className="text-xs text-muted-foreground">
+        Page text is sent only to your local model at {url}
+      </p>
+    );
   }
   if (mode === "remote") {
     return (
@@ -52,6 +61,12 @@ export interface LlmRequestPreviewProps {
   selectedPageCount?: number;
   /** Start expanded (default collapsed). */
   defaultOpen?: boolean;
+  /**
+   * Reports whether the shown preview is still loading for the *current* key (only while the
+   * section is expanded and enabled; a collapsed preview never blocks). Hosts disable their
+   * Send/Confirm button while it is true, so what is sent can never differ from what is shown.
+   */
+  onPendingChange?: (pending: boolean) => void;
 }
 
 /**
@@ -67,6 +82,7 @@ export function LlmRequestPreview({
   endpoint = "",
   selectedPageCount,
   defaultOpen = false,
+  onPendingChange,
 }: LlmRequestPreviewProps) {
   const [open, setOpen] = React.useState(defaultOpen);
   const regionId = React.useId();
@@ -74,16 +90,32 @@ export function LlmRequestPreview({
     queryKey: ["llm-preview", ...queryKey],
     enabled: open && enabled,
     queryFn: fetchPreview,
-    placeholderData: keepPreviousData,
+    // What would be sent depends on settings and personal-info entries that change elsewhere, so
+    // a preview is never served from cache; and a previous selection's text is never shown as
+    // the current one (no placeholder data).
+    staleTime: 0,
+    gcTime: 0,
   });
-  const data = preview.data;
+  const data = enabled ? preview.data : undefined;
+  const pending =
+    open && enabled && (preview.isPending || preview.isPlaceholderData);
+  React.useEffect(() => {
+    onPendingChange?.(pending);
+    return () => onPendingChange?.(false);
+  }, [pending, onPendingChange]);
   const shownMode = data?.mode ?? mode;
   const url = data?.resolved_url || endpoint;
   const pageCount = data?.pages.length ?? selectedPageCount;
 
   return (
-    <div className="flex flex-col gap-2 text-xs" data-testid="llm-request-preview">
-      <p className="flex flex-wrap items-center gap-x-2 text-muted-foreground" data-testid="llm-preview-summary">
+    <div
+      className="flex flex-col gap-2 text-xs"
+      data-testid="llm-request-preview"
+    >
+      <p
+        className="flex flex-wrap items-center gap-x-2 text-muted-foreground"
+        data-testid="llm-preview-summary"
+      >
         {shownMode ? <span>{MODE_LABEL[shownMode]}</span> : null}
         {data?.model ? <span>{data.model}</span> : null}
         {url && shownMode !== "none" ? <span>{hostOf(url)}</span> : null}
@@ -95,11 +127,13 @@ export function LlmRequestPreview({
         {data ? (
           <>
             <span>
-              {data.requests.length} request{data.requests.length === 1 ? "" : "s"}
+              {data.requests.length} request
+              {data.requests.length === 1 ? "" : "s"}
             </span>
             <span>{data.total_chars} characters total</span>
             <span data-testid="llm-redactions">
-              {data.redactions} personal-info {data.redactions === 1 ? "match" : "matches"} removed
+              {data.redactions} personal-info{" "}
+              {data.redactions === 1 ? "match" : "matches"} removed
             </span>
           </>
         ) : null}
@@ -120,7 +154,9 @@ export function LlmRequestPreview({
             type="button"
             size="sm"
             variant="outline"
-            onClick={() => void navigator.clipboard?.writeText(data.requests.join("\n\n"))}
+            onClick={() =>
+              void navigator.clipboard?.writeText(data.requests.join("\n\n"))
+            }
           >
             Copy
           </Button>
@@ -128,8 +164,14 @@ export function LlmRequestPreview({
       </div>
       <div id={regionId} hidden={!open}>
         {open ? (
-          preview.isPending && enabled ? (
-            <p className="text-muted-foreground">Loading preview…</p>
+          !enabled ? (
+            <p className="text-muted-foreground">
+              Select at least one page to preview.
+            </p>
+          ) : pending ? (
+            <p className="text-muted-foreground" role="status">
+              Loading preview…
+            </p>
           ) : preview.isError ? (
             <p className="text-destructive">Could not load the preview.</p>
           ) : data && data.requests.length === 0 ? (
@@ -149,7 +191,8 @@ export function LlmRequestPreview({
                 <div key={index} className="flex flex-col gap-1">
                   {data.requests.length > 1 ? (
                     <span className="text-muted-foreground">
-                      Request {index + 1} of {data.requests.length} · {text.length} characters
+                      Request {index + 1} of {data.requests.length} ·{" "}
+                      {text.length} characters
                     </span>
                   ) : null}
                   <pre

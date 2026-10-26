@@ -8,13 +8,22 @@ from collections.abc import Sequence
 
 from spend_analyzer.core.errors import SpendAnalyzerError
 
+#: Upper bound on any page number when the caller does not know the page count: a typed range
+#: is never expanded past it (``1-999999999999`` must not build a huge list).
+MAX_SPEC_PAGE = 100_000
 
-def parse_page_spec(spec: str) -> list[int]:
+
+def parse_page_spec(spec: str, max_page: int | None = None) -> list[int]:
     """Parse ``"1-3,5"`` into ``[1, 2, 3, 5]`` (sorted, de-duplicated).
 
+    ``max_page`` (the document's page count, when known) bounds every page *before* a range is
+    expanded; without it the ceiling is `MAX_SPEC_PAGE`.
+
     Raises:
-        ValueError: empty spec, a non-numeric token, a page < 1, or a reversed range.
+        ValueError: empty spec, a non-numeric token, a page < 1, a reversed range, or a page
+            beyond the bound.
     """
+    limit = min(max_page, MAX_SPEC_PAGE) if max_page is not None else MAX_SPEC_PAGE
     pages: set[int] = set()
     tokens = [t.strip() for t in spec.split(",")]
     if not spec.strip() or any(not t for t in tokens):
@@ -30,6 +39,10 @@ def parse_page_spec(spec: str) -> list[int]:
             ) from None
         if lo < 1 or hi < lo:
             raise ValueError(f"invalid page spec {spec!r}: bad range {token!r}")
+        if hi > limit:
+            raise ValueError(
+                f"invalid page spec {spec!r}: {token!r} is out of range (pages 1-{limit} exist)"
+            )
         pages.update(range(lo, hi + 1))
     return sorted(pages)
 

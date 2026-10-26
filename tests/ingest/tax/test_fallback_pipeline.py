@@ -327,3 +327,27 @@ def test_requests_sent_is_reported_when_the_extractor_raises() -> None:
     doc = doc_from_pages([["Form 1099-INT  Tax Year 2024", "Interest   5.00"]])
     run = apply_fallback(doc, None, Boom(), tax_year=2024)
     assert run.attempted and run.requests_sent == 2 and run.document is None
+
+
+def test_text_only_pages_are_classified_as_form_1040() -> None:
+    """Pages without word boxes still get the 1040 exclusion (and the pages after it)."""
+    from dataclasses import replace
+
+    from spend_analyzer.ingest.tax.fallback import (
+        _page_evidence,
+        _whole_file_regions,
+        other_form_pages,
+    )
+    from tests.ingest.tax_support import doc_from_pages
+
+    pages = [
+        ["Form 1040 U.S. Individual Income Tax Return 2024", "Wages 55,000.00"],
+        ["Schedule notes", "Refund   123.00"],
+        ["Form W-2 Wage and Tax Statement 2024", "1 Wages, tips, other compensation  9.00"],
+    ]
+    doc = doc_from_pages(pages)
+    bare = replace(doc, pages=tuple(replace(p, words=()) for p in doc.pages))
+    assert [_page_evidence(p) for p in bare.pages] == ["other", None, "form"]
+    assert other_form_pages(bare) == frozenset({1, 2})
+    (region,) = _whole_file_regions(bare)
+    assert region.pages == (3,)

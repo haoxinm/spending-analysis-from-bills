@@ -143,7 +143,7 @@ def test_text_without_word_boxes_uses_the_same_rules() -> None:
 
 def _three_pages(first: list[str]) -> tuple[list[tp.Request], bool]:
     doc = doc_from_pages([first, ["Form 1099-INT", "1 Interest  3.00"], ["x", "Interest  4.00"]])
-    return tp.build_requests(doc, (UnparsedRegion("1099-INT", (2, 3), "unreadable"),))
+    return tp.build_requests(doc, (UnparsedRegion("1099-INT", (1, 2, 3), "unreadable"),))
 
 
 def test_header_context_needs_a_payer_label() -> None:
@@ -165,7 +165,21 @@ def test_header_context_is_redacted_like_the_pages() -> None:
             "RECIPIENT'S name: Jordan Testperson",
         ]
     )
-    (request,) = requests
+    request = requests[1]  # page 3's chunk carries the page-1 header as context
     assert "context only" in request.text and "Granite Fund Trust" in request.text
     for leaked in ("TESTPERSON", "Testperson", "EXAMPLE", "SPRINGFIELD", "62701"):
         assert leaked not in request.text, leaked
+
+
+def test_header_context_is_never_added_when_page_one_is_not_sent() -> None:
+    doc = doc_from_pages(
+        [
+            ["PAYER'S name: Granite Fund Trust", "Account summary"],
+            ["Form 1099-INT", "1 Interest  3.00"],
+            ["x", "Interest  4.00"],
+        ]
+    )
+    requests, _ = tp.build_requests(doc, (UnparsedRegion("1099-INT", (2, 3), "unreadable"),))
+    wire = "\n".join(r.text for r in requests)
+    assert "context only" not in wire and "Granite" not in wire
+    assert sorted(p for r in requests for p in r.pages) == [2, 3]

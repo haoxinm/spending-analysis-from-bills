@@ -74,7 +74,7 @@ function ItemRow({
   /** null = the "add" row. */
   item: Item | null;
   formId: number;
-  ownerId?: number;
+  ownerId: number;
   onDone?: () => void;
 }) {
   const { toast } = useToast();
@@ -301,7 +301,7 @@ export function ItemTable({
   items: readonly Item[];
   formId: number;
   /** The owning user of the document; sent with every mutation as the ownership check. */
-  ownerId?: number;
+  ownerId: number;
 }) {
   const [adding, setAdding] = React.useState(false);
   const title = kind === "income" ? "Income items" : "Tax items";

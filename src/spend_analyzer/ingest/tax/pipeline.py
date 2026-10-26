@@ -48,7 +48,9 @@ from spend_analyzer.core.logging import get_logger
 from spend_analyzer.core.paths import ensure_home, statements_dir
 from spend_analyzer.core.tax_types import (
     FORM_ROLE,
+    ParsedIncomeItem,
     ParsedTaxForm,
+    ParsedTaxItem,
     TaxFallbackExtractor,
 )
 from spend_analyzer.db.models import IncomeItem, TaxDocument, TaxForm, TaxItem
@@ -176,6 +178,64 @@ def _form_identity(
         _form_fingerprint(user_id, tax_year, form, doc_scope=f"{file_sha256}|{ordinal}"),
         "weak",
     )
+
+
+def fingerprint_from_rows(
+    user_id: int,
+    form: TaxForm,
+    *,
+    file_sha256: str,
+    ordinal: int,
+    repeat: int = 0,
+) -> str:
+    """The fingerprint an import for `user_id` would give the stored `form` (pure; reads only the
+    form row and its income / tax item rows, exactly the inputs `_form_identity` uses).
+
+    Used to move a form to another user: the fingerprint hashes the owner, so it must be
+    re-derived for the new owner, both to detect a clash and to keep later imports deduping.
+    `ordinal` / `repeat` are the form's position in its file and the count of identical forms
+    before it, as `store_forms` computes them."""
+    parsed = ParsedTaxForm(
+        form_type=form.form_type,  # type: ignore[arg-type]
+        tax_year=form.tax_year,
+        payer_name=form.payer_name,
+        payer_tin_last4=form.payer_tin_last4,
+        account_last4=form.account_last4,
+        is_corrected=form.is_corrected,
+        filing_status=form.filing_status,
+        agi_minor=form.agi_minor,
+        taxable_income_minor=form.taxable_income_minor,
+        income=tuple(
+            ParsedIncomeItem(
+                category=i.category,  # type: ignore[arg-type]
+                amount_minor=i.amount_minor,
+                source_form=i.source_form,
+                box=i.box,
+                label=i.label,
+                is_memo=i.is_memo,
+            )
+            for i in form.income_items
+        ),
+        taxes=tuple(
+            ParsedTaxItem(
+                category=t.category,  # type: ignore[arg-type]
+                amount_minor=t.amount_minor,
+                source_form=t.source_form,
+                box=t.box,
+                label=t.label,
+                jurisdiction=t.jurisdiction,
+            )
+            for t in form.tax_items
+        ),
+    )
+    return _form_identity(
+        user_id,
+        form.tax_year,
+        parsed,
+        file_sha256=file_sha256,
+        ordinal=ordinal,
+        repeat=repeat,
+    )[0]
 
 
 def _skip_warning(skipped_from: list[tuple[int, str, str]], own_document_id: int) -> str | None:

@@ -9,7 +9,6 @@ import type { JobEvent } from "@/hooks/use-job-progress";
 import { useExtractStatement, useImportSettings, useUploadStatement } from "./api";
 import { FileDropZone } from "./file-drop-zone";
 import { IssuerExtractorPicker } from "./issuer-extractor-picker";
-import { getStickyUserId } from "./storage";
 import { StatementCard } from "./statement-card";
 import { PageSelector } from "./page-selector";
 import { SummaryBar } from "./summary-bar";
@@ -39,14 +38,6 @@ function ImportScreen() {
   // ask which user to import for (the pick is local to this screen).
   const sel = useSelectedUser();
   const [pickedUserId, setPickedUserId] = React.useState<number | null>(null);
-  const loadedUsers = usersQuery.data;
-  React.useEffect(() => {
-    // One-time read of the retired Import-only sticky user, as the initial pick for "All users".
-    const legacy = getStickyUserId();
-    if (legacy !== null && loadedUsers?.some((u) => u.id === legacy)) {
-      setPickedUserId((current) => current ?? legacy);
-    }
-  }, [loadedUsers]);
   const selectedUserId: number | null =
     sel.selectedUserId ?? (users.some((u) => u.id === pickedUserId) ? pickedUserId : null);
 

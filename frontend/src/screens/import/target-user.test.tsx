@@ -78,8 +78,9 @@ describe("Import upload target", () => {
     await waitFor(() => expect(uploads).toEqual(["2"]));
   });
 
-  it("reads the retired sticky Import user once as the initial pick", async () => {
+  it("ignores a stale legacy sticky Import user and starts at 'Choose a user…'", async () => {
     await renderImport("/import?user=all", 1);
-    await waitFor(() => expect(screen.getByLabelText("Importing for")).toHaveValue("1"));
+    expect(await screen.findByLabelText("Importing for")).toHaveValue("");
+    expect(screen.getByLabelText("Choose statement PDFs")).toBeDisabled();
   });
 });
