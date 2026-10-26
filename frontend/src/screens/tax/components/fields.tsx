@@ -20,7 +20,12 @@ export function TextField({
 }) {
   const errorId = React.useId();
   return (
-    <label className={cn("flex flex-col gap-1 text-xs text-muted-foreground", className)}>
+    <label
+      className={cn(
+        "flex flex-col gap-1 text-xs text-muted-foreground",
+        className,
+      )}
+    >
       {label}
       <Input
         {...props}
@@ -55,7 +60,12 @@ export function SelectField<T extends string>({
   placeholder?: string;
 }) {
   return (
-    <label className={cn("flex flex-col gap-1 text-xs text-muted-foreground", className)}>
+    <label
+      className={cn(
+        "flex flex-col gap-1 text-xs text-muted-foreground",
+        className,
+      )}
+    >
       {label}
       <select
         value={value}
@@ -63,7 +73,9 @@ export function SelectField<T extends string>({
         onChange={(e) => onChange(e.target.value as T | "")}
         className="flex h-8 rounded-md border border-input bg-transparent px-2 py-1 text-sm text-foreground shadow-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring disabled:opacity-50"
       >
-        {placeholder !== undefined ? <option value="">{placeholder}</option> : null}
+        {placeholder !== undefined ? (
+          <option value="">{placeholder}</option>
+        ) : null}
         {options.map((o) => (
           <option key={o.value} value={o.value}>
             {o.label}

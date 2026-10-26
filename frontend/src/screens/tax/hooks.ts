@@ -1,6 +1,11 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 
-import { apiClient, throwIfError, type components } from "@/api/client";
+import {
+  ApiError,
+  apiClient,
+  throwIfError,
+  type components,
+} from "@/api/client";
 import { useSettings } from "@/api/hooks";
 
 const ROOT_KEY = ["tax"] as const;
@@ -36,7 +41,10 @@ export function useTaxSummary(userIds: number[] | undefined, enabled = true) {
   });
 }
 
-export function useTaxIncomeByPayer(userIds: number[] | undefined, enabled = true) {
+export function useTaxIncomeByPayer(
+  userIds: number[] | undefined,
+  enabled = true,
+) {
   return useQuery({
     enabled,
     queryKey: [...ROOT_KEY, "payers", { userIds }],
@@ -133,9 +141,12 @@ export function useTaxDocument(id: number, ownerId?: OwnerId, enabled = true) {
     enabled,
     queryKey: [...ROOT_KEY, "document", id],
     queryFn: async () => {
-      const { data, error } = await apiClient.GET("/tax/documents/{document_id}", {
-        params: { path: { document_id: id }, query: owner(ownerId) },
-      });
+      const { data, error } = await apiClient.GET(
+        "/tax/documents/{document_id}",
+        {
+          params: { path: { document_id: id }, query: owner(ownerId) },
+        },
+      );
       throwIfError(error);
       if (!data) throw new Error("document not found");
       return data;
@@ -161,8 +172,14 @@ function need<T>(data: T | undefined): T {
 
 export function useCreateManualDocument() {
   return useTaxMutation(
-    async (body: { user_id: number; tax_year: number; original_name?: string | null }) => {
-      const { data, error } = await apiClient.POST("/tax/documents/manual", { body });
+    async (body: {
+      user_id: number;
+      tax_year: number;
+      original_name?: string | null;
+    }) => {
+      const { data, error } = await apiClient.POST("/tax/documents/manual", {
+        body,
+      });
       throwIfError(error);
       return need(data);
     },
@@ -170,25 +187,38 @@ export function useCreateManualDocument() {
 }
 
 export function useCreateTaxForm(ownerId?: OwnerId) {
-  return useTaxMutation(async ({ documentId, body }: { documentId: number; body: TaxFormCreate }) => {
-    const { data, error } = await apiClient.POST("/tax/documents/{document_id}/forms", {
-      params: { path: { document_id: documentId }, query: owner(ownerId) },
+  return useTaxMutation(
+    async ({
+      documentId,
       body,
-    });
-    throwIfError(error);
-    return need(data);
-  });
+    }: {
+      documentId: number;
+      body: TaxFormCreate;
+    }) => {
+      const { data, error } = await apiClient.POST(
+        "/tax/documents/{document_id}/forms",
+        {
+          params: { path: { document_id: documentId }, query: owner(ownerId) },
+          body,
+        },
+      );
+      throwIfError(error);
+      return need(data);
+    },
+  );
 }
 
 export function useUpdateTaxForm(ownerId?: OwnerId) {
-  return useTaxMutation(async ({ formId, patch }: { formId: number; patch: TaxFormPatch }) => {
-    const { data, error } = await apiClient.PATCH("/tax/forms/{form_id}", {
-      params: { path: { form_id: formId }, query: owner(ownerId) },
-      body: patch,
-    });
-    throwIfError(error);
-    return need(data);
-  });
+  return useTaxMutation(
+    async ({ formId, patch }: { formId: number; patch: TaxFormPatch }) => {
+      const { data, error } = await apiClient.PATCH("/tax/forms/{form_id}", {
+        params: { path: { form_id: formId }, query: owner(ownerId) },
+        body: patch,
+      });
+      throwIfError(error);
+      return need(data);
+    },
+  );
 }
 
 export function useDeleteTaxForm(ownerId?: OwnerId) {
@@ -202,34 +232,47 @@ export function useDeleteTaxForm(ownerId?: OwnerId) {
 
 export function useConfirmTaxForm(ownerId?: OwnerId) {
   return useTaxMutation(async (formId: number) => {
-    const { data, error } = await apiClient.POST("/tax/forms/{form_id}/confirm", {
-      params: { path: { form_id: formId }, query: owner(ownerId) },
-    });
+    const { data, error } = await apiClient.POST(
+      "/tax/forms/{form_id}/confirm",
+      {
+        params: { path: { form_id: formId }, query: owner(ownerId) },
+      },
+    );
     throwIfError(error);
     return need(data);
   });
 }
 
 export function useCreateIncomeItem(ownerId?: OwnerId) {
-  return useTaxMutation(async ({ formId, body }: { formId: number; body: IncomeItemIn }) => {
-    const { data, error } = await apiClient.POST("/tax/forms/{form_id}/income-items", {
-      params: { path: { form_id: formId }, query: owner(ownerId) },
-      body,
-    });
-    throwIfError(error);
-    return need(data);
-  });
+  return useTaxMutation(
+    async ({ formId, body }: { formId: number; body: IncomeItemIn }) => {
+      const { data, error } = await apiClient.POST(
+        "/tax/forms/{form_id}/income-items",
+        {
+          params: { path: { form_id: formId }, query: owner(ownerId) },
+          body,
+        },
+      );
+      throwIfError(error);
+      return need(data);
+    },
+  );
 }
 
 export function useUpdateIncomeItem(ownerId?: OwnerId) {
-  return useTaxMutation(async ({ id, patch }: { id: number; patch: IncomeItemPatch }) => {
-    const { data, error } = await apiClient.PATCH("/tax/income-items/{item_id}", {
-      params: { path: { item_id: id }, query: owner(ownerId) },
-      body: patch,
-    });
-    throwIfError(error);
-    return need(data);
-  });
+  return useTaxMutation(
+    async ({ id, patch }: { id: number; patch: IncomeItemPatch }) => {
+      const { data, error } = await apiClient.PATCH(
+        "/tax/income-items/{item_id}",
+        {
+          params: { path: { item_id: id }, query: owner(ownerId) },
+          body: patch,
+        },
+      );
+      throwIfError(error);
+      return need(data);
+    },
+  );
 }
 
 export function useDeleteIncomeItem(ownerId?: OwnerId) {
@@ -242,25 +285,35 @@ export function useDeleteIncomeItem(ownerId?: OwnerId) {
 }
 
 export function useCreateTaxItem(ownerId?: OwnerId) {
-  return useTaxMutation(async ({ formId, body }: { formId: number; body: TaxItemIn }) => {
-    const { data, error } = await apiClient.POST("/tax/forms/{form_id}/tax-items", {
-      params: { path: { form_id: formId }, query: owner(ownerId) },
-      body,
-    });
-    throwIfError(error);
-    return need(data);
-  });
+  return useTaxMutation(
+    async ({ formId, body }: { formId: number; body: TaxItemIn }) => {
+      const { data, error } = await apiClient.POST(
+        "/tax/forms/{form_id}/tax-items",
+        {
+          params: { path: { form_id: formId }, query: owner(ownerId) },
+          body,
+        },
+      );
+      throwIfError(error);
+      return need(data);
+    },
+  );
 }
 
 export function useUpdateTaxItem(ownerId?: OwnerId) {
-  return useTaxMutation(async ({ id, patch }: { id: number; patch: TaxItemPatch }) => {
-    const { data, error } = await apiClient.PATCH("/tax/tax-items/{item_id}", {
-      params: { path: { item_id: id }, query: owner(ownerId) },
-      body: patch,
-    });
-    throwIfError(error);
-    return need(data);
-  });
+  return useTaxMutation(
+    async ({ id, patch }: { id: number; patch: TaxItemPatch }) => {
+      const { data, error } = await apiClient.PATCH(
+        "/tax/tax-items/{item_id}",
+        {
+          params: { path: { item_id: id }, query: owner(ownerId) },
+          body: patch,
+        },
+      );
+      throwIfError(error);
+      return need(data);
+    },
+  );
 }
 
 export function useDeleteTaxItem(ownerId?: OwnerId) {
@@ -274,44 +327,115 @@ export function useDeleteTaxItem(ownerId?: OwnerId) {
 
 /** Move a document (with its forms and items) to another user. */
 export function useReassignTaxDocument(ownerId?: OwnerId) {
-  return useTaxMutation(async ({ documentId, userId }: { documentId: number; userId: number }) => {
-    const { data, error } = await apiClient.PATCH("/tax/documents/{document_id}", {
-      params: { path: { document_id: documentId }, query: owner(ownerId) },
-      body: { user_id: userId },
-    });
-    throwIfError(error);
-    return need(data);
-  });
+  return useTaxMutation(
+    async ({ documentId, userId }: { documentId: number; userId: number }) => {
+      const { data, error } = await apiClient.PATCH(
+        "/tax/documents/{document_id}",
+        {
+          params: { path: { document_id: documentId }, query: owner(ownerId) },
+          body: { user_id: userId },
+        },
+      );
+      throwIfError(error);
+      return need(data);
+    },
+  );
 }
 
 // ---- Reading chosen pages with the LLM -----------------------------------------------------------
 
 export type TaxPageInfo = Schemas["TaxPageInfo"];
 export type TaxLlmReadResponse = Schemas["TaxLlmReadResponse"];
+export type TaxSourceResponse = Schemas["TaxSourceResponse"];
 
 /** Per-page facts (suggested / never-sent) of a document whose PDF copy is kept. */
-export function useTaxDocumentPages(id: number, ownerId: OwnerId, enabled: boolean) {
+export function useTaxDocumentPages(
+  id: number,
+  ownerId: OwnerId,
+  enabled: boolean,
+) {
   return useQuery({
     enabled,
     queryKey: [...ROOT_KEY, "pages", id],
     queryFn: async () => {
-      const { data, error } = await apiClient.GET("/tax/documents/{document_id}/pages", {
-        params: { path: { document_id: id }, query: owner(ownerId) },
-      });
+      const { data, error } = await apiClient.GET(
+        "/tax/documents/{document_id}/pages",
+        {
+          params: { path: { document_id: id }, query: owner(ownerId) },
+        },
+      );
       throwIfError(error);
       return Array.isArray(data) ? data : [];
     },
   });
 }
 
-/** The redacted text that would be sent for `pages` (null = the automatic fallback's pages). */
-export async function fetchTaxLlmPreview(id: number, ownerId: OwnerId, pages: number[] | null) {
-  const { data, error } = await apiClient.GET("/tax/documents/{document_id}/llm-preview", {
-    params: {
-      path: { document_id: id },
-      query: { ...owner(ownerId), pages: pages === null ? undefined : pages.join(",") },
+/** True when `error` is the server's "the PDF isn't available, select the file again" answer. */
+export function isPdfNeeded(error: unknown): boolean {
+  if (!(error instanceof ApiError)) return false;
+  const detail = error.detail;
+  return (
+    typeof detail === "object" &&
+    detail !== null &&
+    "code" in detail &&
+    detail.code === "pdf_needed"
+  );
+}
+
+/**
+ * Re-select the original file of a document whose PDF copy is not kept. The server checks it is
+ * the same file (sha256; otherwise a 422 "This isn't the same file as ...") and holds it
+ * temporarily so the pages can be shown and read.
+ */
+export function useProvideTaxSource(ownerId: OwnerId) {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: async ({
+      documentId,
+      file,
+    }: {
+      documentId: number;
+      file: File;
+    }): Promise<TaxSourceResponse> => {
+      const form = new FormData();
+      form.append("file", file);
+      const { data, error } = await apiClient.POST(
+        "/tax/documents/{document_id}/source",
+        {
+          params: { path: { document_id: documentId }, query: owner(ownerId) },
+          // A real FormData is passed through by openapi-fetch (same cast as the upload hooks).
+          body: form as unknown as components["schemas"]["Body_provide_document_source_api_tax_documents__document_id__source_post"],
+        },
+      );
+      throwIfError(error);
+      if (!data) throw new Error("the file could not be provided");
+      queryClient.setQueryData([...ROOT_KEY, "pages", documentId], data.pages);
+      return data;
+    },
+    onSettled: () => {
+      void queryClient.invalidateQueries({ queryKey: ROOT_KEY });
     },
   });
+}
+
+/** The redacted text that would be sent for `pages` (null = the automatic fallback's pages). */
+export async function fetchTaxLlmPreview(
+  id: number,
+  ownerId: OwnerId,
+  pages: number[] | null,
+) {
+  const { data, error } = await apiClient.GET(
+    "/tax/documents/{document_id}/llm-preview",
+    {
+      params: {
+        path: { document_id: id },
+        query: {
+          ...owner(ownerId),
+          pages: pages === null ? undefined : pages.join(","),
+        },
+      },
+    },
+  );
   throwIfError(error);
   if (!data) throw new Error("preview returned no data");
   return data;
@@ -321,11 +445,20 @@ export async function fetchTaxLlmPreview(id: number, ownerId: OwnerId, pages: nu
 export function useReadPagesWithLlm(ownerId: OwnerId) {
   const queryClient = useQueryClient();
   return useMutation({
-    mutationFn: async ({ documentId, pages }: { documentId: number; pages: number[] }): Promise<TaxLlmReadResponse> => {
-      const { data, error } = await apiClient.POST("/tax/documents/{document_id}/llm-fallback", {
-        params: { path: { document_id: documentId }, query: owner(ownerId) },
-        body: { pages },
-      });
+    mutationFn: async ({
+      documentId,
+      pages,
+    }: {
+      documentId: number;
+      pages: number[];
+    }): Promise<TaxLlmReadResponse> => {
+      const { data, error } = await apiClient.POST(
+        "/tax/documents/{document_id}/llm-fallback",
+        {
+          params: { path: { document_id: documentId }, query: owner(ownerId) },
+          body: { pages },
+        },
+      );
       throwIfError(error);
       if (!data) throw new Error("the LLM read returned no data");
       return data;
@@ -337,7 +470,9 @@ export function useReadPagesWithLlm(ownerId: OwnerId) {
 }
 
 /** Does a document offer "Read pages with LLM…"? Needs a configured LLM and a file-backed row. */
-export function useLlmReadAvailable(document: { page_count: number | null }): boolean {
+export function useLlmReadAvailable(document: {
+  page_count: number | null;
+}): boolean {
   const mode = useSettings().data?.llm?.mode;
   return (mode === "local" || mode === "remote") && document.page_count != null;
 }

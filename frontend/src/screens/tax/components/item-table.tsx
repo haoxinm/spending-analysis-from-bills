@@ -47,12 +47,15 @@ interface Draft {
 
 function draftOf(item: Item | null, kind: Kind): Draft {
   return {
-    category: item?.category ?? (kind === "income" ? "salary_wages" : "federal_income_tax_withheld"),
+    category:
+      item?.category ??
+      (kind === "income" ? "salary_wages" : "federal_income_tax_withheld"),
     box: item?.box ?? "",
     label: item?.label ?? "",
     amount: item ? minorToDollars(item.amount_minor) : "",
     memo: item && "is_memo" in item ? item.is_memo : false,
-    jurisdiction: item && "jurisdiction" in item ? (item.jurisdiction ?? "") : "",
+    jurisdiction:
+      item && "jurisdiction" in item ? (item.jurisdiction ?? "") : "",
   };
 }
 
@@ -85,7 +88,8 @@ function ItemRow({
   const deleteTax = useDeleteTaxItem(ownerId);
 
   const initial = React.useMemo(() => draftOf(item, kind), [item, kind]);
-  const dirty = item === null || JSON.stringify(initial) !== JSON.stringify(draft);
+  const dirty =
+    item === null || JSON.stringify(initial) !== JSON.stringify(draft);
   const signed = kind === "income" && isSignedIncomeCategory(draft.category);
   const err = amountError(draft.amount, signed);
   const busy =
@@ -95,7 +99,8 @@ function ItemRow({
     createTax.isPending ||
     updateTax.isPending ||
     deleteTax.isPending;
-  const options = kind === "income" ? INCOME_CATEGORY_OPTIONS : TAX_CATEGORY_OPTIONS;
+  const options =
+    kind === "income" ? INCOME_CATEGORY_OPTIONS : TAX_CATEGORY_OPTIONS;
   const set = (patch: Partial<Draft>) => setDraft((d) => ({ ...d, ...patch }));
   const groupLabel = item
     ? `${kind === "income" ? "Income" : "Tax"} item: ${categoryLabel(kind, item.category)}${item.box ? ` box ${item.box}` : ""}`
@@ -121,7 +126,9 @@ function ItemRow({
               amount_minor,
               box,
               label,
-              ...(draft.memo !== ("is_memo" in item && item.is_memo) ? { is_memo: draft.memo } : {}),
+              ...(draft.memo !== ("is_memo" in item && item.is_memo)
+                ? { is_memo: draft.memo }
+                : {}),
             },
           });
         } else {
@@ -141,15 +148,29 @@ function ItemRow({
         } else {
           await createTax.mutateAsync({
             formId,
-            body: { category, amount_minor, box, label, jurisdiction, is_estimate: false },
+            body: {
+              category,
+              amount_minor,
+              box,
+              label,
+              jurisdiction,
+              is_estimate: false,
+            },
           });
         }
       }
-      toast({ variant: "success", title: item ? "Item updated" : "Item added" });
+      toast({
+        variant: "success",
+        title: item ? "Item updated" : "Item added",
+      });
       setTouched(false);
       if (!item) onDone?.();
     } catch (e) {
-      toast({ variant: "destructive", title: "Could not save item", description: errorMessage(e) });
+      toast({
+        variant: "destructive",
+        title: "Could not save item",
+        description: errorMessage(e),
+      });
     }
   }
 
@@ -160,7 +181,11 @@ function ItemRow({
       else await deleteTax.mutateAsync(item.id);
       toast({ title: "Item deleted" });
     } catch (e) {
-      toast({ variant: "destructive", title: "Could not delete item", description: errorMessage(e) });
+      toast({
+        variant: "destructive",
+        title: "Could not delete item",
+        description: errorMessage(e),
+      });
     }
   }
 
@@ -187,7 +212,10 @@ function ItemRow({
             category: v,
             // Memo follows the category (qualified dividends are always memo); an item
             // returned to its own category gets its stored flag back.
-            memo: item && v === item.category && "is_memo" in item ? item.is_memo : v === "qualified_dividends",
+            memo:
+              item && v === item.category && "is_memo" in item
+                ? item.is_memo
+                : v === "qualified_dividends",
           })
         }
         className="w-52"
@@ -224,19 +252,33 @@ function ItemRow({
         />
       ) : (
         <label className="flex items-center gap-1 self-center pt-4 text-xs text-muted-foreground">
-          <input type="checkbox" checked={draft.memo} onChange={(e) => set({ memo: e.target.checked })} />
+          <input
+            type="checkbox"
+            checked={draft.memo}
+            onChange={(e) => set({ memo: e.target.checked })}
+          />
           Memo (not in total)
         </label>
       )}
       <span className="flex items-center gap-2 self-end pb-0.5">
-        {origin ? <Badge variant={item?.origin === "llm" ? "accent" : "secondary"}>{origin}</Badge> : null}
+        {origin ? (
+          <Badge variant={item?.origin === "llm" ? "accent" : "secondary"}>
+            {origin}
+          </Badge>
+        ) : null}
         {dirty ? (
           <Button type="submit" size="sm" disabled={busy}>
             {item ? "Save item" : `Add ${kind} item`}
           </Button>
         ) : null}
         {item ? (
-          <Button type="button" size="sm" variant="outline" disabled={busy} onClick={() => void remove()}>
+          <Button
+            type="button"
+            size="sm"
+            variant="outline"
+            disabled={busy}
+            onClick={() => void remove()}
+          >
             Delete item
           </Button>
         ) : (
@@ -265,18 +307,37 @@ export function ItemTable({
   const title = kind === "income" ? "Income items" : "Tax items";
   return (
     <section aria-label={title} className="flex flex-col gap-2">
-      <h4 className="text-xs font-semibold uppercase text-muted-foreground">{title}</h4>
+      <h4 className="text-xs font-semibold uppercase text-muted-foreground">
+        {title}
+      </h4>
       {items.length === 0 && !adding ? (
         <p className="text-xs text-muted-foreground">None.</p>
       ) : null}
       {items.map((it) => (
-        <ItemRow key={`${it.id}:${itemSignature(it)}`} kind={kind} item={it} formId={formId} ownerId={ownerId} />
+        <ItemRow
+          key={`${it.id}:${itemSignature(it)}`}
+          kind={kind}
+          item={it}
+          formId={formId}
+          ownerId={ownerId}
+        />
       ))}
       {adding ? (
-        <ItemRow kind={kind} item={null} formId={formId} ownerId={ownerId} onDone={() => setAdding(false)} />
+        <ItemRow
+          kind={kind}
+          item={null}
+          formId={formId}
+          ownerId={ownerId}
+          onDone={() => setAdding(false)}
+        />
       ) : (
         <div>
-          <Button type="button" size="sm" variant="outline" onClick={() => setAdding(true)}>
+          <Button
+            type="button"
+            size="sm"
+            variant="outline"
+            onClick={() => setAdding(true)}
+          >
             {kind === "income" ? "Add income item" : "Add tax item"}
           </Button>
         </div>

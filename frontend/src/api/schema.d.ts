@@ -866,6 +866,29 @@ export interface paths {
         patch: operations["reassign_document_api_tax_documents__document_id__patch"];
         trace?: never;
     };
+    "/tax/documents/{document_id}/source": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Provide Document Source
+         * @description Re-select the original PDF of a document whose copy is not kept. The file must be
+         *     byte-identical to the imported one (sha256); it is held in a private temporary location for
+         *     30 minutes (or until the LLM read, or the document, is gone) so the page tools work. Nothing
+         *     is kept otherwise.
+         */
+        post: operations["provide_document_source_api_tax_documents__document_id__source_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/tax/documents/{document_id}/pages": {
         parameters: {
             query?: never;
@@ -1310,6 +1333,11 @@ export interface components {
             currency: "USD";
             /** Note */
             note?: string | null;
+        };
+        /** Body_provide_document_source_api_tax_documents__document_id__source_post */
+        Body_provide_document_source_api_tax_documents__document_id__source_post: {
+            /** File */
+            file: string;
         };
         /** Body_upload_statement_api_statements_post */
         Body_upload_statement_api_statements_post: {
@@ -2150,6 +2178,8 @@ export interface components {
             created_at: string;
             /** Has Pdf */
             has_pdf: boolean;
+            /** Staged Until */
+            staged_until?: string | null;
         };
         /** TaxDocumentDetail */
         TaxDocumentDetail: {
@@ -2178,6 +2208,8 @@ export interface components {
             created_at: string;
             /** Has Pdf */
             has_pdf: boolean;
+            /** Staged Until */
+            staged_until?: string | null;
             /** Forms */
             forms: components["schemas"]["TaxFormDetail"][];
         };
@@ -2465,6 +2497,17 @@ export interface components {
             original_name: string;
             /** Form Type */
             form_type: string;
+        };
+        /**
+         * TaxSourceResponse
+         * @description `POST /api/tax/documents/{id}/source`: the re-selected file is the document's original;
+         *     it is held temporarily (never kept) so its pages can be shown and read.
+         */
+        TaxSourceResponse: {
+            /** Pages */
+            pages: components["schemas"]["TaxPageInfo"][];
+            /** Expires At */
+            expires_at: string;
         };
         /** TaxYearSummary */
         TaxYearSummary: {
@@ -4710,6 +4753,43 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["TaxDocument"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    provide_document_source_api_tax_documents__document_id__source_post: {
+        parameters: {
+            query?: {
+                user_id?: number | null;
+            };
+            header?: never;
+            path: {
+                document_id: number;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "multipart/form-data": components["schemas"]["Body_provide_document_source_api_tax_documents__document_id__source_post"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["TaxSourceResponse"];
                 };
             };
             /** @description Validation Error */

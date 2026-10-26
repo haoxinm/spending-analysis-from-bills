@@ -50,7 +50,9 @@ interface UploadOutcome {
 function outcomeFor(file: File, r: TaxImportResponse): UploadOutcome {
   const skipped = skippedFromMessages(r.skipped_from ?? []);
   if (skipped.length === 0 && r.skipped_duplicate_forms > 0) {
-    skipped.push(`${r.skipped_duplicate_forms} duplicate form${r.skipped_duplicate_forms === 1 ? " was" : "s were"} skipped.`);
+    skipped.push(
+      `${r.skipped_duplicate_forms} duplicate form${r.skipped_duplicate_forms === 1 ? " was" : "s were"} skipped.`,
+    );
   }
   const details = [...skipped, ...r.warnings];
   switch (r.status) {
@@ -62,7 +64,12 @@ function outcomeFor(file: File, r: TaxImportResponse): UploadOutcome {
         details,
       };
     case "duplicate":
-      return { name: file.name, status: r.status, message: "Already imported; nothing changed.", details };
+      return {
+        name: file.name,
+        status: r.status,
+        message: "Already imported; nothing changed.",
+        details,
+      };
     default:
       return {
         name: file.name,
@@ -110,7 +117,11 @@ function DocumentRow({
     try {
       await remove.mutateAsync(d.id);
     } catch (e) {
-      toast({ variant: "destructive", title: "Could not delete document", description: errorMessage(e) });
+      toast({
+        variant: "destructive",
+        title: "Could not delete document",
+        description: errorMessage(e),
+      });
     }
   }
 
@@ -119,9 +130,17 @@ function DocumentRow({
     const target = userName(users, moveTo);
     try {
       await reassign.mutateAsync({ documentId: d.id, userId: moveTo });
-      toast({ variant: "success", title: `Moved to ${target}`, description: d.original_name });
+      toast({
+        variant: "success",
+        title: `Moved to ${target}`,
+        description: d.original_name,
+      });
     } catch (e) {
-      toast({ variant: "destructive", title: "Could not move document", description: errorMessage(e) });
+      toast({
+        variant: "destructive",
+        title: "Could not move document",
+        description: errorMessage(e),
+      });
     } finally {
       setMoveTo(null);
     }
@@ -138,18 +157,24 @@ function DocumentRow({
             {formTypeLabel(f)}
           </Badge>
         ))}
-        <Badge variant={d.status === "parsed" ? "accent" : "destructive"}>{documentStatusLabel(d.status)}</Badge>
+        <Badge variant={d.status === "parsed" ? "accent" : "destructive"}>
+          {documentStatusLabel(d.status)}
+        </Badge>
         <Badge variant="outline" data-testid="tax-document-owner" title="Owner">
           {userName(users, d.user_id)}
         </Badge>
-        <span className="text-xs text-muted-foreground">{d.tax_year ?? "year unknown"}</span>
+        <span className="text-xs text-muted-foreground">
+          {d.tax_year ?? "year unknown"}
+        </span>
         <span className="ml-auto flex flex-wrap items-center gap-2">
           {users.length > 1 && moveTo === null ? (
             <select
               aria-label={`Move ${d.original_name} to another user`}
               className="h-8 rounded-md border border-input bg-background px-2 text-xs"
               value=""
-              onChange={(e) => setMoveTo(e.target.value === "" ? null : Number(e.target.value))}
+              onChange={(e) =>
+                setMoveTo(e.target.value === "" ? null : Number(e.target.value))
+              }
             >
               <option value="">Move to…</option>
               {otherUsers.map((u) => (
@@ -164,10 +189,18 @@ function DocumentRow({
               <span className="text-xs">
                 Move this document and its figures to {userName(users, moveTo)}?
               </span>
-              <Button size="sm" disabled={reassign.isPending} onClick={() => void onMove()}>
+              <Button
+                size="sm"
+                disabled={reassign.isPending}
+                onClick={() => void onMove()}
+              >
                 Confirm move
               </Button>
-              <Button size="sm" variant="outline" onClick={() => setMoveTo(null)}>
+              <Button
+                size="sm"
+                variant="outline"
+                onClick={() => setMoveTo(null)}
+              >
                 Cancel move
               </Button>
             </>
@@ -208,22 +241,40 @@ function DocumentRow({
           </Button>
           {confirming ? (
             <>
-              <span className="text-xs">Delete this document and its figures?</span>
-              <Button size="sm" variant="destructive" disabled={remove.isPending} onClick={() => void onDelete()}>
+              <span className="text-xs">
+                Delete this document and its figures?
+              </span>
+              <Button
+                size="sm"
+                variant="destructive"
+                disabled={remove.isPending}
+                onClick={() => void onDelete()}
+              >
                 Confirm delete
               </Button>
-              <Button size="sm" variant="outline" onClick={() => setConfirming(false)}>
+              <Button
+                size="sm"
+                variant="outline"
+                onClick={() => setConfirming(false)}
+              >
                 Cancel
               </Button>
             </>
           ) : (
-            <Button size="sm" variant="outline" aria-label={`Delete ${d.original_name}`} onClick={() => setConfirming(true)}>
+            <Button
+              size="sm"
+              variant="outline"
+              aria-label={`Delete ${d.original_name}`}
+              onClick={() => setConfirming(true)}
+            >
               Delete
             </Button>
           )}
         </span>
       </div>
-      {d.error_detail ? <p className="text-xs text-destructive">{d.error_detail}</p> : null}
+      {d.error_detail ? (
+        <p className="text-xs text-destructive">{d.error_detail}</p>
+      ) : null}
       {d.warnings.length > 0 ? (
         <ul className="list-disc pl-5 text-xs text-muted-foreground">
           {d.warnings.map((w, i) => (
@@ -238,7 +289,11 @@ function DocumentRow({
       ) : null}
       {open ? (
         <div id={detailId} className="rounded-md bg-muted/30 p-2">
-          <DocumentDetail document={d} adding={adding} onAddingChange={setAdding} />
+          <DocumentDetail
+            document={d}
+            adding={adding}
+            onAddingChange={setAdding}
+          />
         </div>
       ) : null}
     </li>
@@ -249,7 +304,11 @@ function userName(users: readonly User[], id: number): string {
   return users.find((u) => u.id === id)?.name ?? `User ${id}`;
 }
 
-export function DocumentsPanel({ documents, users, selectedUserId }: DocumentsPanelProps) {
+export function DocumentsPanel({
+  documents,
+  users,
+  selectedUserId,
+}: DocumentsPanelProps) {
   const upload = useUploadTaxDocument();
   const createManual = useCreateManualDocument();
   const { toast } = useToast();
@@ -259,11 +318,15 @@ export function DocumentsPanel({ documents, users, selectedUserId }: DocumentsPa
   const [taxYear, setTaxYear] = React.useState("");
   const [outcomes, setOutcomes] = React.useState<UploadOutcome[]>([]);
   const [uploading, setUploading] = React.useState(false);
-  const [request, setRequest] = React.useState<{ id: number; n: number } | null>(null);
+  const [request, setRequest] = React.useState<{
+    id: number;
+    n: number;
+  } | null>(null);
 
   const yearNumber = taxYear.trim() === "" ? undefined : Number(taxYear);
   const yearInvalid =
-    yearNumber !== undefined && (!Number.isInteger(yearNumber) || yearNumber < 1990 || yearNumber > 2100);
+    yearNumber !== undefined &&
+    (!Number.isInteger(yearNumber) || yearNumber < 1990 || yearNumber > 2100);
 
   function openAdd(id: number) {
     setRequest((r) => ({ id, n: (r?.n ?? 0) + 1 }));
@@ -272,14 +335,25 @@ export function DocumentsPanel({ documents, users, selectedUserId }: DocumentsPa
   async function onManual() {
     if (targetUserId === null) return;
     if (yearNumber === undefined || yearInvalid) {
-      toast({ variant: "destructive", title: "Enter the tax year first", description: "Fill in the tax year field above." });
+      toast({
+        variant: "destructive",
+        title: "Enter the tax year first",
+        description: "Fill in the tax year field above.",
+      });
       return;
     }
     try {
-      const doc = await createManual.mutateAsync({ user_id: targetUserId, tax_year: yearNumber });
+      const doc = await createManual.mutateAsync({
+        user_id: targetUserId,
+        tax_year: yearNumber,
+      });
       openAdd(doc.id);
     } catch (e) {
-      toast({ variant: "destructive", title: "Could not create document", description: errorMessage(e) });
+      toast({
+        variant: "destructive",
+        title: "Could not create document",
+        description: errorMessage(e),
+      });
     }
   }
 
@@ -289,7 +363,11 @@ export function DocumentsPanel({ documents, users, selectedUserId }: DocumentsPa
     const results: UploadOutcome[] = [];
     for (const file of files) {
       try {
-        const r = await upload.mutateAsync({ file, userId: targetUserId, taxYear: yearNumber });
+        const r = await upload.mutateAsync({
+          file,
+          userId: targetUserId,
+          taxYear: yearNumber,
+        });
         results.push(outcomeFor(file, r));
       } catch (e) {
         results.push({
@@ -340,22 +418,49 @@ export function DocumentsPanel({ documents, users, selectedUserId }: DocumentsPa
             className="h-8 w-24"
           />
         </label>
-        <p className="text-xs text-muted-foreground" data-testid="tax-privacy-note">
+        <p
+          className="text-xs text-muted-foreground"
+          data-testid="tax-privacy-note"
+        >
           {TAX_PRIVACY_NOTE}
         </p>
         <div>
-          <Button size="sm" variant="outline" disabled={targetUserId === null || createManual.isPending} onClick={() => void onManual()}>
+          <Button
+            size="sm"
+            variant="outline"
+            disabled={targetUserId === null || createManual.isPending}
+            onClick={() => void onManual()}
+          >
             Enter figures without a PDF
           </Button>
         </div>
-        {uploading ? <p role="status" className="text-sm">Reading tax forms…</p> : null}
+        {uploading ? (
+          <p role="status" className="text-sm">
+            Reading tax forms…
+          </p>
+        ) : null}
         {outcomes.length > 0 ? (
-          <ul className="flex flex-col gap-1 text-sm" data-testid="upload-outcomes">
+          <ul
+            className="flex flex-col gap-1 text-sm"
+            data-testid="upload-outcomes"
+          >
             {outcomes.map((o, i) => (
-              <li key={`${o.name}-${i}`} className={o.status === "parsed" || o.status === "duplicate" ? "" : "text-destructive"}>
+              <li
+                key={`${o.name}-${i}`}
+                className={
+                  o.status === "parsed" || o.status === "duplicate"
+                    ? ""
+                    : "text-destructive"
+                }
+              >
                 <span className="font-medium">{o.name}</span>: {o.message}
                 {o.documentId !== undefined ? (
-                  <Button size="sm" variant="outline" className="ml-2" onClick={() => openAdd(o.documentId!)}>
+                  <Button
+                    size="sm"
+                    variant="outline"
+                    className="ml-2"
+                    onClick={() => openAdd(o.documentId!)}
+                  >
                     Add figures manually
                   </Button>
                 ) : null}
@@ -373,7 +478,9 @@ export function DocumentsPanel({ documents, users, selectedUserId }: DocumentsPa
       </div>
 
       {documents.length === 0 ? (
-        <p className="text-sm text-muted-foreground">No tax documents imported yet.</p>
+        <p className="text-sm text-muted-foreground">
+          No tax documents imported yet.
+        </p>
       ) : (
         <ul className="flex flex-col divide-y divide-border rounded-md border border-border">
           {documents.map((d) => (

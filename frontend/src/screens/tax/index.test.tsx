@@ -20,15 +20,24 @@ class ResizeObserverStub {
 vi.stubGlobal("ResizeObserver", ResizeObserverStub);
 
 vi.mock("@/api/client", async () => {
-  const actual = await vi.importActual<typeof import("@/api/client")>("@/api/client");
-  return { ...actual, apiClient: { GET: vi.fn(), POST: vi.fn(), DELETE: vi.fn() } };
+  const actual =
+    await vi.importActual<typeof import("@/api/client")>("@/api/client");
+  return {
+    ...actual,
+    apiClient: { GET: vi.fn(), POST: vi.fn(), DELETE: vi.fn() },
+  };
 });
 
 function wrapper({ children }: { children: React.ReactNode }) {
-  const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+  const queryClient = new QueryClient({
+    defaultOptions: { queries: { retry: false } },
+  });
   return (
     <QueryClientProvider client={queryClient}>
-      <MemoryRouter initialEntries={["/tax"]} future={{ v7_startTransition: true, v7_relativeSplatPath: true }}>
+      <MemoryRouter
+        initialEntries={["/tax"]}
+        future={{ v7_startTransition: true, v7_relativeSplatPath: true }}
+      >
         <ToastContextProvider>
           <WithUserSwitcher>{children}</WithUserSwitcher>
         </ToastContextProvider>
@@ -50,11 +59,21 @@ function mockGet(responses: Record<string, unknown>) {
 const FULL = {
   "/users": USERS,
   "/tax/years": [2024, 2023],
-  "/tax/summary": [summary(), summary({ tax_year: 2023, total_income_minor: 9000000 })],
+  "/tax/summary": [
+    summary(),
+    summary({ tax_year: 2023, total_income_minor: 9000000 }),
+  ],
   "/tax/income-by-payer": PAYERS,
   "/tax/documents": [
     document(),
-    document({ id: 2, original_name: "scan.pdf", status: "unsupported", form_types: [], tax_year: null, error_detail: "Not a recognised tax form." }),
+    document({
+      id: 2,
+      original_name: "scan.pdf",
+      status: "unsupported",
+      form_types: [],
+      tax_year: null,
+      error_detail: "Not a recognised tax form.",
+    }),
   ],
 };
 
@@ -81,9 +100,15 @@ describe("TaxScreen", () => {
   it("shows the empty state and the upload zone with a privacy note", async () => {
     mockGet({ "/users": [USERS[0]] });
     render(<TaxScreen />, { wrapper });
-    expect(await screen.findByText("Import a W-2, 1099 or 1040 to see income and tax")).toBeInTheDocument();
+    expect(
+      await screen.findByText(
+        "Import a W-2, 1099 or 1040 to see income and tax",
+      ),
+    ).toBeInTheDocument();
     expect(screen.getByLabelText("Choose tax form PDFs")).toBeInTheDocument();
-    expect(screen.getByTestId("tax-privacy-note")).toHaveTextContent(/last 4 digits/);
+    expect(screen.getByTestId("tax-privacy-note")).toHaveTextContent(
+      /last 4 digits/,
+    );
   });
 
   it("renders summary cards, breakdowns, payers and the year-over-year chart", async () => {
@@ -91,14 +116,26 @@ describe("TaxScreen", () => {
     render(<TaxScreen />, { wrapper });
     const cards = await screen.findByTestId("tax-summary-cards");
     expect(within(cards).getByText("$112,882.60")).toBeInTheDocument();
-    expect(within(screen.getByTestId("effective-rate-card")).getByText("13.19%")).toBeInTheDocument();
-    expect(within(screen.getByTestId("all-in-rate-card")).getByText("25.37%")).toBeInTheDocument();
-    expect(screen.getByTestId("basis-banner")).toHaveTextContent(/differ from the 1040/);
+    expect(
+      within(screen.getByTestId("effective-rate-card")).getByText("13.19%"),
+    ).toBeInTheDocument();
+    expect(
+      within(screen.getByTestId("all-in-rate-card")).getByText("25.37%"),
+    ).toBeInTheDocument();
+    expect(screen.getByTestId("basis-banner")).toHaveTextContent(
+      /differ from the 1040/,
+    );
     // Memo lines are shown but the total stays at the non-memo sum.
-    expect(screen.getByTestId("income-memo")).toHaveTextContent(/Qualified dividends/);
+    expect(screen.getByTestId("income-memo")).toHaveTextContent(
+      /Qualified dividends/,
+    );
     expect(screen.getAllByText("estimate")).toHaveLength(2);
     expect(screen.getByText(/not reported/)).toBeInTheDocument(); // NIIT
-    expect(within(screen.getByTestId("income-by-payer")).getByText("Pinecrest Logistics LLC")).toBeInTheDocument();
+    expect(
+      within(screen.getByTestId("income-by-payer")).getByText(
+        "Pinecrest Logistics LLC",
+      ),
+    ).toBeInTheDocument();
     expect(screen.getByTestId("year-over-year")).toBeInTheDocument();
     expect(screen.getByRole("radio", { name: "2023" })).toBeInTheDocument();
   });
@@ -116,7 +153,10 @@ describe("TaxScreen", () => {
   });
 
   it("shows the mixed basis banner", async () => {
-    mockGet({ ...FULL, "/tax/summary": [summary({ income_basis: "mixed", warnings: [] })] });
+    mockGet({
+      ...FULL,
+      "/tax/summary": [summary({ income_basis: "mixed", warnings: [] })],
+    });
     render(<TaxScreen />, { wrapper });
     await screen.findByTestId("tax-summary-cards");
     expect(screen.getByTestId("basis-banner")).toHaveTextContent(/Form 1040/);
@@ -127,7 +167,9 @@ describe("TaxScreen", () => {
     render(<TaxScreen />, { wrapper });
     await screen.findByTestId("tax-summary-cards");
     await userEvent.click(screen.getByRole("radio", { name: "2023" }));
-    expect(within(screen.getByTestId("tax-summary-cards")).getByText("$90,000.00")).toBeInTheDocument();
+    expect(
+      within(screen.getByTestId("tax-summary-cards")).getByText("$90,000.00"),
+    ).toBeInTheDocument();
   });
 
   it("never renders SSN-shaped text", async () => {
@@ -145,7 +187,9 @@ describe("TaxScreen", () => {
     await waitFor(() =>
       expect(get).toHaveBeenCalledWith(
         "/tax/summary",
-        expect.objectContaining({ params: { query: { user_ids: [2], currency: "USD" } } }),
+        expect.objectContaining({
+          params: { query: { user_ids: [2], currency: "USD" } },
+        }),
       ),
     );
   });
@@ -154,9 +198,13 @@ describe("TaxScreen", () => {
     mockGet(FULL);
     del.mockResolvedValue({ error: undefined });
     render(<TaxScreen />, { wrapper });
-    await userEvent.click(await screen.findByRole("button", { name: "Delete tax_w2_normal.pdf" }));
+    await userEvent.click(
+      await screen.findByRole("button", { name: "Delete tax_w2_normal.pdf" }),
+    );
     expect(del).not.toHaveBeenCalled();
-    await userEvent.click(screen.getByRole("button", { name: "Confirm delete" }));
+    await userEvent.click(
+      screen.getByRole("button", { name: "Confirm delete" }),
+    );
     await waitFor(() =>
       expect(del).toHaveBeenCalledWith("/tax/documents/{document_id}", {
         params: { path: { document_id: 1 }, query: { user_id: 1 } },
@@ -171,8 +219,12 @@ describe("TaxScreen", () => {
     expect(docs).toHaveLength(2);
     expect(within(docs[0]!).getByText("W-2")).toBeInTheDocument();
     expect(within(docs[1]!).getByText("Unsupported")).toBeInTheDocument();
-    expect(within(docs[1]!).getByText("Not a recognised tax form.")).toBeInTheDocument();
-    expect(screen.getByRole("combobox", { name: "Upload for user" })).toBeInTheDocument();
+    expect(
+      within(docs[1]!).getByText("Not a recognised tax form."),
+    ).toBeInTheDocument();
+    expect(
+      screen.getByRole("combobox", { name: "Upload for user" }),
+    ).toBeInTheDocument();
   });
 
   it("uploads a PDF for the chosen user and reports the outcome", async () => {
@@ -192,13 +244,18 @@ describe("TaxScreen", () => {
     });
     render(<TaxScreen />, { wrapper });
     await screen.findByTestId("tax-summary-cards");
-    await userEvent.selectOptions(screen.getByRole("combobox", { name: "Upload for user" }), "2");
+    await userEvent.selectOptions(
+      screen.getByRole("combobox", { name: "Upload for user" }),
+      "2",
+    );
     const file = new File(["%PDF-1.4"], "w2.pdf", { type: "application/pdf" });
     await userEvent.upload(screen.getByLabelText("Choose tax form PDFs"), file);
     await waitFor(() => expect(post).toHaveBeenCalledTimes(1));
     const [path, init] = post.mock.calls[0] as [string, { body: FormData }];
     expect(path).toBe("/tax/documents");
     expect(init.body.get("user_id")).toBe("2");
-    expect(await screen.findByTestId("upload-outcomes")).toHaveTextContent(/Already imported/);
+    expect(await screen.findByTestId("upload-outcomes")).toHaveTextContent(
+      /Already imported/,
+    );
   });
 });

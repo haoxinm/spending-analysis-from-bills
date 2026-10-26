@@ -388,10 +388,27 @@ With an LLM configured, a document in the Tax screen offers **Read pages with LL
 fallback would send), a collapsed **Show what would be sent** preview of the exact redacted text
 (no network call), and **Send selected pages to LLM** after a confirmation. Form 1040 pages and
 pages without text are never sent. New forms are tagged like the automatic fallback's and a form
-already stored is skipped. This needs the PDF copy (`store_tax_pdf_copies = true`, see below), so
-thumbnails and the preview are only available for files imported with that switch on.
+already stored is skipped.
+
+**Without a kept PDF (the default) you select the file again.** The page tools need the PDF. When
+none is kept (`store_tax_pdf_copies` off), the section says "To read pages with your LLM, select
+the original file again (it isn't kept after import for privacy)" and shows a drop zone. The server
+checks the file's sha256 against the imported document's; a different file is refused ("This isn't
+the same file as <name>") and nothing is stored. The same file is held only temporarily:
+
+- in `<data dir>/tax_staging/<document id>.pdf`, a private folder (mode 0700, file 0600) that is not
+  part of the database, the statement copies, exports or backups;
+- for 30 minutes (then you are asked again), and it is deleted after a successful send to the LLM,
+  when the document is deleted, when it expires (checked on every use and whenever a file is
+  staged) and when the app starts;
+- so the privacy default is unchanged: no PDF copy stays behind unless you turn on
+  `store_tax_pdf_copies`.
+
 API: `GET /api/tax/documents/{id}/pages`, `.../pages/{n}/image`, `.../llm-preview?pages=1,2` and
-`POST .../llm-fallback {"pages": [...]}` (all take the optional `user_id` ownership check).
+`POST .../llm-fallback {"pages": [...]}`; `POST .../source` (multipart `file`) stages the
+re-selected file and returns `{pages, expires_at}`. All take the optional `user_id` ownership
+check. Without a kept or staged PDF the page endpoints answer 409 with `detail.code`
+`pdf_needed`. A document shows `has_pdf` (kept copy) and `staged_until` (temporary copy).
 
 ## Where the data lives
 

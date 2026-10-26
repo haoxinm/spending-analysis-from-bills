@@ -26,7 +26,17 @@ describe("dollarsToMinor", () => {
     expect(dollarsToMinor("0.1")).toBe(10);
   });
   it("rejects junk", () => {
-    for (const bad of ["", "abc", "NaN", "1e5", "1.2.3", "$", "--5", "12abc", "Infinity"]) {
+    for (const bad of [
+      "",
+      "abc",
+      "NaN",
+      "1e5",
+      "1.2.3",
+      "$",
+      "--5",
+      "12abc",
+      "Infinity",
+    ]) {
       expect(dollarsToMinor(bad, true)).toBeNull();
     }
   });
@@ -76,11 +86,23 @@ describe("validation", () => {
 
 describe("labels", () => {
   it("provenanceLabel precedence", () => {
-    const base = { extraction_method: "parser", is_user_edited: false, needs_review: false } as const;
+    const base = {
+      extraction_method: "parser",
+      is_user_edited: false,
+      needs_review: false,
+    } as const;
     expect(provenanceLabel(base)).toBe("Parsed");
     expect(provenanceLabel({ ...base, is_user_edited: true })).toBe("Edited");
-    expect(provenanceLabel({ ...base, extraction_method: "manual" })).toBe("Entered manually");
-    expect(provenanceLabel({ ...base, extraction_method: "llm", needs_review: true })).toBe("Read by LLM — needs review");
+    expect(provenanceLabel({ ...base, extraction_method: "manual" })).toBe(
+      "Entered manually",
+    );
+    expect(
+      provenanceLabel({
+        ...base,
+        extraction_method: "llm",
+        needs_review: true,
+      }),
+    ).toBe("Read by LLM — needs review");
   });
   it("categoryLabel falls back to the raw value", () => {
     expect(categoryLabel("income", "interest")).toBe("Interest");

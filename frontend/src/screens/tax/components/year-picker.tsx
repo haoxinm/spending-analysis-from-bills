@@ -17,8 +17,10 @@ export function YearPicker({ years, value, onChange }: YearPickerProps) {
 
   function onKeyDown(event: React.KeyboardEvent, index: number) {
     let target: number;
-    if (event.key === "ArrowRight" || event.key === "ArrowDown") target = (index + 1) % years.length;
-    else if (event.key === "ArrowLeft" || event.key === "ArrowUp") target = (index - 1 + years.length) % years.length;
+    if (event.key === "ArrowRight" || event.key === "ArrowDown")
+      target = (index + 1) % years.length;
+    else if (event.key === "ArrowLeft" || event.key === "ArrowUp")
+      target = (index - 1 + years.length) % years.length;
     else return;
     event.preventDefault();
     onChange(years[target]!);

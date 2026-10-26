@@ -21,30 +21,69 @@ export function summary(over: Partial<TaxSummary> = {}): TaxSummary {
     tax_year: 2024,
     user_id: 1,
     income_basis: "source_documents",
-    income_by_category: CATS.map(([category, label, amount_minor, is_memo]) => ({
-      category: category as TaxSummary["income_by_category"][number]["category"],
-      label,
-      amount_minor,
-      is_memo,
-    })),
+    income_by_category: CATS.map(
+      ([category, label, amount_minor, is_memo]) => ({
+        category:
+          category as TaxSummary["income_by_category"][number]["category"],
+        label,
+        amount_minor,
+        is_memo,
+      }),
+    ),
     memo_by_category: [
-      { category: "qualified_dividends", label: "Qualified dividends (memo)", amount_minor: 180000 },
-      { category: "tax_exempt", label: "Tax-exempt interest (memo)", amount_minor: 5000 },
+      {
+        category: "qualified_dividends",
+        label: "Qualified dividends (memo)",
+        amount_minor: 180000,
+      },
+      {
+        category: "tax_exempt",
+        label: "Tax-exempt interest (memo)",
+        amount_minor: 5000,
+      },
     ],
     total_income_minor: 11288260,
     withheld: [
-      { category: "federal_income_tax_withheld", label: "Federal income tax withheld", amount_minor: 1423040 },
-      { category: "state_income_tax_withheld", label: "State income tax withheld", amount_minor: 500000 },
-      { category: "local_income_tax_withheld", label: "Local income tax withheld", amount_minor: 0 },
+      {
+        category: "federal_income_tax_withheld",
+        label: "Federal income tax withheld",
+        amount_minor: 1423040,
+      },
+      {
+        category: "state_income_tax_withheld",
+        label: "State income tax withheld",
+        amount_minor: 500000,
+      },
+      {
+        category: "local_income_tax_withheld",
+        label: "Local income tax withheld",
+        amount_minor: 0,
+      },
     ],
     fica: [
-      { category: "social_security_tax", label: "Social Security tax", amount_minor: 700244 },
+      {
+        category: "social_security_tax",
+        label: "Social Security tax",
+        amount_minor: 700244,
+      },
       { category: "medicare_tax", label: "Medicare tax", amount_minor: 163000 },
     ],
     liability: [
-      { category: "total_federal_tax", label: "Total federal tax", amount_minor: 1489100 },
-      { category: "federal_tax_ordinary_est", label: "Ordinary income tax (estimate)", amount_minor: 1400000 },
-      { category: "federal_tax_preferential_est", label: "Preferential tax (estimate)", amount_minor: 89100 },
+      {
+        category: "total_federal_tax",
+        label: "Total federal tax",
+        amount_minor: 1489100,
+      },
+      {
+        category: "federal_tax_ordinary_est",
+        label: "Ordinary income tax (estimate)",
+        amount_minor: 1400000,
+      },
+      {
+        category: "federal_tax_preferential_est",
+        label: "Preferential tax (estimate)",
+        amount_minor: 89100,
+      },
     ],
     payments_minor: 1519100,
     refund_minor: 30000,
@@ -73,6 +112,7 @@ export function document(over: Partial<TaxDocument> = {}): TaxDocument {
     error_detail: null,
     created_at: "2026-10-25T12:00:00+00:00",
     has_pdf: false,
+    staged_until: null,
     ...over,
   };
 }
@@ -117,10 +157,31 @@ export function formDetail(over: Partial<FormDetail> = {}): FormDetail {
     is_user_edited: false,
     needs_review: false,
     income_items: [
-      { id: 100, category: "salary_wages", amount_minor: 8543210, currency: "USD", source_form: "W-2", box: "1", label: "Wages", is_memo: false, origin: "parser" },
+      {
+        id: 100,
+        category: "salary_wages",
+        amount_minor: 8543210,
+        currency: "USD",
+        source_form: "W-2",
+        box: "1",
+        label: "Wages",
+        is_memo: false,
+        origin: "parser",
+      },
     ],
     tax_items: [
-      { id: 200, category: "federal_income_tax_withheld", amount_minor: 1200000, currency: "USD", source_form: "W-2", box: "2", label: null, jurisdiction: null, is_estimate: false, origin: "parser" },
+      {
+        id: 200,
+        category: "federal_income_tax_withheld",
+        amount_minor: 1200000,
+        currency: "USD",
+        source_form: "W-2",
+        box: "2",
+        label: null,
+        jurisdiction: null,
+        is_estimate: false,
+        origin: "parser",
+      },
     ],
     ...over,
   };

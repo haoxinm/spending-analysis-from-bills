@@ -1,7 +1,12 @@
 import { Money } from "@/components/primitives/money";
 import { Card, CardContent } from "@/components/ui/card";
 
-import { formatRate, headlineTax, refundOrOwed, type TaxSummary } from "../logic";
+import {
+  formatRate,
+  headlineTax,
+  refundOrOwed,
+  type TaxSummary,
+} from "../logic";
 
 function StatCard({
   label,
@@ -19,9 +24,13 @@ function StatCard({
   return (
     <Card data-testid={testId} title={title}>
       <CardContent className="flex flex-col gap-1 p-4">
-        <span className="text-xs font-medium uppercase tracking-wide text-muted-foreground">{label}</span>
+        <span className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
+          {label}
+        </span>
         <span className="text-2xl font-semibold tabular-nums">{children}</span>
-        {hint ? <span className="text-xs text-muted-foreground">{hint}</span> : null}
+        {hint ? (
+          <span className="text-xs text-muted-foreground">{hint}</span>
+        ) : null}
       </CardContent>
     </Card>
   );
@@ -30,10 +39,21 @@ function StatCard({
 export function SummaryCards({ summary }: { summary: TaxSummary }) {
   const tax = headlineTax(summary);
   const result = refundOrOwed(summary);
-  const resultLabel = result.kind === "owed" ? "Amount owed" : result.kind === "refund" ? "Refund" : "Refund / owed";
+  const resultLabel =
+    result.kind === "owed"
+      ? "Amount owed"
+      : result.kind === "refund"
+        ? "Refund"
+        : "Refund / owed";
   return (
-    <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-5" data-testid="tax-summary-cards">
-      <StatCard label="Total income" hint={`${summary.document_count} document${summary.document_count === 1 ? "" : "s"}`}>
+    <div
+      className="grid gap-3 sm:grid-cols-2 lg:grid-cols-5"
+      data-testid="tax-summary-cards"
+    >
+      <StatCard
+        label="Total income"
+        hint={`${summary.document_count} document${summary.document_count === 1 ? "" : "s"}`}
+      >
         <Money tone="neutral" minorUnits={summary.total_income_minor} />
       </StatCard>
       <StatCard
@@ -77,7 +97,11 @@ export function SummaryCards({ summary }: { summary: TaxSummary }) {
                 : "From your return"
         }
       >
-        {result.amountMinor === null ? "—" : <Money tone="neutral" minorUnits={result.amountMinor} />}
+        {result.amountMinor === null ? (
+          "—"
+        ) : (
+          <Money tone="neutral" minorUnits={result.amountMinor} />
+        )}
       </StatCard>
     </div>
   );

@@ -39,15 +39,26 @@ describe("labels", () => {
 describe("toIncomeBars", () => {
   it("drops memo and zero categories", () => {
     const bars = toIncomeBars(summary());
-    expect(bars.map((b) => b.category)).toEqual(["salary_wages", "interest", "ordinary_dividends"]);
-    expect(bars.reduce((s, b) => s + b.value, 0)).toBe(10974260 + 24000 + 290000);
+    expect(bars.map((b) => b.category)).toEqual([
+      "salary_wages",
+      "interest",
+      "ordinary_dividends",
+    ]);
+    expect(bars.reduce((s, b) => s + b.value, 0)).toBe(
+      10974260 + 24000 + 290000,
+    );
   });
 });
 
 describe("headlineTax", () => {
   it("uses federal liability plus FICA plus withheld state when no state liability", () => {
     const t = headlineTax(summary());
-    expect(t).toMatchObject({ federalMinor: 1489100, federalKind: "liability", ficaMinor: 863244, stateMinor: 500000 });
+    expect(t).toMatchObject({
+      federalMinor: 1489100,
+      federalKind: "liability",
+      ficaMinor: 863244,
+      stateMinor: 500000,
+    });
     expect(t.totalMinor).toBe(1489100 + 863244 + 500000);
   });
   it("falls back to withheld federal tax without a return", () => {
@@ -59,45 +70,85 @@ describe("headlineTax", () => {
 
 describe("refundOrOwed", () => {
   it("classifies", () => {
-    expect(refundOrOwed(summary())).toMatchObject({ kind: "refund", amountMinor: 30000 });
-    expect(refundOrOwed(summary({ refund_minor: 0, amount_owed_minor: 500 }))).toMatchObject({ kind: "owed", amountMinor: 500 });
-    expect(refundOrOwed(summary({ refund_minor: null, amount_owed_minor: null })).kind).toBe("unknown");
-    expect(refundOrOwed(summary({ refund_minor: 0, amount_owed_minor: 0 })).kind).toBe("even");
+    expect(refundOrOwed(summary())).toMatchObject({
+      kind: "refund",
+      amountMinor: 30000,
+    });
+    expect(
+      refundOrOwed(summary({ refund_minor: 0, amount_owed_minor: 500 })),
+    ).toMatchObject({ kind: "owed", amountMinor: 500 });
+    expect(
+      refundOrOwed(summary({ refund_minor: null, amount_owed_minor: null }))
+        .kind,
+    ).toBe("unknown");
+    expect(
+      refundOrOwed(summary({ refund_minor: 0, amount_owed_minor: 0 })).kind,
+    ).toBe("even");
   });
 });
 
 describe("taxBreakdownRows", () => {
   it("groups rows and flags estimates", () => {
     const groups = taxBreakdownRows(summary());
-    expect(groups.map((g) => g.key)).toEqual(["withholding", "fica", "liability", "payments", "result"]);
+    expect(groups.map((g) => g.key)).toEqual([
+      "withholding",
+      "fica",
+      "liability",
+      "payments",
+      "result",
+    ]);
     const liability = groups.find((g) => g.key === "liability")!;
     expect(liability.rows.filter((r) => r.estimate).map((r) => r.key)).toEqual([
       "federal_tax_ordinary_est",
       "federal_tax_preferential_est",
     ]);
-    const niit = liability.rows.find((r) => r.key === "net_investment_income_tax");
+    const niit = liability.rows.find(
+      (r) => r.key === "net_investment_income_tax",
+    );
     expect(niit?.amountMinor).toBeNull();
-    expect(liability.rows.some((r) => r.key === "self_employment_tax")).toBe(false);
+    expect(liability.rows.some((r) => r.key === "self_employment_tax")).toBe(
+      false,
+    );
   });
   it("reports unknown result and payments when there is no return", () => {
     const groups = taxBreakdownRows(
-      summary({ liability: [], payments_minor: null, refund_minor: null, amount_owed_minor: null }),
+      summary({
+        liability: [],
+        payments_minor: null,
+        refund_minor: null,
+        amount_owed_minor: null,
+      }),
     );
-    expect(groups.find((g) => g.key === "payments")!.rows[0]!.amountMinor).toBeNull();
-    expect(groups.find((g) => g.key === "result")!.rows[0]!.missingText).toBe("unknown");
+    expect(
+      groups.find((g) => g.key === "payments")!.rows[0]!.amountMinor,
+    ).toBeNull();
+    expect(groups.find((g) => g.key === "result")!.rows[0]!.missingText).toBe(
+      "unknown",
+    );
   });
 });
 
 describe("yearOverYear / groupPayers / resolveYear", () => {
   it("orders years ascending", () => {
-    const pts = yearOverYear([summary({ tax_year: 2024 }), summary({ tax_year: 2023, total_income_minor: 5 })]);
+    const pts = yearOverYear([
+      summary({ tax_year: 2024 }),
+      summary({ tax_year: 2023, total_income_minor: 5 }),
+    ]);
     expect(pts.map((p) => p.year)).toEqual([2023, 2024]);
     expect(pts[0]!.income).toBe(5);
   });
   it("groups payers for a year, largest first", () => {
-    const rows = groupPayers([...PAYERS, { ...PAYERS[0]!, tax_year: 2023 }], 2024);
-    expect(rows.map((r) => r.payerName)).toEqual(["Pinecrest Logistics LLC", "Harbor Bank"]);
-    expect(groupPayers([{ ...PAYERS[0]!, payer_name: null }], 2024)[0]!.payerName).toBe("Unknown payer");
+    const rows = groupPayers(
+      [...PAYERS, { ...PAYERS[0]!, tax_year: 2023 }],
+      2024,
+    );
+    expect(rows.map((r) => r.payerName)).toEqual([
+      "Pinecrest Logistics LLC",
+      "Harbor Bank",
+    ]);
+    expect(
+      groupPayers([{ ...PAYERS[0]!, payer_name: null }], 2024)[0]!.payerName,
+    ).toBe("Unknown payer");
   });
   it("resolves the year", () => {
     expect(resolveYear(2023, [2024, 2023])).toBe(2023);
@@ -109,9 +160,24 @@ describe("yearOverYear / groupPayers / resolveYear", () => {
 describe("net-negative income categories", () => {
   const loss = summary({
     income_by_category: [
-      { category: "salary_wages", label: "Wages and salary", amount_minor: 900000, is_memo: false },
-      { category: "interest", label: "Interest", amount_minor: 100000, is_memo: false },
-      { category: "long_term_capital_gain", label: "Long-term capital gains", amount_minor: -300000, is_memo: false },
+      {
+        category: "salary_wages",
+        label: "Wages and salary",
+        amount_minor: 900000,
+        is_memo: false,
+      },
+      {
+        category: "interest",
+        label: "Interest",
+        amount_minor: 100000,
+        is_memo: false,
+      },
+      {
+        category: "long_term_capital_gain",
+        label: "Long-term capital gains",
+        amount_minor: -300000,
+        is_memo: false,
+      },
     ],
     total_income_minor: 700000,
   });
@@ -119,7 +185,10 @@ describe("net-negative income categories", () => {
     const bars = toIncomeBars(loss);
     expect(bars.map((b) => b.value)).toEqual([900000, 100000, -300000]);
     expect(bars.reduce((s, b) => s + b.value, 0)).toBe(loss.total_income_minor);
-    expect(donutSlices(bars).map((b) => b.category)).toEqual(["salary_wages", "interest"]);
+    expect(donutSlices(bars).map((b) => b.category)).toEqual([
+      "salary_wages",
+      "interest",
+    ]);
   });
   it("computes share against positive categories and null for negatives", () => {
     const bars = toIncomeBars(loss);

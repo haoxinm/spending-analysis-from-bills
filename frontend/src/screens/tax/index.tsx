@@ -1,6 +1,10 @@
 import * as React from "react";
 
-import { EmptyState, ErrorState, LoadingState } from "@/components/primitives/states";
+import {
+  EmptyState,
+  ErrorState,
+  LoadingState,
+} from "@/components/primitives/states";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { useSelectedUser } from "@/hooks/use-selected-user";
 
@@ -12,7 +16,12 @@ import { SummaryCards } from "./components/summary-cards";
 import { TaxBreakdown } from "./components/tax-breakdown";
 import { YearOverYear } from "./components/year-over-year";
 import { YearPicker } from "./components/year-picker";
-import { useTaxDocuments, useTaxIncomeByPayer, useTaxSummary, useTaxYears } from "./hooks";
+import {
+  useTaxDocuments,
+  useTaxIncomeByPayer,
+  useTaxSummary,
+  useTaxYears,
+} from "./hooks";
 import { resolveYear } from "./logic";
 
 export const screenMeta = { path: "/tax", title: "Income & Tax" };
@@ -38,7 +47,8 @@ export default function TaxScreen() {
   const summary = summaries.find((s) => s.tax_year === year) ?? null;
 
   const error = yearsQuery.error ?? summaryQuery.error;
-  const loading = sel.isLoading || yearsQuery.isLoading || summaryQuery.isLoading;
+  const loading =
+    sel.isLoading || yearsQuery.isLoading || summaryQuery.isLoading;
   const documents = documentsQuery.data ?? [];
   const hasData = years.length > 0 && summaries.length > 0;
 
@@ -51,7 +61,11 @@ export default function TaxScreen() {
         {documentsQuery.error ? (
           <ErrorState description={documentsQuery.error.message} />
         ) : (
-          <DocumentsPanel documents={documents} users={sel.users} selectedUserId={sel.selectedUserId} />
+          <DocumentsPanel
+            documents={documents}
+            users={sel.users}
+            selectedUserId={sel.selectedUserId}
+          />
         )}
       </CardContent>
     </Card>
@@ -61,20 +75,29 @@ export default function TaxScreen() {
     <div className="flex flex-col gap-6 py-2">
       <div className="flex flex-wrap items-start justify-between gap-3">
         <div>
-          <h1 className="text-xl font-semibold tracking-tight">{screenMeta.title}</h1>
+          <h1 className="text-xl font-semibold tracking-tight">
+            {screenMeta.title}
+          </h1>
           <p className="text-sm text-muted-foreground">
             Income, withholding and tax from your W-2, 1099 and 1040 forms.
-            {sel.users.length > 1 && sel.selectedUser ? ` Showing ${sel.selectedUser.name}.` : ""}
+            {sel.users.length > 1 && sel.selectedUser
+              ? ` Showing ${sel.selectedUser.name}.`
+              : ""}
           </p>
         </div>
       </div>
 
       {error ? (
-        <ErrorState description={error instanceof Error ? error.message : String(error)} />
+        <ErrorState
+          description={error instanceof Error ? error.message : String(error)}
+        />
       ) : loading ? (
         <LoadingState rows={4} />
       ) : !hasData ? (
-        <EmptyState title={EMPTY_TEXT} description="Upload tax form PDFs below to get started." />
+        <EmptyState
+          title={EMPTY_TEXT}
+          description="Upload tax form PDFs below to get started."
+        />
       ) : (
         <>
           <YearPicker years={years} value={year} onChange={setPickedYear} />
@@ -108,7 +131,10 @@ export default function TaxScreen() {
                   {payersQuery.error ? (
                     <ErrorState description={payersQuery.error.message} />
                   ) : (
-                    <IncomeByPayer rows={payersQuery.data ?? []} year={summary.tax_year} />
+                    <IncomeByPayer
+                      rows={payersQuery.data ?? []}
+                      year={summary.tax_year}
+                    />
                   )}
                 </CardContent>
               </Card>

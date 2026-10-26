@@ -43,6 +43,7 @@ from spend_analyzer.api.routers import (
 from spend_analyzer.api.security import LocalhostGuardMiddleware, generate_token
 from spend_analyzer.config import Settings
 from spend_analyzer.db.session import make_engine, make_session_factory
+from spend_analyzer.ingest.tax import staging as tax_staging
 from spend_analyzer.jobs.runner import JobRunner
 
 #: The web/ build output is git-ignored and only present once the frontend has been built (§0.4);
@@ -64,6 +65,7 @@ def create_app(
     resolved_token = token if token is not None else generate_token()
     session_factory: sessionmaker[Session] = make_session_factory(resolved_engine)
 
+    tax_staging.purge_all()  # re-selected tax PDFs never outlive the process
     app = FastAPI(title="Spend Analyzer API", version="0.1.0")
     app.state.engine = resolved_engine
     app.state.session_factory = session_factory

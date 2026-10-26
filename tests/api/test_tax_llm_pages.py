@@ -208,7 +208,8 @@ def test_no_kept_pdf_means_no_page_tools(client: TestClient, user_id: int, tmp_p
     d = _post(client, user_id, pdf)["document"]
     assert d["has_pdf"] is False
     for url in ("pages", "llm-preview", "pages/1/image"):
-        assert client.get(f"/api/tax/documents/{d['id']}/{url}").status_code == 404
+        r = client.get(f"/api/tax/documents/{d['id']}/{url}")
+        assert r.status_code == 409 and r.json()["detail"]["code"] == "pdf_needed"
 
 
 def test_send_reads_the_chosen_pages_and_tags_the_forms(

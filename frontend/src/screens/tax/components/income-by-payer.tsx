@@ -5,19 +5,35 @@ import { Badge } from "@/components/ui/badge";
 
 import { formTypeLabel, groupPayers, type TaxIncomePayer } from "../logic";
 
-export function IncomeByPayer({ rows, year }: { rows: readonly TaxIncomePayer[]; year: number }) {
+export function IncomeByPayer({
+  rows,
+  year,
+}: {
+  rows: readonly TaxIncomePayer[];
+  year: number;
+}) {
   const payers = React.useMemo(() => groupPayers(rows, year), [rows, year]);
   if (payers.length === 0) {
-    return <p className="text-sm text-muted-foreground">No W-2 or 1099 income for {year}.</p>;
+    return (
+      <p className="text-sm text-muted-foreground">
+        No W-2 or 1099 income for {year}.
+      </p>
+    );
   }
   return (
     <table className="w-full text-sm" data-testid="income-by-payer">
       <caption className="sr-only">Income by payer</caption>
       <thead>
         <tr className="text-left text-xs text-muted-foreground">
-          <th scope="col" className="pb-1 font-medium">Payer</th>
-          <th scope="col" className="pb-1 font-medium">Form</th>
-          <th scope="col" className="pb-1 text-right font-medium">Amount</th>
+          <th scope="col" className="pb-1 font-medium">
+            Payer
+          </th>
+          <th scope="col" className="pb-1 font-medium">
+            Form
+          </th>
+          <th scope="col" className="pb-1 text-right font-medium">
+            Amount
+          </th>
         </tr>
       </thead>
       <tbody>

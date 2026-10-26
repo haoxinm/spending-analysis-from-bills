@@ -3772,6 +3772,75 @@
         }
       }
     },
+    "/tax/documents/{document_id}/source": {
+      "post": {
+        "tags": [
+          "tax"
+        ],
+        "summary": "Provide Document Source",
+        "description": "Re-select the original PDF of a document whose copy is not kept. The file must be\nbyte-identical to the imported one (sha256); it is held in a private temporary location for\n30 minutes (or until the LLM read, or the document, is gone) so the page tools work. Nothing\nis kept otherwise.",
+        "operationId": "provide_document_source_api_tax_documents__document_id__source_post",
+        "parameters": [
+          {
+            "name": "document_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "title": "Document Id"
+            }
+          },
+          {
+            "name": "user_id",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "integer"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "User Id"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "multipart/form-data": {
+              "schema": {
+                "$ref": "#/components/schemas/Body_provide_document_source_api_tax_documents__document_id__source_post"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/TaxSourceResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/tax/documents/{document_id}/pages": {
       "get": {
         "tags": [
@@ -5386,6 +5455,20 @@
           "balance_minor"
         ],
         "title": "BalanceEntryUpsert"
+      },
+      "Body_provide_document_source_api_tax_documents__document_id__source_post": {
+        "properties": {
+          "file": {
+            "type": "string",
+            "contentMediaType": "application/octet-stream",
+            "title": "File"
+          }
+        },
+        "type": "object",
+        "required": [
+          "file"
+        ],
+        "title": "Body_provide_document_source_api_tax_documents__document_id__source_post"
       },
       "Body_upload_statement_api_statements_post": {
         "properties": {
@@ -7829,6 +7912,17 @@
           "has_pdf": {
             "type": "boolean",
             "title": "Has Pdf"
+          },
+          "staged_until": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Staged Until"
           }
         },
         "type": "object",
@@ -7924,6 +8018,17 @@
           "has_pdf": {
             "type": "boolean",
             "title": "Has Pdf"
+          },
+          "staged_until": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Staged Until"
           },
           "forms": {
             "items": {
@@ -8941,6 +9046,28 @@
         ],
         "title": "TaxSkippedFrom",
         "description": "An earlier document whose form made this upload's form a skipped duplicate."
+      },
+      "TaxSourceResponse": {
+        "properties": {
+          "pages": {
+            "items": {
+              "$ref": "#/components/schemas/TaxPageInfo"
+            },
+            "type": "array",
+            "title": "Pages"
+          },
+          "expires_at": {
+            "type": "string",
+            "title": "Expires At"
+          }
+        },
+        "type": "object",
+        "required": [
+          "pages",
+          "expires_at"
+        ],
+        "title": "TaxSourceResponse",
+        "description": "`POST /api/tax/documents/{id}/source`: the re-selected file is the document's original;\nit is held temporarily (never kept) so its pages can be shown and read."
       },
       "TaxYearSummary": {
         "properties": {

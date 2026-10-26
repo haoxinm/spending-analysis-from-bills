@@ -17,7 +17,11 @@ export function TaxBreakdown({ summary }: { summary: TaxSummary }) {
   );
 }
 
-function GroupRows({ group }: { group: ReturnType<typeof taxBreakdownRows>[number] }) {
+function GroupRows({
+  group,
+}: {
+  group: ReturnType<typeof taxBreakdownRows>[number];
+}) {
   return (
     <>
       <tr>
@@ -52,7 +56,9 @@ function GroupRows({ group }: { group: ReturnType<typeof taxBreakdownRows>[numbe
             </td>
             <td className="py-1.5 text-right">
               {r.amountMinor === null ? (
-                <span className="text-muted-foreground">{r.missingText ?? "—"}</span>
+                <span className="text-muted-foreground">
+                  {r.missingText ?? "—"}
+                </span>
               ) : (
                 <Money tone="neutral" minorUnits={r.amountMinor} />
               )}

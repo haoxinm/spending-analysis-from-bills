@@ -55,6 +55,7 @@ from spend_analyzer.db.models import IncomeItem, TaxDocument, TaxForm, TaxItem
 from spend_analyzer.db.pii_terms import user_pii_terms
 from spend_analyzer.ingest.extract import extract, sha256_file
 from spend_analyzer.ingest.pipeline import NO_TEXT_LAYER_MESSAGE
+from spend_analyzer.ingest.tax import staging
 from spend_analyzer.ingest.tax.common import parsing_with_pii_terms
 from spend_analyzer.ingest.tax.fallback import apply_fallback
 from spend_analyzer.ingest.tax.orchestrator import ParseOutcome, parse_document
@@ -773,6 +774,7 @@ def delete_tax_document(session: Session, document_id: int) -> bool:
     stored = doc.stored_path
     session.delete(doc)
     session.commit()
+    staging.discard(document_id)
     if stored:
         # Another user's document imported from the same PDF shares the kept copy (it is named by
         # content hash); only remove it when nothing else points at it.

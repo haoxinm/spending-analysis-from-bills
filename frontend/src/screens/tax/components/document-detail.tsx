@@ -27,7 +27,9 @@ function AddFormEditor({
   const create = useCreateTaxForm(document.user_id);
   const [formType, setFormType] = React.useState<TaxFormType>("w2");
   const [payer, setPayer] = React.useState("");
-  const [year, setYear] = React.useState(document.tax_year ? String(document.tax_year) : "");
+  const [year, setYear] = React.useState(
+    document.tax_year ? String(document.tax_year) : "",
+  );
   const [last4, setLast4] = React.useState("");
   const [touched, setTouched] = React.useState(false);
   const yearErr = taxYearError(year);
@@ -51,7 +53,11 @@ function AddFormEditor({
       toast({ variant: "success", title: "Form added" });
       onClose();
     } catch (err) {
-      toast({ variant: "destructive", title: "Could not add form", description: errorMessage(err) });
+      toast({
+        variant: "destructive",
+        title: "Could not add form",
+        description: errorMessage(err),
+      });
     }
   }
 
@@ -61,10 +67,37 @@ function AddFormEditor({
       aria-label="Add form"
       className="flex flex-wrap items-start gap-2 rounded-md border border-dashed border-border p-3"
     >
-      <SelectField label="Form type" value={formType} options={FORM_TYPE_OPTIONS} onChange={(v) => v && setFormType(v)} className="w-40" />
-      <TextField label="Payer name" value={payer} maxLength={120} onChange={(e) => setPayer(e.target.value)} className="w-52" />
-      <TextField label="Payer ID last 4" inputMode="numeric" maxLength={4} value={last4} error={touched ? last4Err : null} onChange={(e) => setLast4(e.target.value)} className="w-24" />
-      <TextField label="Tax year" inputMode="numeric" value={year} error={touched ? yearErr : null} onChange={(e) => setYear(e.target.value)} className="w-20" />
+      <SelectField
+        label="Form type"
+        value={formType}
+        options={FORM_TYPE_OPTIONS}
+        onChange={(v) => v && setFormType(v)}
+        className="w-40"
+      />
+      <TextField
+        label="Payer name"
+        value={payer}
+        maxLength={120}
+        onChange={(e) => setPayer(e.target.value)}
+        className="w-52"
+      />
+      <TextField
+        label="Payer ID last 4"
+        inputMode="numeric"
+        maxLength={4}
+        value={last4}
+        error={touched ? last4Err : null}
+        onChange={(e) => setLast4(e.target.value)}
+        className="w-24"
+      />
+      <TextField
+        label="Tax year"
+        inputMode="numeric"
+        value={year}
+        error={touched ? yearErr : null}
+        onChange={(e) => setYear(e.target.value)}
+        className="w-20"
+      />
       <span className="flex items-center gap-2 self-end pb-0.5">
         <Button type="submit" size="sm" disabled={create.isPending}>
           Add form
@@ -91,7 +124,12 @@ export function DocumentDetail({
   const forms = query.data?.forms ?? [];
   const noFigures = document.status !== "parsed" && forms.length === 0;
 
-  if (query.isPending) return <p role="status" className="text-xs text-muted-foreground">Loading figures…</p>;
+  if (query.isPending)
+    return (
+      <p role="status" className="text-xs text-muted-foreground">
+        Loading figures…
+      </p>
+    );
   if (query.isError) {
     return (
       <p role="alert" className="text-xs text-destructive">
@@ -102,18 +140,34 @@ export function DocumentDetail({
   return (
     <div className="flex flex-col gap-3" data-testid="document-detail">
       {noFigures ? (
-        <p className="text-xs text-muted-foreground">No figures were read. Add them manually.</p>
+        <p className="text-xs text-muted-foreground">
+          No figures were read. Add them manually.
+        </p>
       ) : forms.length === 0 ? (
-        <p className="text-xs text-muted-foreground">This document has no forms.</p>
+        <p className="text-xs text-muted-foreground">
+          This document has no forms.
+        </p>
       ) : null}
       {forms.map((f) => (
-        <FormCard key={f.id} form={f} siblings={forms.length - 1} ownerId={document.user_id} />
+        <FormCard
+          key={f.id}
+          form={f}
+          siblings={forms.length - 1}
+          ownerId={document.user_id}
+        />
       ))}
       {adding ? (
-        <AddFormEditor document={document} onClose={() => onAddingChange(false)} />
+        <AddFormEditor
+          document={document}
+          onClose={() => onAddingChange(false)}
+        />
       ) : (
         <div>
-          <Button size="sm" variant="outline" onClick={() => onAddingChange(true)}>
+          <Button
+            size="sm"
+            variant="outline"
+            onClick={() => onAddingChange(true)}
+          >
             Add form
           </Button>
         </div>

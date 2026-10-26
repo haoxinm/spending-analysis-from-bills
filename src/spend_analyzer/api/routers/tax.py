@@ -7,13 +7,15 @@ Privacy: responses expose only the last four digits of a taxpayer identifier and
 `stored_path`; `payer_name` is local-only data. Tax data is never sent to an LLM unless the user opts in
 (`[ingest] tax_llm_fallback`, see `api/services/tax_llm.py`); then only redacted pages the built-in
 parsers could not read are sent. A user can also pick pages of a document (whose PDF copy is kept,
-`[privacy] store_tax_pdf_copies`), preview the exact redacted text and send just those pages
+`[privacy] store_tax_pdf_copies`, or was re-selected by the user and is staged temporarily,
+`ingest/tax/staging.py`, `POST /tax/documents/{id}/source`), preview the exact redacted text and send just those pages
 (`/tax/documents/{id}/llm-preview`, `/llm-fallback`): that click is the consent, so it works
 whenever an LLM is configured.
 """
 
 from __future__ import annotations
 
+import hashlib
 import json
 from collections.abc import Mapping
 from enum import StrEnum
@@ -35,6 +37,7 @@ from spend_analyzer.api.services.uploads import (
     sanitize_original_name,
     save_upload,
 )
+from spend_analyzer.config import Settings
 from spend_analyzer.core.errors import SpendAnalyzerError
 from spend_analyzer.core.tax_types import (
     INCOME_CATEGORY_LABELS,
@@ -44,7 +47,7 @@ from spend_analyzer.core.tax_types import (
 )
 from spend_analyzer.db.models import IncomeItem, TaxDocument, TaxForm, TaxItem
 from spend_analyzer.ingest.pages import parse_page_spec
-from spend_analyzer.ingest.tax import edit, on_demand
+from spend_analyzer.ingest.tax import edit, on_demand, staging
 from spend_analyzer.ingest.tax.pipeline import delete_tax_document
 
 router = APIRouter(tags=["tax"])
@@ -135,6 +138,7 @@ def _document(doc: TaxDocument) -> schemas.TaxDocument:
         error_detail=doc.error_detail,
         created_at=doc.ingested_at,
         has_pdf=_stored_pdf(doc) is not None,
+        staged_until=staging.expires_at(doc.id),
     )
 
 
@@ -272,33 +276,29 @@ def get_document(document_id: int, session: SessionDep) -> schemas.TaxDocumentDe
     return _document_detail(doc)
 
 
+PDF_NEEDED_MESSAGE = (
+    "The original file isn't available any more (it isn't kept after import for privacy). "
+    "Select the same file again to read its pages."
+)
+
+
 def _document_with_pdf(session: Session, document_id: int) -> tuple[TaxDocument, Path]:
+    """The document and its PDF: the kept copy, else the copy the user re-selected (staged
+    temporarily). 409 with ``code: pdf_needed`` when neither exists, so the UI asks for the file."""
     doc = tax_query.get_tax_document(session, document_id)
     if doc is None:
         raise HTTPException(status_code=404, detail="tax document not found")
-    pdf = _stored_pdf(doc)
+    pdf = _stored_pdf(doc) or staging.get(doc.id)
     if pdf is None:
         raise HTTPException(
-            status_code=404,
-            detail=(
-                "no PDF copy is kept for this document "
-                "(turn on [privacy] store_tax_pdf_copies and import the file again)"
-            ),
+            status_code=409, detail={"code": "pdf_needed", "message": PDF_NEEDED_MESSAGE}
         )
     return doc, pdf
 
 
-@router.get(
-    "/tax/documents/{document_id}/pages",
-    response_model=list[schemas.TaxPageInfo],
-    dependencies=_DOC_OWNER,
-)
-def list_document_pages(
-    document_id: int, session: SessionDep, settings: SettingsDep
+def _page_infos(
+    session: Session, doc: TaxDocument, pdf: Path, settings: Settings
 ) -> list[schemas.TaxPageInfo]:
-    """Per-page facts for choosing pages to read with the LLM: size, whether the automatic
-    fallback would send it, and why a page can never be sent. Local-only; no network."""
-    doc, pdf = _document_with_pdf(session, document_id)
     terms = tax_llm.pii_terms_for(session, doc.user_id, settings)
     try:
         plan = on_demand.load_plan(pdf, pii_terms=terms, document_year=doc.tax_year)
@@ -313,6 +313,55 @@ def list_document_pages(
         )
         for f in plan.facts
     ]
+
+
+@router.post(
+    "/tax/documents/{document_id}/source",
+    response_model=schemas.TaxSourceResponse,
+    dependencies=_DOC_OWNER,
+)
+async def provide_document_source(
+    document_id: int, file: UploadFile, session: SessionDep, settings: SettingsDep
+) -> schemas.TaxSourceResponse:
+    """Re-select the original PDF of a document whose copy is not kept. The file must be
+    byte-identical to the imported one (sha256); it is held in a private temporary location for
+    30 minutes (or until the LLM read, or the document, is gone) so the page tools work. Nothing
+    is kept otherwise."""
+    data = await read_pdf_upload(file)
+    doc = tax_query.get_tax_document(session, document_id)
+    if doc is None:
+        raise HTTPException(status_code=404, detail="tax document not found")
+    if doc.page_count is None or doc.file_sha256.startswith("manual:"):
+        raise HTTPException(status_code=409, detail="This document has no file.")
+    if hashlib.sha256(data).hexdigest() != doc.file_sha256:
+        raise HTTPException(
+            status_code=422, detail=f"This isn't the same file as {doc.original_name}"
+        )
+
+    def _stage() -> list[schemas.TaxPageInfo]:
+        path = staging.stage(doc.id, data)
+        try:
+            return _page_infos(session, doc, path, settings)
+        except BaseException:
+            staging.discard(doc.id)  # e.g. password-protected: nothing stays behind
+            raise
+
+    pages = await run_in_threadpool(_stage)
+    return schemas.TaxSourceResponse(pages=pages, expires_at=staging.expires_at(doc.id) or "")
+
+
+@router.get(
+    "/tax/documents/{document_id}/pages",
+    response_model=list[schemas.TaxPageInfo],
+    dependencies=_DOC_OWNER,
+)
+def list_document_pages(
+    document_id: int, session: SessionDep, settings: SettingsDep
+) -> list[schemas.TaxPageInfo]:
+    """Per-page facts for choosing pages to read with the LLM: size, whether the automatic
+    fallback would send it, and why a page can never be sent. Local-only; no network."""
+    doc, pdf = _document_with_pdf(session, document_id)
+    return _page_infos(session, doc, pdf, settings)
 
 
 @router.get("/tax/documents/{document_id}/pages/{page_number}/image", dependencies=_DOC_OWNER)
@@ -389,6 +438,8 @@ def read_pages_with_llm(
         raise HTTPException(status_code=exc.status, detail=str(exc)) from None
     except SpendAnalyzerError as exc:
         raise HTTPException(status_code=422, detail=str(exc)) from None
+    if _stored_pdf(doc) is None:
+        staging.discard(doc.id)  # the re-selected copy was only for this read
     session.refresh(doc)
     return schemas.TaxLlmReadResponse(
         document=_document_detail(doc),

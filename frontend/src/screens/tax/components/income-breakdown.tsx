@@ -5,9 +5,17 @@ import { Money } from "@/components/primitives/money";
 import { EmptyState } from "@/components/primitives/states";
 
 import { TOOLTIP_STYLE, incomeColor } from "../chart-colors";
-import { donutSlices, incomeShare, toIncomeBars, type TaxSummary } from "../logic";
+import {
+  donutSlices,
+  incomeShare,
+  toIncomeBars,
+  type TaxSummary,
+} from "../logic";
 
-const usd = new Intl.NumberFormat("en-US", { style: "currency", currency: "USD" });
+const usd = new Intl.NumberFormat("en-US", {
+  style: "currency",
+  currency: "USD",
+});
 
 /** Donut + table of income by category. Memo lines (qualified dividends, tax-exempt interest)
  * are listed underneath and are never added to the total. */
@@ -16,18 +24,29 @@ export function IncomeBreakdown({ summary }: { summary: TaxSummary }) {
   const slices = React.useMemo(() => donutSlices(bars), [bars]);
   const total = summary.total_income_minor;
   if (bars.length === 0) {
-    return <EmptyState title="No income recorded" description="No income was found for this year." />;
+    return (
+      <EmptyState
+        title="No income recorded"
+        description="No income was found for this year."
+      />
+    );
   }
   const description = bars
     .map((b) => {
       const share = incomeShare(bars, b);
-      return share === null ? `${b.label} loss` : `${b.label} ${Math.round(share * 100)}%`;
+      return share === null
+        ? `${b.label} loss`
+        : `${b.label} ${Math.round(share * 100)}%`;
     })
     .join(", ");
   return (
     <div className="flex flex-col gap-4" data-testid="income-breakdown">
       <div className="flex flex-col items-center gap-4 sm:flex-row">
-        <div className="h-44 w-44 shrink-0" role="img" aria-label={`Income by category: ${description}`}>
+        <div
+          className="h-44 w-44 shrink-0"
+          role="img"
+          aria-label={`Income by category: ${description}`}
+        >
           <ResponsiveContainer width="100%" height="100%">
             <PieChart>
               <Pie
@@ -45,7 +64,10 @@ export function IncomeBreakdown({ summary }: { summary: TaxSummary }) {
                 ))}
               </Pie>
               <Tooltip
-                formatter={(value: number, name: string) => [usd.format(value / 100), name]}
+                formatter={(value: number, name: string) => [
+                  usd.format(value / 100),
+                  name,
+                ]}
                 contentStyle={TOOLTIP_STYLE}
                 itemStyle={{ color: "hsl(var(--card-foreground))" }}
               />
@@ -56,9 +78,15 @@ export function IncomeBreakdown({ summary }: { summary: TaxSummary }) {
           <caption className="sr-only">Income by category</caption>
           <thead>
             <tr className="text-left text-xs text-muted-foreground">
-              <th scope="col" className="pb-1 font-medium">Category</th>
-              <th scope="col" className="pb-1 text-right font-medium">Amount</th>
-              <th scope="col" className="pb-1 text-right font-medium">Share</th>
+              <th scope="col" className="pb-1 font-medium">
+                Category
+              </th>
+              <th scope="col" className="pb-1 text-right font-medium">
+                Amount
+              </th>
+              <th scope="col" className="pb-1 text-right font-medium">
+                Share
+              </th>
             </tr>
           </thead>
           <tbody>
@@ -82,7 +110,9 @@ export function IncomeBreakdown({ summary }: { summary: TaxSummary }) {
                 <td className="py-1.5 text-right tabular-nums text-muted-foreground">
                   {(() => {
                     const share = incomeShare(bars, b);
-                    return share === null ? "—" : `${(share * 100).toFixed(0)}%`;
+                    return share === null
+                      ? "—"
+                      : `${(share * 100).toFixed(0)}%`;
                   })()}
                 </td>
               </tr>
@@ -98,11 +128,15 @@ export function IncomeBreakdown({ summary }: { summary: TaxSummary }) {
         </table>
       </div>
       {summary.memo_by_category.length > 0 ? (
-        <ul className="flex flex-col gap-1 text-xs text-muted-foreground" data-testid="income-memo">
+        <ul
+          className="flex flex-col gap-1 text-xs text-muted-foreground"
+          data-testid="income-memo"
+        >
           {summary.memo_by_category.map((m) => (
             <li key={m.category}>
-              Memo: {m.label} <Money tone="neutral" minorUnits={m.amount_minor} /> (memo only; not added to
-              the total)
+              Memo: {m.label}{" "}
+              <Money tone="neutral" minorUnits={m.amount_minor} /> (memo only;
+              not added to the total)
             </li>
           ))}
         </ul>

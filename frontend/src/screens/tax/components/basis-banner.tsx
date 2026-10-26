@@ -13,7 +13,10 @@ export function BasisBanner({ summary }: { summary: TaxSummary }) {
     >
       {notice ? (
         <p>
-          <span className="font-medium">Income basis: {incomeBasisLabel(summary.income_basis)}.</span> {notice}
+          <span className="font-medium">
+            Income basis: {incomeBasisLabel(summary.income_basis)}.
+          </span>{" "}
+          {notice}
         </p>
       ) : null}
       {summary.warnings.length > 0 ? (

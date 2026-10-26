@@ -776,6 +776,9 @@ class TaxDocument(_Model):
     #: Is a PDF copy kept (`[privacy] store_tax_pdf_copies`)? Page thumbnails and reading chosen
     #: pages with the LLM need it.
     has_pdf: bool
+    #: When the PDF the user re-selected for this document stops being available (ISO-8601 UTC);
+    #: `None` = none staged. Only meaningful when `has_pdf` is false.
+    staged_until: str | None = None
 
 
 class TaxDocumentDetail(TaxDocument):
@@ -792,6 +795,14 @@ class TaxPageInfo(_Model):
     suggested: bool
     #: Why this page can never be sent (no text, Form 1040); `None` = it can.
     excluded_reason: str | None
+
+
+class TaxSourceResponse(_Model):
+    """`POST /api/tax/documents/{id}/source`: the re-selected file is the document's original;
+    it is held temporarily (never kept) so its pages can be shown and read."""
+
+    pages: list[TaxPageInfo]
+    expires_at: str
 
 
 class TaxLlmReadRequest(BaseModel):
