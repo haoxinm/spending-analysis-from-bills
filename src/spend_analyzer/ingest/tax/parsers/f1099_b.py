@@ -74,7 +74,7 @@ _TERM_START = re.compile(
 )
 _OTHER_HEADING = re.compile(r"^other\s+transactions\b", re.I)
 _STATE_ROW = re.compile(r"^State\s+([A-Z]{2})\s+State\s+income\s+tax\s+withheld\b")
-_DATE_TOKEN = re.compile(r"^(?:\d{1,2}/\d{1,2}/\d{2,4}|various)$", re.IGNORECASE)
+_DATE_TOKEN = re.compile(r"^(?:\d{1,2}/\d{1,2}/\d{2,4}|various|inherited)$", re.IGNORECASE)
 #: A bracketed or parenthesized footnote / adjustment code: ``(W)``, ``[1]``, ``(A1)``.
 _FOOTNOTE = re.compile(r"^[(\[][A-Za-z0-9]{1,3}[)\]]$")
 _SUPERSCRIPTS = "\u00b9\u00b2\u00b3\u2070\u2074\u2075\u2076\u2077\u2078\u2079"
@@ -84,6 +84,13 @@ _GLUED_NOTE = re.compile(r"(?:\[[A-Za-z0-9]{1,2}\])+$")
 #: A short code printed in a trade's tail (adjustment code, footnote letter, marker): a bare one or
 #: two letters (``W``, ``D``, ``X``, ``e``), a run of marks (``*``, a dagger, superscript digits).
 _CODE_TOKEN = re.compile(rf"^(?:[A-Za-z]{{1,2}}|[*\u2020\u2021#{_SUPERSCRIPTS}]+)$")
+#: A heading of a supplementary table printed after the 1099-B one (amortization / accretion
+#: recap, year-to-date and life-to-date columns): its rows are never trades.
+_SUPPLEMENTARY_RE = re.compile(
+    r"amortization|accretion|year[-\s]to[-\s]date|life[-\s]to[-\s]date"
+    r"|realized\s+cost\s+basis\s+information",
+    re.I,
+)
 _NOT_COMPUTED = re.compile(r"^\(?(?:N/?C|N/?A|--+)\)?$", re.I)
 #: Whitespace the extractor left inside a parenthesized amount: ``( 12.34 )`` or ``(12.34 )``.
 _OPEN_GAP = re.compile(r"\(\s+(?=[\d$.])")
@@ -192,6 +199,9 @@ def _scan(block: ExtractedDoc) -> _Scan:
     for row in _rows(block):
         words = [w.text for w in row.words]
         dates = [i for i, text in enumerate(words) if _DATE_TOKEN.match(text)]
+        if not dates and _SUPPLEMENTARY_RE.search(row.text):
+            current = None  # a supplementary table: no row below it is a trade
+            continue
         if not dates:
             money = [m for m in (parse_money(t) for t in words) if m is not None]
             start = _TERM_START.match(row.text)
@@ -212,6 +222,7 @@ def _scan(block: ExtractedDoc) -> _Scan:
             last = signed(money[-1]) or 0
             if _GRAND_TOTAL_RE.match(row.text):
                 scan.grand_total = True
+                current = None  # the transaction table is finished
                 continue
             net = _NET_RE.match(row.text)
             if net is not None:
@@ -230,6 +241,8 @@ def _scan(block: ExtractedDoc) -> _Scan:
             continue
         if current is None:
             continue
+        if len(dates) < 2:
+            continue  # a trade has an acquired and a sold date; one date is another kind of row
         tail = _trade_tail(words, dates[-1])
         if tail is None:
             continue

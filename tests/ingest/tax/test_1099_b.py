@@ -378,6 +378,46 @@ def test_garbled_rows_are_still_unreadable(row: str) -> None:
     assert "no computed gain" not in " ".join(form.warnings)
 
 
+def test_supplementary_amortization_table_after_the_totals_is_not_read_as_trades() -> None:
+    lines = [
+        *_TRADE_HEAD,
+        "10.0000 Sale 01/02/24 03/04/24 1,000.00 800.00 0.00 0.00 200.00",
+        "NET SHORT TERM CAPITAL GAINS AND LOSSES 1,000.00 800.00 0.00 0.00 200.00",
+        "REALIZED COST BASIS INFORMATION FOR SECURITIES SUBJECT TO AMORTIZATION/ACCRETION",
+        "Security Description CUSIP Quantity Acquired Cost Basis Year-To-Date Life-To-Date Sales",
+        "WIDGET BOND 123456AB9 500.0000 01/02/23 4,000.00 (12.34) (12.34 ) 4,100.00",
+        "OTHER BOND 654321CD0 100.0000 02/03/22 900.00 (1.50 ) (3.00) 950.00",
+    ]
+    form = parse_b_section(doc_from_lines(lines), 2024)
+    assert [(i.box, i.amount_minor) for i in form.income] == [("ST", 20_000)]
+    assert form.warnings == ()
+
+
+def test_supplementary_table_heading_stops_trades_without_a_total_line() -> None:
+    lines = [
+        *_TRADE_HEAD,
+        "10.0000 Sale 01/02/24 03/04/24 1,000.00 800.00 0.00 0.00 200.00",
+        "Cost Basis Information Year-To-Date Life-To-Date",
+        "WIDGET BOND 500.0000 01/02/23 4,000.00 (12.34) (12.34 ) 4,100.00",
+        "10.0000 Sale 01/02/24 03/04/24 1,000.00 800.00 0.00 0.00 200.00",
+    ]
+    form = parse_b_section(doc_from_lines(lines), 2024)
+    assert [(i.box, i.amount_minor) for i in form.income] == [("ST", 20_000)]
+    assert form.warnings == ()
+
+
+def test_single_date_row_inside_the_trade_table_is_not_a_trade() -> None:
+    lines = [
+        *_TRADE_HEAD,
+        "10.0000 Sale 01/02/24 03/04/24 1,000.00 800.00 0.00 0.00 200.00",
+        "WIDGET BOND 500.0000 01/02/23 4,000.00 (12.34) (12.34 ) 4,100.00",
+        "Inherited 03/04/24 500.00 400.00 0.00 0.00 100.00",
+    ]
+    form = parse_b_section(doc_from_lines(lines), 2024)
+    assert [(i.box, i.amount_minor) for i in form.income] == [("ST", 30_000)]
+    assert form.warnings == ()
+
+
 def test_net_line_printed_twice_is_not_doubled() -> None:
     net = "NET SHORT TERM CAPITAL GAINS AND LOSSES 1,500.00 1,700.00 0.00 0.00 (200.00)"
     lines = ["Form 1099-B Proceeds From Broker", net, *_TRADES[1:], net]
