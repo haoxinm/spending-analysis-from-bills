@@ -304,6 +304,80 @@ def test_trade_with_an_unreadable_tail_is_counted_in_the_warning() -> None:
     assert "Some 1099-B transaction rows could not be read." in form.warnings
 
 
+_TRADE_HEAD = ["Form 1099-B Proceeds From Broker", "SHORT TERM CAPITAL GAINS AND LOSSES"]
+
+
+@pytest.mark.parametrize(
+    "row",
+    [
+        # code between the amounts, bare and parenthesized
+        "10.0000 Sale 01/02/24 03/04/24 1,000.00 800.00 0.00 (W) 0.00 200.00",
+        "10.0000 Sale 01/02/24 03/04/24 1,000.00 800.00 0.00 W 0.00 200.00",
+        "10.0000 Sale 01/02/24 03/04/24 1,000.00 800.00 (D) 0.00 0.00 200.00",
+        "10.0000 Sale 01/02/24 03/04/24 1,000.00 800.00 0.00 0.00 200.00 (X)",
+        "10.0000 Sale 01/02/24 03/04/24 1,000.00 800.00 0.00 0.00 200.00 X",
+        "10.0000 Sale 01/02/24 03/04/24 1,000.00 800.00 e 0.00 0.00 200.00",
+        # markers and footnotes
+        "10.0000 Sale 01/02/24 03/04/24 1,000.00 800.00 0.00 0.00 200.00 *",
+        "10.0000 Sale 01/02/24 03/04/24 1,000.00 800.00 0.00 0.00 200.00 \u2020",
+        "10.0000 Sale 01/02/24 03/04/24 1,000.00 800.00 0.00 0.00 200.00 \u00b9",
+        "10.0000 Sale 01/02/24 03/04/24 1,000.00\u00b2 800.00 0.00 0.00 200.00",
+        "10.0000 Sale 01/02/24 03/04/24 1,000.00[1] 800.00 0.00 0.00 200.00 [2]",
+    ],
+)
+def test_codes_markers_and_footnotes_anywhere_in_the_tail_are_ignored(row: str) -> None:
+    form = parse_b_section(doc_from_lines([*_TRADE_HEAD, row]), 2024)
+    assert [(i.box, i.amount_minor) for i in form.income] == [("ST", 20_000)]
+    assert form.warnings == ()
+
+
+@pytest.mark.parametrize(
+    "gain",
+    ["(50.00)", "(50.00) (W)", "( 50.00 )", "(50.00 )", "-50.00"],
+)
+def test_parenthesized_negative_gain_is_read_however_it_is_split(gain: str) -> None:
+    row = f"10.0000 Sale 01/02/24 03/04/24 1,000.00 1,050.00 0.00 0.00 {gain}"
+    form = parse_b_section(doc_from_lines([*_TRADE_HEAD, row]), 2024)
+    assert [(i.box, i.amount_minor) for i in form.income] == [("ST", -5_000)]
+    assert form.warnings == ()
+
+
+def test_split_parenthesized_amount_in_the_middle_of_the_row() -> None:
+    row = "10.0000 Sale 01/02/24 03/04/24 1,000.00 (50.00 ) (W) 0.00 1,050.00"
+    form = parse_b_section(doc_from_lines([*_TRADE_HEAD, row]), 2024)
+    assert [(i.box, i.amount_minor) for i in form.income] == [("ST", 105_000)]
+    assert form.warnings == ()
+
+
+@pytest.mark.parametrize("marker", ["N/C", "NC", "(N/C)"])
+def test_not_computed_rows_warn_separately_from_unreadable(marker: str) -> None:
+    lines = [
+        *_TRADE_HEAD,
+        "10.0000 Sale 01/02/24 03/04/24 1,000.00 800.00 0.00 0.00 200.00",
+        f"5.0000 Sale 01/02/20 03/04/24 900.00 0.00 0.00 0.00 {marker}",
+    ]
+    form = parse_b_section(doc_from_lines(lines), 2024)
+    assert [(i.box, i.amount_minor) for i in form.income] == [("ST", 20_000)]
+    assert form.warnings == (
+        "Some 1099-B transactions have no computed gain or loss and are not included.",
+    )
+
+
+@pytest.mark.parametrize(
+    "row",
+    [
+        "10.0000 Sale 01/02/24 03/04/24 1,000.00 800.00 0.00 200.00 see note",
+        "10.0000 Sale 01/02/24 03/04/24 1,000.00 800.00 0.00 200.00 (12.3x)",
+        "10.0000 Sale 01/02/24 03/04/24 1,000.00 800.00",
+    ],
+)
+def test_garbled_rows_are_still_unreadable(row: str) -> None:
+    lines = [*_TRADE_HEAD, row, "10.0000 Sale 01/02/24 03/05/24 500.00 400.00 0.00 0.00 100.00"]
+    form = parse_b_section(doc_from_lines(lines), 2024)
+    assert "Some 1099-B transaction rows could not be read." in form.warnings
+    assert "no computed gain" not in " ".join(form.warnings)
+
+
 def test_net_line_printed_twice_is_not_doubled() -> None:
     net = "NET SHORT TERM CAPITAL GAINS AND LOSSES 1,500.00 1,700.00 0.00 0.00 (200.00)"
     lines = ["Form 1099-B Proceeds From Broker", net, *_TRADES[1:], net]

@@ -75,11 +75,19 @@ _TERM_START = re.compile(
 _OTHER_HEADING = re.compile(r"^other\s+transactions\b", re.I)
 _STATE_ROW = re.compile(r"^State\s+([A-Z]{2})\s+State\s+income\s+tax\s+withheld\b")
 _DATE_TOKEN = re.compile(r"^(?:\d{1,2}/\d{1,2}/\d{2,4}|various)$", re.IGNORECASE)
-_FOOTNOTE = re.compile(r"^\([A-Za-z0-9]{1,3}\)$")
-_TRAILING_MARKS = "*\u2020\u2021"
-#: A short code printed after a trade's amounts (adjustment code, footnote letter, marker).
-_CODE_TOKEN = re.compile(r"^(?:[A-Za-z]{1,2}|[*\u2020\u2021#]+)$")
-_NOT_COMPUTED = re.compile(r"^(?:N/?C|N/?A|--+)$", re.I)
+#: A bracketed or parenthesized footnote / adjustment code: ``(W)``, ``[1]``, ``(A1)``.
+_FOOTNOTE = re.compile(r"^[(\[][A-Za-z0-9]{1,3}[)\]]$")
+_SUPERSCRIPTS = "\u00b9\u00b2\u00b3\u2070\u2074\u2075\u2076\u2077\u2078\u2079"
+_TRAILING_MARKS = "*\u2020\u2021" + _SUPERSCRIPTS
+#: A bracketed footnote glued to an amount: ``100.00[1]``.
+_GLUED_NOTE = re.compile(r"(?:\[[A-Za-z0-9]{1,2}\])+$")
+#: A short code printed in a trade's tail (adjustment code, footnote letter, marker): a bare one or
+#: two letters (``W``, ``D``, ``X``, ``e``), a run of marks (``*``, a dagger, superscript digits).
+_CODE_TOKEN = re.compile(rf"^(?:[A-Za-z]{{1,2}}|[*\u2020\u2021#{_SUPERSCRIPTS}]+)$")
+_NOT_COMPUTED = re.compile(r"^\(?(?:N/?C|N/?A|--+)\)?$", re.I)
+#: Whitespace the extractor left inside a parenthesized amount: ``( 12.34 )`` or ``(12.34 )``.
+_OPEN_GAP = re.compile(r"\(\s+(?=[\d$.])")
+_CLOSE_GAP = re.compile(r"(?<=[\d.])\s+\)")
 #: A term total printed by the broker: "NET SHORT TERM CAPITAL GAINS AND LOSSES  <amounts>".
 _NET_RE = re.compile(r"^NET\s+(short|long)[-\s]?term\b", re.I)
 #: A covered / noncovered category subtotal: "Covered Short Term ... Subtotal  <amounts>".
@@ -146,22 +154,31 @@ def _rows(block: ExtractedDoc) -> list[Row]:
     return [row for page in block.pages for row in cluster_rows(page.words)]
 
 
+def _tail_tokens(words: list[str]) -> list[str]:
+    """Tokens after the last date, with a parenthesized amount that the extractor split across
+    words (``(12.34`` + ``)``) put back together."""
+    joined = _CLOSE_GAP.sub(")", _OPEN_GAP.sub("(", " ".join(words)))
+    return joined.split()
+
+
 def _trade_tail(words: list[str], last_date: int) -> list[int] | str | None:
     """Signed amounts after a trade row's last date: a list; ``"not_computed"`` when the gain is
     printed as N/C; ``None`` when the row is not a trade row (a word such as "Dividend" follows
-    the date); ``"unreadable"`` when it looks like a trade but has too few amounts."""
+    the date); ``"unreadable"`` when it looks like a trade but has too few amounts or a token
+    that is neither an amount nor a short code. Codes (``W``, ``(W)``, ``[1]``, ``*``, ...) are
+    ignored wherever they sit in the tail."""
     amounts: list[int] = []
-    for token in words[last_date + 1 :]:
+    for token in _tail_tokens(words[last_date + 1 :]):
         if _FOOTNOTE.match(token):
             continue
         if _NOT_COMPUTED.match(token):
             return "not_computed"
-        money = parse_money(token.rstrip(_TRAILING_MARKS) or token)
+        money = parse_money(_GLUED_NOTE.sub("", token.rstrip(_TRAILING_MARKS)) or token)
         if money is None:
+            if _CODE_TOKEN.match(token) and (amounts or not token.islower() or len(token) == 1):
+                continue  # an adjustment code such as W, D, X, e or a marker
             if not amounts:
                 return None  # a word right after the dates: not a trade row
-            if _CODE_TOKEN.match(token):
-                continue  # a trailing adjustment code such as W, D or X
             return "unreadable"
         amounts.append(-money.magnitude_minor if money.printed_negative else money.magnitude_minor)
     if not amounts:
