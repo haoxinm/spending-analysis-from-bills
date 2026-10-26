@@ -4,7 +4,6 @@ import { usePatchTransaction, useTaxonomy } from "@/api/hooks";
 import { EmptyState, ErrorState, LoadingState } from "@/components/primitives/states";
 import { Button } from "@/components/ui/button";
 import { useToast } from "@/components/ui/use-toast";
-import { UserSwitcher } from "@/components/primitives/user-switcher";
 import { useSelectedUser } from "@/hooks/use-selected-user";
 import { useSpendQueryParams } from "@/hooks/use-spend-query-params";
 
@@ -154,7 +153,6 @@ export default function TransactionsScreen() {
           </p>
         </div>
         <div className="flex flex-wrap items-center gap-2">
-          <UserSwitcher users={sel.users} value={sel.selectedUserId} onChange={sel.setSelectedUserId} />
           <Button type="button" variant="outline" size="sm" disabled={exporting} onClick={() => void handleExport("csv")}>
             Export CSV
           </Button>

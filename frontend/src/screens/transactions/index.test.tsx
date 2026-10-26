@@ -98,10 +98,11 @@ describe("TransactionsScreen", () => {
       return fetchImpl(request);
     });
     vi.stubGlobal("fetch", fetchMock);
-    const [{ default: TransactionsScreen }, { ToastContextProvider }, { Toaster }] = await Promise.all([
+    const [{ default: TransactionsScreen }, { ToastContextProvider }, { Toaster }, { WithUserSwitcher }] = await Promise.all([
       import("./index"),
       import("@/components/ui/toast-provider"),
       import("@/components/ui/toaster"),
+      import("@/test/with-user-switcher"),
     ]);
     const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false } } });
     render(
@@ -111,7 +112,9 @@ describe("TransactionsScreen", () => {
           future={{ v7_startTransition: true, v7_relativeSplatPath: true }}
         >
           <ToastContextProvider>
-            <TransactionsScreen />
+            <WithUserSwitcher>
+              <TransactionsScreen />
+            </WithUserSwitcher>
             <Toaster />
           </ToastContextProvider>
         </MemoryRouter>

@@ -25,13 +25,16 @@ async function renderScreen(
 
   const { default: ReviewScreen } = await import("./index");
   const { ToastContextProvider } = await import("@/components/ui/toast-provider");
+  const { WithUserSwitcher } = await import("@/test/with-user-switcher");
   const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false } } });
 
   render(
     <QueryClientProvider client={queryClient}>
       <MemoryRouter initialEntries={[initialEntry]} future={{ v7_startTransition: true, v7_relativeSplatPath: true }}>
         <ToastContextProvider>
-          <ReviewScreen />
+          <WithUserSwitcher>
+            <ReviewScreen />
+          </WithUserSwitcher>
         </ToastContextProvider>
       </MemoryRouter>
     </QueryClientProvider>,

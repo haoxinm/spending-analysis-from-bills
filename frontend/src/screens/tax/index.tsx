@@ -1,7 +1,6 @@
 import * as React from "react";
 
 import { EmptyState, ErrorState, LoadingState } from "@/components/primitives/states";
-import { UserSwitcher } from "@/components/primitives/user-switcher";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { useSelectedUser } from "@/hooks/use-selected-user";
 
@@ -68,7 +67,6 @@ export default function TaxScreen() {
             {sel.users.length > 1 && sel.selectedUser ? ` Showing ${sel.selectedUser.name}.` : ""}
           </p>
         </div>
-        <UserSwitcher users={sel.users} value={sel.selectedUserId} onChange={sel.setSelectedUserId} />
       </div>
 
       {error ? (

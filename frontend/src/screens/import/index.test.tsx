@@ -128,7 +128,7 @@ describe("ImportScreen", () => {
     });
     await renderScreen(fetchMock);
 
-    await waitFor(() => expect(screen.getByText("Alex (default)")).toBeInTheDocument());
+    await waitFor(() => expect(screen.getByTestId("import-target")).toBeInTheDocument());
 
     const pdf = new File(["%PDF-1.4"], "chase.pdf", { type: "application/pdf" });
     const input = screen.getByLabelText("Choose statement PDFs");
@@ -170,7 +170,7 @@ describe("ImportScreen", () => {
       return Promise.resolve(jsonResponse({ detail: `unhandled request: ${method} ${url}` }, 404));
     });
     await renderScreen(fetchMock);
-    await waitFor(() => expect(screen.getByText("Alex (default)")).toBeInTheDocument());
+    await waitFor(() => expect(screen.getByTestId("import-target")).toBeInTheDocument());
 
     const pdf = new File(["%PDF-1.4"], "scanned.pdf", { type: "application/pdf" });
     await userEvent.upload(screen.getByLabelText("Choose statement PDFs"), pdf);
@@ -221,7 +221,7 @@ describe("ImportScreen", () => {
       return Promise.resolve(jsonResponse({ detail: `unhandled request: ${method} ${url}` }, 404));
     });
     await renderScreen(fetchMock);
-    await waitFor(() => expect(screen.getByText("Alex (default)")).toBeInTheDocument());
+    await waitFor(() => expect(screen.getByTestId("import-target")).toBeInTheDocument());
 
     const pdf = new File(["%PDF-1.4"], "chase.pdf", { type: "application/pdf" });
     await userEvent.upload(screen.getByLabelText("Choose statement PDFs"), pdf);
@@ -286,7 +286,7 @@ describe("ImportScreen", () => {
       return jsonResponse({ detail: `unhandled request: ${method} ${url}` }, 404);
     });
     await renderScreen(fetchMock);
-    await waitFor(() => expect(screen.getByText("Alex (default)")).toBeInTheDocument());
+    await waitFor(() => expect(screen.getByTestId("import-target")).toBeInTheDocument());
 
     const pdf = new File(["%PDF-1.4"], "fees.pdf", { type: "application/pdf" });
     await userEvent.upload(screen.getByLabelText("Choose statement PDFs"), pdf);
@@ -332,7 +332,7 @@ describe("ImportScreen", () => {
       return jsonResponse({ detail: "n/a" }, 404);
     });
     await renderScreen(fetchMock);
-    await waitFor(() => expect(screen.getByText("Alex (default)")).toBeInTheDocument());
+    await waitFor(() => expect(screen.getByTestId("import-target")).toBeInTheDocument());
     await userEvent.upload(screen.getByLabelText("Choose statement PDFs"), new File(["%PDF-1.4"], "again.pdf", { type: "application/pdf" }));
 
     expect(await screen.findByTestId("parser-warning")).toHaveTextContent(

@@ -3,6 +3,8 @@ import * as React from "react";
 import type { components } from "@/api/client";
 import { cn } from "@/utils";
 
+import { UserAvatar } from "./user-chip";
+
 type User = components["schemas"]["User"];
 
 export interface UserSwitcherProps {
@@ -15,6 +17,8 @@ export interface UserSwitcherProps {
   allowAll?: boolean;
   /** `auto` renders chips, falling back to a `<select>` when there are more than 6 users. */
   variant?: "auto" | "chips" | "select";
+  /** Show each option's coloured initial (chips only). */
+  avatars?: boolean;
   className?: string;
   "aria-label"?: string;
 }
@@ -32,6 +36,7 @@ export function UserSwitcher({
   allLabel = "All users",
   allowAll = true,
   variant = "auto",
+  avatars = false,
   className,
   "aria-label": ariaLabel = "User",
 }: UserSwitcherProps) {
@@ -107,12 +112,13 @@ export function UserSwitcher({
             onClick={() => onChange(o.id)}
             onKeyDown={(e) => onKeyDown(e, i)}
             className={cn(
-              "rounded-full border px-3 py-1 text-sm font-medium transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background",
+              "inline-flex items-center gap-1.5 rounded-full border px-3 py-1 text-sm font-medium transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background",
               checked
                 ? "border-primary bg-primary text-primary-foreground shadow-sm"
                 : "border-transparent text-muted-foreground hover:text-foreground",
             )}
           >
+            {avatars ? <UserAvatar userId={o.id} name={o.label} size="sm" /> : null}
             {o.label}
           </button>
         );

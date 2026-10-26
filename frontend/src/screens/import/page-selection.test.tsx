@@ -119,7 +119,7 @@ async function renderAndUpload(fetchMock: typeof fetch) {
       </MemoryRouter>
     </QueryClientProvider>,
   );
-  await waitFor(() => expect(screen.getByText("Alex (default)")).toBeInTheDocument());
+  await waitFor(() => expect(screen.getByTestId("import-target")).toBeInTheDocument());
   const pdf = new File(["%PDF-1.4"], "chase.pdf", { type: "application/pdf" });
   await userEvent.upload(screen.getByLabelText("Choose statement PDFs"), pdf);
   await waitFor(() => expect(screen.getByText("Ready to import")).toBeInTheDocument());

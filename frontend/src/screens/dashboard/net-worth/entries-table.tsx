@@ -28,6 +28,8 @@ export function EntriesTable({ entries, users, showUser }: EntriesTableProps) {
   const { toast } = useToast();
   const patch = usePatchBalanceEntry();
   const remove = useDeleteBalanceEntry();
+  // Unique per instance: compare mode renders two copies of this screen.
+  const uid = React.useId();
   const [period, setPeriod] = React.useState("");
   const [showAll, setShowAll] = React.useState(false);
   const [editingId, setEditingId] = React.useState<number | null>(null);
@@ -108,11 +110,11 @@ export function EntriesTable({ entries, users, showUser }: EntriesTableProps) {
   return (
     <div className="flex flex-col gap-3" data-testid="entries-table">
       <div className="flex items-center gap-2">
-        <label htmlFor="nw-entries-period" className="text-xs font-medium text-muted-foreground">
+        <label htmlFor={`${uid}-nw-entries-period`} className="text-xs font-medium text-muted-foreground">
           Filter by period
         </label>
         <select
-          id="nw-entries-period"
+          id={`${uid}-nw-entries-period`}
           className="h-8 rounded-md border border-input bg-transparent px-2 text-sm"
           value={period}
           onChange={(e) => {

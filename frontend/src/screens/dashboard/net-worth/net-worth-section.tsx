@@ -25,6 +25,8 @@ export interface NetWorthSectionProps {
 /** The Dashboard's net-worth area: snapshot (headline, breakdown, pie), trends, and the entry
  * form + table. Independent of spending data, so it renders even before any import. */
 export function NetWorthSection({ userId, users, currency }: NetWorthSectionProps) {
+  // Unique per instance: compare mode renders two copies of this screen.
+  const uid = React.useId();
   const [period, setPeriod] = React.useState<string | undefined>(undefined);
   const summaryQuery = useNetWorthSummary({ userId, currency, period });
   const entriesQuery = useBalanceEntries(userId);
@@ -80,19 +82,19 @@ export function NetWorthSection({ userId, users, currency }: NetWorthSectionProp
   }
 
   return (
-    <section aria-labelledby="net-worth-title" className="flex flex-col gap-4" data-testid="net-worth-section">
+    <section aria-labelledby={`${uid}-net-worth-title`} className="flex flex-col gap-4" data-testid="net-worth-section">
       <Card>
         <CardHeader className="flex-row flex-wrap items-center justify-between gap-3">
-          <CardTitle id="net-worth-title" className="text-base">
+          <CardTitle id={`${uid}-net-worth-title`} className="text-base">
             Net worth{userLabel ? ` · ${userLabel}` : ""}
           </CardTitle>
           {periods.length > 0 ? (
             <div className="flex items-center gap-2">
-              <label htmlFor="nw-period" className="text-xs font-medium text-muted-foreground">
+              <label htmlFor={`${uid}-nw-period`} className="text-xs font-medium text-muted-foreground">
                 Period
               </label>
               <select
-                id="nw-period"
+                id={`${uid}-nw-period`}
                 aria-label="Period"
                 className="h-8 rounded-md border border-input bg-transparent px-2 text-sm"
                 value={period ?? snapshot?.period ?? ""}

@@ -45,6 +45,8 @@ export function BalanceEntryForm({ users, selectedUserId, entries }: BalanceEntr
   const upsert = useUpsertBalanceEntry();
   const now = React.useMemo(() => new Date(), []);
 
+  // Unique per instance: compare mode renders two copies of this screen.
+  const uid = React.useId();
   const [chosenUserId, setChosenUserId] = React.useState<number | null>(null);
   const [category, setCategory] = React.useState<Category>("checking");
   const [account, setAccount] = React.useState("");
@@ -119,7 +121,7 @@ export function BalanceEntryForm({ users, selectedUserId, entries }: BalanceEntr
     );
   }
 
-  const errorId = (name: string) => `nw-form-${name}-error`;
+  const errorId = (name: string) => `${uid}-nw-form-${name}-error`;
   const field = (name: string) =>
     errors[name]
       ? { "aria-invalid": true as const, "aria-describedby": errorId(name) }
@@ -155,11 +157,11 @@ export function BalanceEntryForm({ users, selectedUserId, entries }: BalanceEntr
       {errors["user"] ? <p role="alert" className="text-xs text-destructive sm:col-span-2 lg:col-span-6">{errors["user"]}</p> : null}
 
       <div className="flex flex-col gap-1 lg:col-span-1">
-        <label htmlFor="nw-category" className={LABEL}>
+        <label htmlFor={`${uid}-nw-category`} className={LABEL}>
           Category
         </label>
         <select
-          id="nw-category"
+          id={`${uid}-nw-category`}
           className={SELECT}
           value={category}
           onChange={(e) => setCategory(e.target.value as Category)}
@@ -173,19 +175,19 @@ export function BalanceEntryForm({ users, selectedUserId, entries }: BalanceEntr
       </div>
 
       <div className="flex flex-col gap-1 lg:col-span-2">
-        <label htmlFor="nw-account" className={LABEL}>
+        <label htmlFor={`${uid}-nw-account`} className={LABEL}>
           Account name
         </label>
         <Input
-          id="nw-account"
-          list="nw-account-suggestions"
+          id={`${uid}-nw-account`}
+          list={`${uid}-nw-account-suggestions`}
           autoComplete="off"
           placeholder="e.g. Chase checking"
           value={account}
           onChange={(e) => setAccount(e.target.value)}
           {...field("account")}
         />
-        <datalist id="nw-account-suggestions" data-testid="account-suggestions">
+        <datalist id={`${uid}-nw-account-suggestions`} data-testid="account-suggestions">
           {suggestions.map((name) => (
             <option key={name} value={name} />
           ))}
@@ -194,11 +196,11 @@ export function BalanceEntryForm({ users, selectedUserId, entries }: BalanceEntr
       </div>
 
       <div className="flex flex-col gap-1">
-        <label htmlFor="nw-month" className={LABEL}>
+        <label htmlFor={`${uid}-nw-month`} className={LABEL}>
           Month
         </label>
         <select
-          id="nw-month"
+          id={`${uid}-nw-month`}
           className={SELECT}
           value={month}
           onChange={(e) => setMonth(Number(e.target.value))}
@@ -212,11 +214,11 @@ export function BalanceEntryForm({ users, selectedUserId, entries }: BalanceEntr
       </div>
 
       <div className="flex flex-col gap-1">
-        <label htmlFor="nw-year" className={LABEL}>
+        <label htmlFor={`${uid}-nw-year`} className={LABEL}>
           Year
         </label>
         <Input
-          id="nw-year"
+          id={`${uid}-nw-year`}
           type="number"
           inputMode="numeric"
           min={1900}
@@ -229,11 +231,11 @@ export function BalanceEntryForm({ users, selectedUserId, entries }: BalanceEntr
       </div>
 
       <div className="flex flex-col gap-1">
-        <label htmlFor="nw-balance" className={LABEL}>
+        <label htmlFor={`${uid}-nw-balance`} className={LABEL}>
           {category === "credit_card" ? "Amount owed" : "Balance"} ({ENTRY_CURRENCY})
         </label>
         <Input
-          id="nw-balance"
+          id={`${uid}-nw-balance`}
           inputMode="decimal"
           autoComplete="off"
           placeholder="0.00"
@@ -248,11 +250,11 @@ export function BalanceEntryForm({ users, selectedUserId, entries }: BalanceEntr
       </div>
 
       <div className="flex flex-col gap-1 sm:col-span-2 lg:col-span-5">
-        <label htmlFor="nw-note" className={LABEL}>
+        <label htmlFor={`${uid}-nw-note`} className={LABEL}>
           Note (optional)
         </label>
         <Input
-          id="nw-note"
+          id={`${uid}-nw-note`}
           value={note}
           onChange={(e) => setNote(e.target.value)}
           {...field("note")}

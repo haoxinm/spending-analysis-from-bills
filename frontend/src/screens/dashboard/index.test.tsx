@@ -7,6 +7,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import { apiClient } from "@/api/client";
 import { ToastContextProvider } from "@/components/ui/toast-provider";
+import { WithUserSwitcher } from "@/test/with-user-switcher";
 
 import DashboardScreen from "./index";
 
@@ -38,7 +39,9 @@ function wrapper({ children }: { children: React.ReactNode }) {
         initialEntries={["/"]}
         future={{ v7_startTransition: true, v7_relativeSplatPath: true }}
       >
-        <ToastContextProvider>{children}</ToastContextProvider>
+        <ToastContextProvider>
+          <WithUserSwitcher>{children}</WithUserSwitcher>
+        </ToastContextProvider>
       </MemoryRouter>
     </QueryClientProvider>
   );

@@ -3,7 +3,6 @@ import * as React from "react";
 import type { DateRange } from "@/components/primitives/date-range-picker";
 import { EmptyState, ErrorState, LoadingState } from "@/components/primitives/states";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { UserSwitcher } from "@/components/primitives/user-switcher";
 import { useSelectedUser } from "@/hooks/use-selected-user";
 import { useSpendQueryParams } from "@/hooks/use-spend-query-params";
 
@@ -95,7 +94,6 @@ export default function DashboardScreen() {
             {users.length > 1 && sel.selectedUser ? ` Showing ${sel.selectedUser.name}.` : ""}
           </p>
         </div>
-        <UserSwitcher users={users} value={sel.selectedUserId} onChange={sel.setSelectedUserId} />
       </div>
 
       <FiltersBar

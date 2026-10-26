@@ -3,12 +3,13 @@ import * as React from "react";
 
 import { useUsers } from "@/api/hooks";
 import { ErrorState, LoadingState } from "@/components/primitives/states";
+import { useSelectedUser } from "@/hooks/use-selected-user";
 import type { JobEvent } from "@/hooks/use-job-progress";
 
 import { useExtractStatement, useImportSettings, useUploadStatement } from "./api";
 import { FileDropZone } from "./file-drop-zone";
 import { IssuerExtractorPicker } from "./issuer-extractor-picker";
-import { getStickyUserId, setStickyUserId } from "./storage";
+import { getStickyUserId } from "./storage";
 import { StatementCard } from "./statement-card";
 import { PageSelector } from "./page-selector";
 import { SummaryBar } from "./summary-bar";
@@ -34,15 +35,20 @@ function ImportScreen() {
   const llmConfigured = llmMode !== undefined && llmMode !== "none";
 
   const users = usersQuery.data ?? [];
-  const [selectedUserId, setSelectedUserId] = React.useState<number | null>(null);
-
+  // The upload target is the app-wide selected user. Only when "All users" is selected do we
+  // ask which user to import for (the pick is local to this screen).
+  const sel = useSelectedUser();
+  const [pickedUserId, setPickedUserId] = React.useState<number | null>(null);
+  const loadedUsers = usersQuery.data;
   React.useEffect(() => {
-    const loadedUsers = usersQuery.data ?? [];
-    if (selectedUserId !== null || loadedUsers.length === 0) return;
-    const sticky = getStickyUserId();
-    const fallback = loadedUsers.find((u) => u.is_default)?.id ?? loadedUsers[0]?.id ?? null;
-    setSelectedUserId(loadedUsers.some((u) => u.id === sticky) ? sticky : fallback);
-  }, [usersQuery.data, selectedUserId]);
+    // One-time read of the retired Import-only sticky user, as the initial pick for "All users".
+    const legacy = getStickyUserId();
+    if (legacy !== null && loadedUsers?.some((u) => u.id === legacy)) {
+      setPickedUserId((current) => current ?? legacy);
+    }
+  }, [loadedUsers]);
+  const selectedUserId: number | null =
+    sel.selectedUserId ?? (users.some((u) => u.id === pickedUserId) ? pickedUserId : null);
 
   const confirmImport = React.useCallback(
     (item: ImportItem) => {
@@ -180,26 +186,29 @@ function ImportScreen() {
         </p>
       </div>
 
-      <label className="flex max-w-xs flex-col gap-1 text-xs font-medium text-muted-foreground">
-        Importing for
-        <select
-          className="h-9 rounded-md border border-input bg-transparent px-3 text-sm text-foreground"
-          value={selectedUserId ?? ""}
-          onChange={(event) => {
-            const userId = Number(event.target.value);
-            setSelectedUserId(userId);
-            setStickyUserId(userId);
-          }}
-        >
-          {users.length === 0 ? <option value="">No users yet</option> : null}
-          {users.map((user) => (
-            <option key={user.id} value={user.id}>
-              {user.name}
-              {user.is_default ? " (default)" : ""}
-            </option>
-          ))}
-        </select>
-      </label>
+      {sel.selectedUserId === null ? (
+        <label className="flex max-w-xs flex-col gap-1 text-xs font-medium text-muted-foreground">
+          Import for which user? (&ldquo;All users&rdquo; is selected above)
+          <select
+            aria-label="Importing for"
+            className="h-9 rounded-md border border-input bg-transparent px-3 text-sm text-foreground"
+            value={selectedUserId ?? ""}
+            onChange={(event) => setPickedUserId(event.target.value === "" ? null : Number(event.target.value))}
+          >
+            <option value="">Choose a user…</option>
+            {users.map((user) => (
+              <option key={user.id} value={user.id}>
+                {user.name}
+                {user.is_default ? " (default)" : ""}
+              </option>
+            ))}
+          </select>
+        </label>
+      ) : (
+        <p className="text-sm text-muted-foreground" data-testid="import-target">
+          Importing for <strong className="text-foreground">{sel.selectedUser?.name}</strong>. Change the user above to import for someone else.
+        </p>
+      )}
 
       <FileDropZone onFiles={handleFiles} disabled={selectedUserId === null} />
 

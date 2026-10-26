@@ -54,6 +54,38 @@ export function writeStoredUser(value: string): void {
   }
 }
 
+/** URL search param holding the compare-mode second pane's user: `?compare=<id>` or `?compare=all`. */
+export const COMPARE_USER_PARAM = "compare";
+
+/**
+ * Pane override for compare mode. The shell renders a screen twice, each inside a provider that
+ * pins the user for that pane; `useSelectedUser()` then reads this instead of the URL.
+ */
+export interface SelectedUserPane {
+  /** The pane's fixed user id (`null` = All users). */
+  userId: number | null;
+  setUserId: (id: number | null) => void;
+  /** Whether this pane owns global keyboard shortcuts (only one pane does). */
+  active: boolean;
+}
+
+const SelectedUserPaneContext = React.createContext<SelectedUserPane | null>(null);
+export const SelectedUserPaneProvider = SelectedUserPaneContext.Provider;
+
+/** The enclosing compare pane, or `null` when the screen is rendered on its own. */
+export function useSelectedUserPane(): SelectedUserPane | null {
+  return React.useContext(SelectedUserPaneContext);
+}
+
+/**
+ * Whether this screen instance should handle document-level keyboard shortcuts: always, except
+ * in compare mode where only the active pane does.
+ */
+export function usePaneShortcutsEnabled(): boolean {
+  const pane = useSelectedUserPane();
+  return pane === null || pane.active;
+}
+
 export interface UseSelectedUser {
   users: User[];
   isLoading: boolean;
@@ -75,13 +107,15 @@ export function useSelectedUser(): UseSelectedUser {
   const users = usersQuery.data ?? NO_USERS;
   const isLoading = usersQuery.isLoading;
   const urlParam = searchParams.get(SELECTED_USER_PARAM);
+  const pane = useSelectedUserPane();
 
-  const selectedUserId = React.useMemo(
+  const urlSelectedUserId = React.useMemo(
     () => (isLoading ? null : resolveSelectedUser(urlParam, readStoredUser(), users)),
     [isLoading, urlParam, users],
   );
+  const selectedUserId = pane ? pane.userId : urlSelectedUserId;
 
-  const setSelectedUserId = React.useCallback(
+  const setUrlSelectedUserId = React.useCallback(
     (id: number | null) => {
       const value = id === null ? ALL : String(id);
       writeStoredUser(value);
@@ -96,6 +130,7 @@ export function useSelectedUser(): UseSelectedUser {
     },
     [setSearchParams],
   );
+  const setSelectedUserId = pane ? pane.setUserId : setUrlSelectedUserId;
 
   const selectedUser = React.useMemo(
     () => users.find((u) => u.id === selectedUserId) ?? null,
@@ -115,4 +150,68 @@ export function useSelectedUser(): UseSelectedUser {
     userIds,
     setSelectedUserId,
   };
+}
+
+export interface UseCompareUser {
+  /** Whether a valid second pane is active (two or more users, `?compare=` differs from the primary). */
+  active: boolean;
+  /** The second pane's user (`null` = All users); only meaningful when `active`. */
+  compareUserId: number | null;
+  /** Turn compare on with a default second user, or off. */
+  setEnabled: (enabled: boolean) => void;
+  setCompareUserId: (id: number | null) => void;
+  /** Set both panes in one URL update (used to swap them). */
+  setPair: (primary: number | null, compare: number | null) => void;
+}
+
+/** URL-backed compare state for the shell. `primaryId` is the left pane's (URL-resolved) user. */
+export function useCompareUser(primaryId: number | null, users: readonly User[], isLoading: boolean): UseCompareUser {
+  const [searchParams, setSearchParams] = useSearchParams();
+  const raw = searchParams.get(COMPARE_USER_PARAM);
+  const parsed = isLoading ? undefined : parseRaw(raw, users);
+  const active = users.length > 1 && parsed !== undefined && parsed !== primaryId;
+
+  const write = React.useCallback(
+    (value: string | null) => {
+      setSearchParams(
+        (prev) => {
+          const next = new URLSearchParams(prev);
+          if (value === null) next.delete(COMPARE_USER_PARAM);
+          else next.set(COMPARE_USER_PARAM, value);
+          return next;
+        },
+        { replace: true },
+      );
+    },
+    [setSearchParams],
+  );
+
+  const setEnabled = React.useCallback(
+    (enabled: boolean) => {
+      if (!enabled) return write(null);
+      const other = users.find((u) => u.id !== primaryId) ?? null;
+      write(other ? String(other.id) : null);
+    },
+    [users, primaryId, write],
+  );
+  const setCompareUserId = React.useCallback((id: number | null) => write(id === null ? ALL : String(id)), [write]);
+
+  const setPair = React.useCallback(
+    (primary: number | null, compareId: number | null) => {
+      const p = primary === null ? ALL : String(primary);
+      writeStoredUser(p);
+      setSearchParams(
+        (prev) => {
+          const next = new URLSearchParams(prev);
+          next.set(SELECTED_USER_PARAM, p);
+          next.set(COMPARE_USER_PARAM, compareId === null ? ALL : String(compareId));
+          return next;
+        },
+        { replace: true },
+      );
+    },
+    [setSearchParams],
+  );
+
+  return { active, compareUserId: active ? parsed : null, setEnabled, setCompareUserId, setPair };
 }
