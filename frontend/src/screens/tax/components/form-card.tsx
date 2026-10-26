@@ -54,9 +54,19 @@ function moneyError(text: string, allowNegative = true): string | null {
   return !allowNegative && dollarsToMinor(text, true) !== null ? "Amount cannot be negative" : "Enter a valid dollar amount";
 }
 
-function FormFields({ formId, form, siblings }: { formId: number; form: TaxFormDetail; siblings: number }) {
+function FormFields({
+  formId,
+  form,
+  siblings,
+  ownerId,
+}: {
+  formId: number;
+  form: TaxFormDetail;
+  siblings: number;
+  ownerId?: number;
+}) {
   const { toast } = useToast();
-  const update = useUpdateTaxForm();
+  const update = useUpdateTaxForm(ownerId);
   const initial = React.useMemo(() => draftOf(form), [form]);
   const [draft, setDraft] = React.useState(initial);
   const set = (p: Partial<Draft>) => setDraft((d) => ({ ...d, ...p }));
@@ -185,10 +195,19 @@ function FormFields({ formId, form, siblings }: { formId: number; form: TaxFormD
 }
 
 /** `siblings`: how many other forms the document holds (they move with this form's tax year). */
-export function FormCard({ form, siblings = 0 }: { form: TaxFormDetail; siblings?: number }) {
+export function FormCard({
+  form,
+  siblings = 0,
+  ownerId,
+}: {
+  form: TaxFormDetail;
+  siblings?: number;
+  /** The owning user of the document; sent with every mutation as the ownership check. */
+  ownerId?: number;
+}) {
   const { toast } = useToast();
-  const remove = useDeleteTaxForm();
-  const confirm = useConfirmTaxForm();
+  const remove = useDeleteTaxForm(ownerId);
+  const confirm = useConfirmTaxForm(ownerId);
   const [confirmingDelete, setConfirmingDelete] = React.useState(false);
   const title = `${formTypeLabel(form.form_type)}${form.payer_name ? ` · ${form.payer_name}` : ""}`;
 
@@ -238,9 +257,9 @@ export function FormCard({ form, siblings = 0 }: { form: TaxFormDetail; siblings
           )}
         </span>
       </header>
-      <FormFields key={JSON.stringify([form.form_type, form.tax_year, form.payer_name, form.payer_tin_last4, form.account_last4, form.is_corrected, form.filing_status, form.agi_minor, form.taxable_income_minor])} formId={form.id} form={form} siblings={siblings} />
-      <ItemTable kind="income" items={form.income_items} formId={form.id} />
-      <ItemTable kind="tax" items={form.tax_items} formId={form.id} />
+      <FormFields key={JSON.stringify([form.form_type, form.tax_year, form.payer_name, form.payer_tin_last4, form.account_last4, form.is_corrected, form.filing_status, form.agi_minor, form.taxable_income_minor])} formId={form.id} form={form} siblings={siblings} ownerId={ownerId} />
+      <ItemTable kind="income" items={form.income_items} formId={form.id} ownerId={ownerId} />
+      <ItemTable kind="tax" items={form.tax_items} formId={form.id} ownerId={ownerId} />
     </section>
   );
 }

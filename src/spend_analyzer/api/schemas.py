@@ -794,6 +794,12 @@ class TaxManualDocumentCreate(_TaxInput):
     original_name: str | None = Field(default=None, max_length=200)
 
 
+class TaxDocumentPatch(_TaxInput):
+    """Reassign a document (with its forms and items) to another user."""
+
+    user_id: int
+
+
 class IncomeItemIn(_TaxInput):
     category: IncomeCategoryEnum
     amount_minor: int = Field(ge=-_MAX_MINOR, le=_MAX_MINOR)

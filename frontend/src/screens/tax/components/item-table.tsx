@@ -64,23 +64,25 @@ function ItemRow({
   kind,
   item,
   formId,
+  ownerId,
   onDone,
 }: {
   kind: Kind;
   /** null = the "add" row. */
   item: Item | null;
   formId: number;
+  ownerId?: number;
   onDone?: () => void;
 }) {
   const { toast } = useToast();
   const [draft, setDraft] = React.useState(() => draftOf(item, kind));
   const [touched, setTouched] = React.useState(false);
-  const createIncome = useCreateIncomeItem();
-  const updateIncome = useUpdateIncomeItem();
-  const deleteIncome = useDeleteIncomeItem();
-  const createTax = useCreateTaxItem();
-  const updateTax = useUpdateTaxItem();
-  const deleteTax = useDeleteTaxItem();
+  const createIncome = useCreateIncomeItem(ownerId);
+  const updateIncome = useUpdateIncomeItem(ownerId);
+  const deleteIncome = useDeleteIncomeItem(ownerId);
+  const createTax = useCreateTaxItem(ownerId);
+  const updateTax = useUpdateTaxItem(ownerId);
+  const deleteTax = useDeleteTaxItem(ownerId);
 
   const initial = React.useMemo(() => draftOf(item, kind), [item, kind]);
   const dirty = item === null || JSON.stringify(initial) !== JSON.stringify(draft);
@@ -251,10 +253,13 @@ export function ItemTable({
   kind,
   items,
   formId,
+  ownerId,
 }: {
   kind: Kind;
   items: readonly Item[];
   formId: number;
+  /** The owning user of the document; sent with every mutation as the ownership check. */
+  ownerId?: number;
 }) {
   const [adding, setAdding] = React.useState(false);
   const title = kind === "income" ? "Income items" : "Tax items";
@@ -265,10 +270,10 @@ export function ItemTable({
         <p className="text-xs text-muted-foreground">None.</p>
       ) : null}
       {items.map((it) => (
-        <ItemRow key={`${it.id}:${itemSignature(it)}`} kind={kind} item={it} formId={formId} />
+        <ItemRow key={`${it.id}:${itemSignature(it)}`} kind={kind} item={it} formId={formId} ownerId={ownerId} />
       ))}
       {adding ? (
-        <ItemRow kind={kind} item={null} formId={formId} onDone={() => setAdding(false)} />
+        <ItemRow kind={kind} item={null} formId={formId} ownerId={ownerId} onDone={() => setAdding(false)} />
       ) : (
         <div>
           <Button type="button" size="sm" variant="outline" onClick={() => setAdding(true)}>

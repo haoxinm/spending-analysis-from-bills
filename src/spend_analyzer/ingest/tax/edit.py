@@ -20,7 +20,7 @@ import re
 import uuid
 from collections.abc import Mapping
 from dataclasses import dataclass, field
-from typing import Final, get_args
+from typing import Final, Literal, get_args
 
 from sqlalchemy import select, update
 from sqlalchemy.exc import IntegrityError
@@ -277,6 +277,39 @@ def _doc_warnings(doc: TaxDocument) -> list[str]:
     return [str(w) for w in loaded] if isinstance(loaded, list) else []
 
 
+# --- ownership ----------------------------------------------------------------------------------
+
+OwnerKind = Literal["document", "form", "income_item", "tax_item"]
+_OWNED_MODEL: Final[
+    Mapping[str, type[TaxDocument] | type[TaxForm] | type[IncomeItem] | type[TaxItem]]
+] = {
+    "document": TaxDocument,
+    "form": TaxForm,
+    "income_item": IncomeItem,
+    "tax_item": TaxItem,
+}
+_NOT_FOUND_MESSAGE: Final[Mapping[str, str]] = {
+    "document": "tax document not found",
+    "form": "tax form not found",
+    "income_item": "income item not found",
+    "tax_item": "tax item not found",
+}
+
+
+def require_owner(session: Session, kind: OwnerKind, target_id: int, user_id: int | None) -> None:
+    """Raise `NotFound` unless the document / form / item belongs to `user_id`.
+
+    ``user_id=None`` skips the check (CLI and "all users" callers). A mismatch is reported exactly
+    like a missing row, so the response never reveals that the id exists for someone else.
+    """
+    if user_id is None:
+        return
+    model = _OWNED_MODEL[kind]
+    owner = session.scalar(select(model.user_id).where(model.id == target_id))
+    if owner != user_id:
+        raise NotFound(_NOT_FOUND_MESSAGE[kind])
+
+
 # --- documents ----------------------------------------------------------------------------------
 
 
@@ -304,6 +337,57 @@ def create_manual_document(
     )
     session.add(doc)
     _commit(session)
+    return doc
+
+
+def reassign_document(session: Session, document_id: int, user_id: int) -> TaxDocument:
+    """Move a document, its forms and their items to another user in one transaction.
+
+    Ownership is not a figure edit: nothing is marked user-edited. Raises `NotFound` for an
+    unknown user and `Conflict` (nothing changed) when the target user already holds the same file
+    or a form with the same (tax year, fingerprint).
+    """
+    doc = _document(session, document_id)
+    target = session.get(User, user_id)
+    if target is None:
+        raise NotFound("user not found")
+    if doc.user_id == user_id:
+        return doc
+    old = session.get(User, doc.user_id)
+    if session.scalar(
+        select(TaxDocument.id).where(
+            TaxDocument.user_id == user_id, TaxDocument.file_sha256 == doc.file_sha256
+        )
+    ):
+        raise Conflict(f"{target.name} already has this document")
+    for form in doc.forms:
+        clash = session.scalar(
+            select(TaxForm.id).where(
+                TaxForm.user_id == user_id,
+                TaxForm.tax_year == form.tax_year,
+                TaxForm.fingerprint == form.fingerprint,
+            )
+        )
+        if clash is not None:
+            label = SOURCE_FORM_LABEL.get(form.form_type, form.form_type)
+            raise Conflict(
+                f"{target.name} already has a {label} form for {form.tax_year} "
+                "that matches this one"
+            )
+    form_ids = [f.id for f in doc.forms]
+    doc.user_id = user_id
+    session.execute(update(TaxForm).where(TaxForm.document_id == doc.id).values(user_id=user_id))
+    if form_ids:
+        for model in (IncomeItem, TaxItem):
+            session.execute(
+                update(model).where(model.form_id.in_(form_ids)).values(user_id=user_id)
+            )
+    if old is not None:
+        warnings = _doc_warnings(doc)
+        warnings.append(f"Moved from {old.name}.")
+        doc.warnings = json.dumps(warnings)
+    _commit(session)
+    session.expire_all()
     return doc
 
 

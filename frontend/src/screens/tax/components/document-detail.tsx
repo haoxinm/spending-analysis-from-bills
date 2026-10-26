@@ -24,7 +24,7 @@ function AddFormEditor({
   onClose: () => void;
 }) {
   const { toast } = useToast();
-  const create = useCreateTaxForm();
+  const create = useCreateTaxForm(document.user_id);
   const [formType, setFormType] = React.useState<TaxFormType>("w2");
   const [payer, setPayer] = React.useState("");
   const [year, setYear] = React.useState(document.tax_year ? String(document.tax_year) : "");
@@ -87,7 +87,7 @@ export function DocumentDetail({
   adding: boolean;
   onAddingChange: (adding: boolean) => void;
 }) {
-  const query = useTaxDocument(document.id);
+  const query = useTaxDocument(document.id, document.user_id);
   const forms = query.data?.forms ?? [];
   const noFigures = document.status !== "parsed" && forms.length === 0;
 
@@ -107,7 +107,7 @@ export function DocumentDetail({
         <p className="text-xs text-muted-foreground">This document has no forms.</p>
       ) : null}
       {forms.map((f) => (
-        <FormCard key={f.id} form={f} siblings={forms.length - 1} />
+        <FormCard key={f.id} form={f} siblings={forms.length - 1} ownerId={document.user_id} />
       ))}
       {adding ? (
         <AddFormEditor document={document} onClose={() => onAddingChange(false)} />

@@ -81,7 +81,7 @@ describe("review figures disclosure", () => {
     await userEvent.type(amount, "$90,000.5{enter}");
     await waitFor(() =>
       expect(patch).toHaveBeenCalledWith("/tax/income-items/{item_id}", {
-        params: { path: { item_id: 100 } },
+        params: { path: { item_id: 100 }, query: { user_id: 1 } },
         body: expect.objectContaining({ amount_minor: 9000050, category: "salary_wages" }) as unknown,
       }),
     );
@@ -121,7 +121,7 @@ describe("review figures disclosure", () => {
     await userEvent.click(within(row).getByRole("button", { name: "Add income item" }));
     await waitFor(() =>
       expect(post).toHaveBeenCalledWith("/tax/forms/{form_id}/income-items", {
-        params: { path: { form_id: 10 } },
+        params: { path: { form_id: 10 }, query: { user_id: 1 } },
         body: { category: "interest", amount_minor: 2550, box: "1", label: null, is_memo: false },
       }),
     );
@@ -133,7 +133,7 @@ describe("review figures disclosure", () => {
     const row = within(detail).getByRole("group", { name: /Tax item: Federal income tax withheld/ });
     await userEvent.click(within(row).getByRole("button", { name: "Delete item" }));
     await waitFor(() =>
-      expect(del).toHaveBeenCalledWith("/tax/tax-items/{item_id}", { params: { path: { item_id: 200 } } }),
+      expect(del).toHaveBeenCalledWith("/tax/tax-items/{item_id}", { params: { path: { item_id: 200 }, query: { user_id: 1 } } }),
     );
   });
 
@@ -154,7 +154,7 @@ describe("review figures disclosure", () => {
     await userEvent.click(within(detail).getByRole("button", { name: "Save form" }));
     await waitFor(() =>
       expect(patch).toHaveBeenCalledWith("/tax/forms/{form_id}", {
-        params: { path: { form_id: 10 } },
+        params: { path: { form_id: 10 }, query: { user_id: 1 } },
         body: { payer_name: "New Corp", payer_tin_last4: "9876" },
       }),
     );
@@ -167,7 +167,7 @@ describe("review figures disclosure", () => {
     expect(within(detail).getByText("Read by LLM — needs review")).toBeInTheDocument();
     await userEvent.click(within(detail).getByRole("button", { name: "Confirm values" }));
     await waitFor(() =>
-      expect(post).toHaveBeenCalledWith("/tax/forms/{form_id}/confirm", { params: { path: { form_id: 10 } } }),
+      expect(post).toHaveBeenCalledWith("/tax/forms/{form_id}/confirm", { params: { path: { form_id: 10 }, query: { user_id: 1 } } }),
     );
   });
 
@@ -178,7 +178,7 @@ describe("review figures disclosure", () => {
     expect(del).not.toHaveBeenCalled();
     await userEvent.click(within(detail).getByRole("button", { name: "Confirm delete form" }));
     await waitFor(() =>
-      expect(del).toHaveBeenCalledWith("/tax/forms/{form_id}", { params: { path: { form_id: 10 } } }),
+      expect(del).toHaveBeenCalledWith("/tax/forms/{form_id}", { params: { path: { form_id: 10 }, query: { user_id: 1 } } }),
     );
   });
 
@@ -201,6 +201,72 @@ describe("review figures disclosure", () => {
   });
 });
 
+describe("owner and moving a document", () => {
+  it("shows the owner chip on every row, even for one user", () => {
+    render(<DocumentsPanel documents={[document({ user_id: 2 })]} users={USERS} selectedUserId={null} />, {
+      wrapper: Wrapper,
+    });
+    expect(screen.getByTestId("tax-document-owner")).toHaveTextContent("Sam");
+  });
+
+  it("sends the document's own owner in All users mode", async () => {
+    detailForms = [formDetail()];
+    get.mockImplementation((path: string) =>
+      path === "/tax/documents/{document_id}" ? ok({ ...document({ user_id: 2 }), forms: detailForms }) : ok([]),
+    );
+    render(<DocumentsPanel documents={[document({ user_id: 2 })]} users={USERS} selectedUserId={null} />, {
+      wrapper: Wrapper,
+    });
+    const detail = await openFirst();
+    expect(get).toHaveBeenCalledWith("/tax/documents/{document_id}", {
+      params: { path: { document_id: 1 }, query: { user_id: 2 } },
+    });
+    await userEvent.click(within(detail).getByRole("button", { name: "Delete form" }));
+    await userEvent.click(within(detail).getByRole("button", { name: "Confirm delete form" }));
+    await waitFor(() =>
+      expect(del).toHaveBeenCalledWith("/tax/forms/{form_id}", {
+        params: { path: { form_id: 10 }, query: { user_id: 2 } },
+      }),
+    );
+  });
+
+  it("moves a document after a confirm step and shows a toast", async () => {
+    renderPanel();
+    await userEvent.selectOptions(screen.getByLabelText(/Move tax_w2_normal.pdf to another user/), "2");
+    expect(patch).not.toHaveBeenCalled();
+    expect(screen.getByText("Move this document and its figures to Sam?")).toBeInTheDocument();
+    await userEvent.click(screen.getByRole("button", { name: "Confirm move" }));
+    await waitFor(() =>
+      expect(patch).toHaveBeenCalledWith("/tax/documents/{document_id}", {
+        params: { path: { document_id: 1 }, query: { user_id: 1 } },
+        body: { user_id: 2 },
+      }),
+    );
+    expect(await screen.findByText("Moved to Sam")).toBeInTheDocument();
+  });
+
+  it("can cancel a move and hides the control with a single user", async () => {
+    const { unmount } = renderPanel();
+    await userEvent.selectOptions(screen.getByLabelText(/to another user/), "2");
+    await userEvent.click(screen.getByRole("button", { name: "Cancel move" }));
+    expect(patch).not.toHaveBeenCalled();
+    expect(screen.getByLabelText(/to another user/)).toBeInTheDocument();
+    unmount();
+    render(<DocumentsPanel documents={[document()]} users={[USERS[0]!]} selectedUserId={1} />, { wrapper: Wrapper });
+    expect(screen.queryByLabelText(/to another user/)).not.toBeInTheDocument();
+  });
+
+  it("shows the server's message when the move collides", async () => {
+    patch.mockImplementation(() =>
+      Promise.resolve({ data: undefined, error: { detail: "Sam already has a W-2 form" }, response: { status: 409 } }),
+    );
+    renderPanel();
+    await userEvent.selectOptions(screen.getByLabelText(/to another user/), "2");
+    await userEvent.click(screen.getByRole("button", { name: "Confirm move" }));
+    expect(await screen.findByText("Could not move document")).toBeInTheDocument();
+  });
+});
+
 describe("manual entry", () => {
   const failed = document({ id: 5, original_name: "scan.pdf", status: "unsupported", form_types: [], tax_year: 2024, error_detail: "Not a tax form" });
 
@@ -215,7 +281,7 @@ describe("manual entry", () => {
     await userEvent.click(within(form).getByRole("button", { name: "Add form" }));
     await waitFor(() =>
       expect(post).toHaveBeenCalledWith("/tax/documents/{document_id}/forms", {
-        params: { path: { document_id: 5 } },
+        params: { path: { document_id: 5 }, query: { user_id: 1 } },
         body: expect.objectContaining({ form_type: "1099-int", payer_name: "Harbor Bank", tax_year: 2024 }) as unknown,
       }),
     );

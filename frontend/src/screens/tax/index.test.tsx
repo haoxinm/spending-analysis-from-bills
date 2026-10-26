@@ -2,6 +2,7 @@ import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import * as React from "react";
+import { WithUserSwitcher } from "@/test/with-user-switcher";
 import { MemoryRouter } from "react-router-dom";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
@@ -28,7 +29,9 @@ function wrapper({ children }: { children: React.ReactNode }) {
   return (
     <QueryClientProvider client={queryClient}>
       <MemoryRouter initialEntries={["/tax"]} future={{ v7_startTransition: true, v7_relativeSplatPath: true }}>
-        <ToastContextProvider>{children}</ToastContextProvider>
+        <ToastContextProvider>
+          <WithUserSwitcher>{children}</WithUserSwitcher>
+        </ToastContextProvider>
       </MemoryRouter>
     </QueryClientProvider>
   );
@@ -155,7 +158,9 @@ describe("TaxScreen", () => {
     expect(del).not.toHaveBeenCalled();
     await userEvent.click(screen.getByRole("button", { name: "Confirm delete" }));
     await waitFor(() =>
-      expect(del).toHaveBeenCalledWith("/tax/documents/{document_id}", { params: { path: { document_id: 1 } } }),
+      expect(del).toHaveBeenCalledWith("/tax/documents/{document_id}", {
+        params: { path: { document_id: 1 }, query: { user_id: 1 } },
+      }),
     );
   });
 

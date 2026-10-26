@@ -12,6 +12,7 @@ import { useToast } from "@/components/ui/use-toast";
 import {
   useCreateManualDocument,
   useDeleteTaxDocument,
+  useReassignTaxDocument,
   useUploadTaxDocument,
   type TaxImportResponse,
 } from "../hooks";
@@ -81,7 +82,9 @@ function DocumentRow({
   /** A request (from the upload outcome or manual creation) to open this row's add-form editor. */
   request: { id: number; n: number } | null;
 }) {
-  const remove = useDeleteTaxDocument();
+  const remove = useDeleteTaxDocument(d.user_id);
+  const reassign = useReassignTaxDocument(d.user_id);
+  const [moveTo, setMoveTo] = React.useState<number | null>(null);
   const { toast } = useToast();
   const [open, setOpen] = React.useState(false);
   const [adding, setAdding] = React.useState(false);
@@ -104,7 +107,21 @@ function DocumentRow({
     }
   }
 
+  async function onMove() {
+    if (moveTo === null) return;
+    const target = userName(users, moveTo);
+    try {
+      await reassign.mutateAsync({ documentId: d.id, userId: moveTo });
+      toast({ variant: "success", title: `Moved to ${target}`, description: d.original_name });
+    } catch (e) {
+      toast({ variant: "destructive", title: "Could not move document", description: errorMessage(e) });
+    } finally {
+      setMoveTo(null);
+    }
+  }
+
   const failed = d.status !== "parsed";
+  const otherUsers = users.filter((u) => u.id !== d.user_id);
   return (
     <li className="flex flex-col gap-2 p-3" data-testid="tax-document">
       <div className="flex flex-wrap items-center gap-2">
@@ -115,11 +132,39 @@ function DocumentRow({
           </Badge>
         ))}
         <Badge variant={d.status === "parsed" ? "accent" : "destructive"}>{documentStatusLabel(d.status)}</Badge>
-        <span className="text-xs text-muted-foreground">
-          {d.tax_year ?? "year unknown"}
-          {users.length > 1 ? ` · ${userName(users, d.user_id)}` : ""}
-        </span>
-        <span className="ml-auto flex items-center gap-2">
+        <Badge variant="outline" data-testid="tax-document-owner" title="Owner">
+          {userName(users, d.user_id)}
+        </Badge>
+        <span className="text-xs text-muted-foreground">{d.tax_year ?? "year unknown"}</span>
+        <span className="ml-auto flex flex-wrap items-center gap-2">
+          {users.length > 1 && moveTo === null ? (
+            <select
+              aria-label={`Move ${d.original_name} to another user`}
+              className="h-8 rounded-md border border-input bg-background px-2 text-xs"
+              value=""
+              onChange={(e) => setMoveTo(e.target.value === "" ? null : Number(e.target.value))}
+            >
+              <option value="">Move to…</option>
+              {otherUsers.map((u) => (
+                <option key={u.id} value={u.id}>
+                  {u.name}
+                </option>
+              ))}
+            </select>
+          ) : null}
+          {moveTo !== null ? (
+            <>
+              <span className="text-xs">
+                Move this document and its figures to {userName(users, moveTo)}?
+              </span>
+              <Button size="sm" disabled={reassign.isPending} onClick={() => void onMove()}>
+                Confirm move
+              </Button>
+              <Button size="sm" variant="outline" onClick={() => setMoveTo(null)}>
+                Cancel move
+              </Button>
+            </>
+          ) : null}
           {failed ? (
             <Button
               size="sm"

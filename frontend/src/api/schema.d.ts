@@ -858,7 +858,12 @@ export interface paths {
         delete: operations["delete_document_api_tax_documents__document_id__delete"];
         options?: never;
         head?: never;
-        patch?: never;
+        /**
+         * Reassign Document
+         * @description Move a document with all its forms and items to another user (`user_id` in the query is
+         *     the ownership check on the current owner; `user_id` in the body is the new owner).
+         */
+        patch: operations["reassign_document_api_tax_documents__document_id__patch"];
         trace?: never;
     };
     "/tax/years": {
@@ -2085,6 +2090,14 @@ export interface components {
             created_at: string;
             /** Forms */
             forms: components["schemas"]["TaxFormDetail"][];
+        };
+        /**
+         * TaxDocumentPatch
+         * @description Reassign a document (with its forms and items) to another user.
+         */
+        TaxDocumentPatch: {
+            /** User Id */
+            user_id: number;
         };
         /** TaxFormCreate */
         TaxFormCreate: {
@@ -4478,7 +4491,9 @@ export interface operations {
     };
     get_document_api_tax_documents__document_id__get: {
         parameters: {
-            query?: never;
+            query?: {
+                user_id?: number | null;
+            };
             header?: never;
             path: {
                 document_id: number;
@@ -4509,7 +4524,9 @@ export interface operations {
     };
     delete_document_api_tax_documents__document_id__delete: {
         parameters: {
-            query?: never;
+            query?: {
+                user_id?: number | null;
+            };
             header?: never;
             path: {
                 document_id: number;
@@ -4524,6 +4541,43 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content?: never;
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    reassign_document_api_tax_documents__document_id__patch: {
+        parameters: {
+            query?: {
+                user_id?: number | null;
+            };
+            header?: never;
+            path: {
+                document_id: number;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["TaxDocumentPatch"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["TaxDocument"];
+                };
             };
             /** @description Validation Error */
             422: {
@@ -4669,7 +4723,9 @@ export interface operations {
     };
     create_form_api_tax_documents__document_id__forms_post: {
         parameters: {
-            query?: never;
+            query?: {
+                user_id?: number | null;
+            };
             header?: never;
             path: {
                 document_id: number;
@@ -4704,7 +4760,9 @@ export interface operations {
     };
     delete_form_api_tax_forms__form_id__delete: {
         parameters: {
-            query?: never;
+            query?: {
+                user_id?: number | null;
+            };
             header?: never;
             path: {
                 form_id: number;
@@ -4733,7 +4791,9 @@ export interface operations {
     };
     patch_form_api_tax_forms__form_id__patch: {
         parameters: {
-            query?: never;
+            query?: {
+                user_id?: number | null;
+            };
             header?: never;
             path: {
                 form_id: number;
@@ -4768,7 +4828,9 @@ export interface operations {
     };
     confirm_form_api_tax_forms__form_id__confirm_post: {
         parameters: {
-            query?: never;
+            query?: {
+                user_id?: number | null;
+            };
             header?: never;
             path: {
                 form_id: number;
@@ -4799,7 +4861,9 @@ export interface operations {
     };
     create_income_item_api_tax_forms__form_id__income_items_post: {
         parameters: {
-            query?: never;
+            query?: {
+                user_id?: number | null;
+            };
             header?: never;
             path: {
                 form_id: number;
@@ -4834,7 +4898,9 @@ export interface operations {
     };
     delete_income_item_api_tax_income_items__item_id__delete: {
         parameters: {
-            query?: never;
+            query?: {
+                user_id?: number | null;
+            };
             header?: never;
             path: {
                 item_id: number;
@@ -4863,7 +4929,9 @@ export interface operations {
     };
     patch_income_item_api_tax_income_items__item_id__patch: {
         parameters: {
-            query?: never;
+            query?: {
+                user_id?: number | null;
+            };
             header?: never;
             path: {
                 item_id: number;
@@ -4898,7 +4966,9 @@ export interface operations {
     };
     create_tax_item_api_tax_forms__form_id__tax_items_post: {
         parameters: {
-            query?: never;
+            query?: {
+                user_id?: number | null;
+            };
             header?: never;
             path: {
                 form_id: number;
@@ -4933,7 +5003,9 @@ export interface operations {
     };
     delete_tax_item_api_tax_tax_items__item_id__delete: {
         parameters: {
-            query?: never;
+            query?: {
+                user_id?: number | null;
+            };
             header?: never;
             path: {
                 item_id: number;
@@ -4962,7 +5034,9 @@ export interface operations {
     };
     patch_tax_item_api_tax_tax_items__item_id__patch: {
         parameters: {
-            query?: never;
+            query?: {
+                user_id?: number | null;
+            };
             header?: never;
             path: {
                 item_id: number;

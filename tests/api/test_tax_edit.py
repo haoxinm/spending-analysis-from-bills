@@ -406,3 +406,146 @@ def test_responses_never_contain_identifier_shapes(client: TestClient, user_id: 
     assert "stored_path" not in texts[0]
     row = client.get(f"/api/tax/documents/{doc['id']}").json()["forms"][0]
     assert row["payer_name"] is not None and "12-3456789" not in row["payer_name"]
+
+
+# --- ownership check (`user_id` query) and reassigning a document ------------------------------
+
+
+def _owned_ids(client: TestClient, owner: int) -> dict[str, int]:
+    doc = _manual_doc(client, owner)
+    form = _form(client, doc["id"])
+    return {
+        "doc": doc["id"],
+        "form": form["id"],
+        "income": form["income_items"][0]["id"],
+        "tax": form["tax_items"][0]["id"],
+    }
+
+
+_ITEM_BODY = {"category": "interest", "amount_minor": 5}
+_TAX_BODY = {"category": "state_income_tax_withheld", "amount_minor": 5}
+#: (method, url template, json body); `{doc}` / `{form}` / `{income}` / `{tax}` are filled in.
+_ID_ROUTES: list[tuple[str, str, dict[str, Any] | None]] = [
+    ("GET", "/api/tax/documents/{doc}", None),
+    ("POST", "/api/tax/documents/{doc}/forms", _w2_body(income_items=[], tax_items=[])),
+    ("PATCH", "/api/tax/documents/{doc}", {"user_id": 1}),
+    ("PATCH", "/api/tax/forms/{form}", {"payer_name": "Z"}),
+    ("POST", "/api/tax/forms/{form}/confirm", None),
+    ("POST", "/api/tax/forms/{form}/income-items", _ITEM_BODY),
+    ("PATCH", "/api/tax/income-items/{income}", {"amount_minor": 7}),
+    ("POST", "/api/tax/forms/{form}/tax-items", _TAX_BODY),
+    ("PATCH", "/api/tax/tax-items/{tax}", {"amount_minor": 7}),
+    ("DELETE", "/api/tax/income-items/{income}", None),
+    ("DELETE", "/api/tax/tax-items/{tax}", None),
+    ("DELETE", "/api/tax/forms/{form}", None),
+    ("DELETE", "/api/tax/documents/{doc}", None),
+]
+
+
+@pytest.mark.parametrize(("method", "url", "body"), _ID_ROUTES)
+def test_id_routes_check_ownership(
+    client: TestClient,
+    user_id: int,
+    other_user_id: int,
+    method: str,
+    url: str,
+    body: dict[str, Any] | None,
+) -> None:
+    ids = _owned_ids(client, user_id)
+    path = url.format(**ids)
+    denied = client.request(method, path, params={"user_id": other_user_id}, json=body)
+    assert denied.status_code == 404, denied.text
+    # Nothing changed, and the wrong-user answer is the same as for a missing row.
+    detail = client.get(f"/api/tax/documents/{ids['doc']}", params={"user_id": user_id}).json()
+    assert detail["forms"][0]["payer_name"] == "Acme Corp"
+    assert len(detail["forms"][0]["income_items"]) == 1
+    missing = client.request(
+        method, path.replace(str(ids["doc"]), "9999"), params={"user_id": user_id}, json=body
+    )
+    if "{doc}" in url:
+        assert missing.status_code == 404
+        assert denied.json() == missing.json()
+
+
+@pytest.mark.parametrize(("method", "url", "body"), _ID_ROUTES)
+def test_id_routes_succeed_with_matching_or_no_user(
+    client: TestClient,
+    user_id: int,
+    method: str,
+    url: str,
+    body: dict[str, Any] | None,
+) -> None:
+    if body == {"user_id": 1}:
+        body = {"user_id": user_id}  # a no-op move to the same owner
+    for params in ({"user_id": user_id}, {}):
+        ids = _owned_ids(client, user_id)
+        r = client.request(method, url.format(**ids), params=params, json=body)
+        assert r.status_code in (200, 201, 204), (params, r.text)
+
+
+def test_reassign_document_moves_everything(
+    client: TestClient, session: Session, user_id: int, other_user_id: int
+) -> None:
+    ids = _owned_ids(client, user_id)
+    assert [s["user_id"] for s in _summary(client, user_ids=[user_id])] == [user_id]
+    r = client.patch(
+        f"/api/tax/documents/{ids['doc']}",
+        params={"user_id": user_id},
+        json={"user_id": other_user_id},
+    )
+    assert r.status_code == 200, r.text
+    assert r.json()["user_id"] == other_user_id
+    assert r.json()["warnings"] == ["Moved from alice."]
+    assert _summary(client, user_ids=[user_id]) == []
+    (moved,) = _summary(client, user_ids=[other_user_id])
+    assert moved["total_income_minor"] == 100000 and moved["form_count"] == 1
+    per_user = _summary(client, per_user=True)
+    assert [(s["user_id"], s["total_income_minor"]) for s in per_user] == [(other_user_id, 100000)]
+    session.expire_all()
+    form = session.get(TaxForm, ids["form"])
+    assert form is not None and form.user_id == other_user_id and form.is_user_edited is False
+    assert {i.user_id for i in form.income_items} == {other_user_id}
+    assert {t.user_id for t in form.tax_items} == {other_user_id}
+    # The old owner can no longer reach it; the new one can.
+    assert (
+        client.get(f"/api/tax/documents/{ids['doc']}", params={"user_id": user_id}).status_code
+        == 404
+    )
+    assert (
+        client.get(
+            f"/api/tax/documents/{ids['doc']}", params={"user_id": other_user_id}
+        ).status_code
+        == 200
+    )
+
+
+def test_reassign_document_errors(client: TestClient, user_id: int) -> None:
+    ids = _owned_ids(client, user_id)
+    url = f"/api/tax/documents/{ids['doc']}"
+    assert client.patch(url, json={"user_id": 9999}).status_code == 404
+    assert client.patch(url, json={"user_id": user_id, "extra": 1}).status_code == 422
+    assert client.patch(url, json={}).status_code == 422
+    assert client.patch("/api/tax/documents/9999", json={"user_id": user_id}).status_code == 404
+
+
+def test_reassign_collision_is_409_and_rolls_back(
+    client: TestClient, session: Session, user_id: int, other_user_id: int
+) -> None:
+    ids = _owned_ids(client, user_id)
+    other_form = _owned_ids(client, other_user_id)["form"]
+    # Give both users the same imported identity so the move would violate the unique key.
+    session.expire_all()
+    mine = session.get(TaxForm, ids["form"])
+    theirs = session.get(TaxForm, other_form)
+    assert mine is not None and theirs is not None
+    theirs.fingerprint = mine.fingerprint
+    session.commit()
+    r = client.patch(f"/api/tax/documents/{ids['doc']}", json={"user_id": other_user_id})
+    assert r.status_code == 409
+    assert "W-2" in r.json()["detail"] and "bob" in r.json()["detail"]
+    session.expire_all()
+    doc = session.get(TaxDocument, ids["doc"])
+    assert doc is not None and doc.user_id == user_id and doc.warnings is None
+    form = session.get(TaxForm, ids["form"])
+    assert form is not None and form.user_id == user_id
+    assert {i.user_id for i in form.income_items} == {user_id}

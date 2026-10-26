@@ -16,8 +16,9 @@ from collections.abc import Mapping
 from enum import StrEnum
 from typing import Annotated, Literal
 
-from fastapi import APIRouter, Form, HTTPException, Query, Response, UploadFile
+from fastapi import APIRouter, Depends, Form, HTTPException, Query, Response, UploadFile
 from pydantic import BaseModel
+from sqlalchemy.orm import Session
 from starlette.concurrency import run_in_threadpool
 
 from spend_analyzer.analytics import tax_query
@@ -206,7 +207,49 @@ def list_documents(
     return [_document(d) for d in docs]
 
 
-@router.get("/tax/documents/{document_id}", response_model=schemas.TaxDocumentDetail)
+# --- ownership check ------------------------------------------------------------------------------
+#
+# Every route that takes a bare id accepts an optional `user_id` query parameter; when given, the
+# target must belong to that user or the answer is the same 404 as for a missing row. One dependency
+# per id kind, all delegating to `edit.require_owner`.
+
+
+def _owner_check(
+    kind: edit.OwnerKind, session: Session, target_id: int, user_id: int | None
+) -> None:
+    try:
+        edit.require_owner(session, kind, target_id, user_id)
+    except edit.EditError as exc:
+        raise _raise(exc) from None
+
+
+def _owns_document(document_id: int, session: SessionDep, user_id: int | None = None) -> None:
+    _owner_check("document", session, document_id, user_id)
+
+
+def _owns_form(form_id: int, session: SessionDep, user_id: int | None = None) -> None:
+    _owner_check("form", session, form_id, user_id)
+
+
+def _owns_income_item(item_id: int, session: SessionDep, user_id: int | None = None) -> None:
+    _owner_check("income_item", session, item_id, user_id)
+
+
+def _owns_tax_item(item_id: int, session: SessionDep, user_id: int | None = None) -> None:
+    _owner_check("tax_item", session, item_id, user_id)
+
+
+_DOC_OWNER = [Depends(_owns_document)]
+_FORM_OWNER = [Depends(_owns_form)]
+_INCOME_OWNER = [Depends(_owns_income_item)]
+_TAX_ITEM_OWNER = [Depends(_owns_tax_item)]
+
+
+@router.get(
+    "/tax/documents/{document_id}",
+    response_model=schemas.TaxDocumentDetail,
+    dependencies=_DOC_OWNER,
+)
 def get_document(document_id: int, session: SessionDep) -> schemas.TaxDocumentDetail:
     doc = tax_query.get_tax_document(session, document_id)
     if doc is None:
@@ -214,7 +257,7 @@ def get_document(document_id: int, session: SessionDep) -> schemas.TaxDocumentDe
     return _document_detail(doc)
 
 
-@router.delete("/tax/documents/{document_id}", status_code=204)
+@router.delete("/tax/documents/{document_id}", status_code=204, dependencies=_DOC_OWNER)
 def delete_document(document_id: int, session: SessionDep) -> Response:
     if not delete_tax_document(session, document_id):
         raise HTTPException(status_code=404, detail="tax document not found")
@@ -385,10 +428,28 @@ def create_manual_document(
     return _document(doc)
 
 
+@router.patch(
+    "/tax/documents/{document_id}",
+    response_model=schemas.TaxDocument,
+    dependencies=_DOC_OWNER,
+)
+def reassign_document(
+    document_id: int, body: schemas.TaxDocumentPatch, session: SessionDep
+) -> schemas.TaxDocument:
+    """Move a document with all its forms and items to another user (`user_id` in the query is
+    the ownership check on the current owner; `user_id` in the body is the new owner)."""
+    try:
+        doc = edit.reassign_document(session, document_id, body.user_id)
+    except edit.EditError as exc:
+        raise _raise(exc) from None
+    return _document(doc)
+
+
 @router.post(
     "/tax/documents/{document_id}/forms",
     response_model=schemas.TaxFormDetail,
     status_code=201,
+    dependencies=_DOC_OWNER,
 )
 def create_form(
     document_id: int, body: schemas.TaxFormCreate, session: SessionDep
@@ -415,7 +476,9 @@ def create_form(
     return _form_detail(form)
 
 
-@router.patch("/tax/forms/{form_id}", response_model=schemas.TaxFormDetail)
+@router.patch(
+    "/tax/forms/{form_id}", response_model=schemas.TaxFormDetail, dependencies=_FORM_OWNER
+)
 def patch_form(
     form_id: int, body: schemas.TaxFormPatch, session: SessionDep
 ) -> schemas.TaxFormDetail:
@@ -426,7 +489,7 @@ def patch_form(
     return _form_detail(form)
 
 
-@router.delete("/tax/forms/{form_id}", status_code=204)
+@router.delete("/tax/forms/{form_id}", status_code=204, dependencies=_FORM_OWNER)
 def delete_form(form_id: int, session: SessionDep) -> Response:
     try:
         edit.delete_form(session, form_id)
@@ -435,7 +498,11 @@ def delete_form(form_id: int, session: SessionDep) -> Response:
     return Response(status_code=204)
 
 
-@router.post("/tax/forms/{form_id}/confirm", response_model=schemas.TaxFormDetail)
+@router.post(
+    "/tax/forms/{form_id}/confirm",
+    response_model=schemas.TaxFormDetail,
+    dependencies=_FORM_OWNER,
+)
 def confirm_form(form_id: int, session: SessionDep) -> schemas.TaxFormDetail:
     """Mark a reviewed form's AI-extracted items as confirmed (`origin` becomes `manual`)."""
     try:
@@ -446,7 +513,10 @@ def confirm_form(form_id: int, session: SessionDep) -> schemas.TaxFormDetail:
 
 
 @router.post(
-    "/tax/forms/{form_id}/income-items", response_model=schemas.IncomeItemOut, status_code=201
+    "/tax/forms/{form_id}/income-items",
+    response_model=schemas.IncomeItemOut,
+    status_code=201,
+    dependencies=_FORM_OWNER,
 )
 def create_income_item(
     form_id: int, body: schemas.IncomeItemIn, session: SessionDep
@@ -458,7 +528,11 @@ def create_income_item(
     return _income_item(item)
 
 
-@router.patch("/tax/income-items/{item_id}", response_model=schemas.IncomeItemOut)
+@router.patch(
+    "/tax/income-items/{item_id}",
+    response_model=schemas.IncomeItemOut,
+    dependencies=_INCOME_OWNER,
+)
 def patch_income_item(
     item_id: int, body: schemas.IncomeItemPatch, session: SessionDep
 ) -> schemas.IncomeItemOut:
@@ -469,7 +543,7 @@ def patch_income_item(
     return _income_item(item)
 
 
-@router.delete("/tax/income-items/{item_id}", status_code=204)
+@router.delete("/tax/income-items/{item_id}", status_code=204, dependencies=_INCOME_OWNER)
 def delete_income_item(item_id: int, session: SessionDep) -> Response:
     try:
         edit.delete_income_item(session, item_id)
@@ -478,7 +552,12 @@ def delete_income_item(item_id: int, session: SessionDep) -> Response:
     return Response(status_code=204)
 
 
-@router.post("/tax/forms/{form_id}/tax-items", response_model=schemas.TaxItemOut, status_code=201)
+@router.post(
+    "/tax/forms/{form_id}/tax-items",
+    response_model=schemas.TaxItemOut,
+    status_code=201,
+    dependencies=_FORM_OWNER,
+)
 def create_tax_item(
     form_id: int, body: schemas.TaxItemIn, session: SessionDep
 ) -> schemas.TaxItemOut:
@@ -489,7 +568,9 @@ def create_tax_item(
     return _tax_item(item)
 
 
-@router.patch("/tax/tax-items/{item_id}", response_model=schemas.TaxItemOut)
+@router.patch(
+    "/tax/tax-items/{item_id}", response_model=schemas.TaxItemOut, dependencies=_TAX_ITEM_OWNER
+)
 def patch_tax_item(
     item_id: int, body: schemas.TaxItemPatch, session: SessionDep
 ) -> schemas.TaxItemOut:
@@ -500,7 +581,7 @@ def patch_tax_item(
     return _tax_item(item)
 
 
-@router.delete("/tax/tax-items/{item_id}", status_code=204)
+@router.delete("/tax/tax-items/{item_id}", status_code=204, dependencies=_TAX_ITEM_OWNER)
 def delete_tax_item(item_id: int, session: SessionDep) -> Response:
     try:
         edit.delete_tax_item(session, item_id)

@@ -94,12 +94,20 @@ export function useUploadTaxDocument() {
   });
 }
 
-export function useDeleteTaxDocument() {
+/**
+ * Every id-addressed tax call sends the owning user's id (`ownerId`, the document's `user_id`), so
+ * the server rejects (404) an id that belongs to someone else. Optional only for callers that do not
+ * know the owner; the UI always has it from the documents list.
+ */
+export type OwnerId = number | null | undefined;
+const owner = (ownerId: OwnerId) => ({ user_id: ownerId ?? undefined });
+
+export function useDeleteTaxDocument(ownerId?: OwnerId) {
   const queryClient = useQueryClient();
   return useMutation({
     mutationFn: async (id: number) => {
       const { error } = await apiClient.DELETE("/tax/documents/{document_id}", {
-        params: { path: { document_id: id } },
+        params: { path: { document_id: id }, query: owner(ownerId) },
       });
       throwIfError(error);
     },
@@ -119,13 +127,13 @@ export type IncomeItemPatch = Schemas["IncomeItemPatch"];
 export type TaxItemIn = Schemas["TaxItemIn"];
 export type TaxItemPatch = Schemas["TaxItemPatch"];
 
-export function useTaxDocument(id: number, enabled = true) {
+export function useTaxDocument(id: number, ownerId?: OwnerId, enabled = true) {
   return useQuery({
     enabled,
     queryKey: [...ROOT_KEY, "document", id],
     queryFn: async () => {
       const { data, error } = await apiClient.GET("/tax/documents/{document_id}", {
-        params: { path: { document_id: id } },
+        params: { path: { document_id: id }, query: owner(ownerId) },
       });
       throwIfError(error);
       if (!data) throw new Error("document not found");
@@ -160,10 +168,10 @@ export function useCreateManualDocument() {
   );
 }
 
-export function useCreateTaxForm() {
+export function useCreateTaxForm(ownerId?: OwnerId) {
   return useTaxMutation(async ({ documentId, body }: { documentId: number; body: TaxFormCreate }) => {
     const { data, error } = await apiClient.POST("/tax/documents/{document_id}/forms", {
-      params: { path: { document_id: documentId } },
+      params: { path: { document_id: documentId }, query: owner(ownerId) },
       body,
     });
     throwIfError(error);
@@ -171,10 +179,10 @@ export function useCreateTaxForm() {
   });
 }
 
-export function useUpdateTaxForm() {
+export function useUpdateTaxForm(ownerId?: OwnerId) {
   return useTaxMutation(async ({ formId, patch }: { formId: number; patch: TaxFormPatch }) => {
     const { data, error } = await apiClient.PATCH("/tax/forms/{form_id}", {
-      params: { path: { form_id: formId } },
+      params: { path: { form_id: formId }, query: owner(ownerId) },
       body: patch,
     });
     throwIfError(error);
@@ -182,29 +190,29 @@ export function useUpdateTaxForm() {
   });
 }
 
-export function useDeleteTaxForm() {
+export function useDeleteTaxForm(ownerId?: OwnerId) {
   return useTaxMutation(async (formId: number) => {
     const { error } = await apiClient.DELETE("/tax/forms/{form_id}", {
-      params: { path: { form_id: formId } },
+      params: { path: { form_id: formId }, query: owner(ownerId) },
     });
     throwIfError(error);
   });
 }
 
-export function useConfirmTaxForm() {
+export function useConfirmTaxForm(ownerId?: OwnerId) {
   return useTaxMutation(async (formId: number) => {
     const { data, error } = await apiClient.POST("/tax/forms/{form_id}/confirm", {
-      params: { path: { form_id: formId } },
+      params: { path: { form_id: formId }, query: owner(ownerId) },
     });
     throwIfError(error);
     return need(data);
   });
 }
 
-export function useCreateIncomeItem() {
+export function useCreateIncomeItem(ownerId?: OwnerId) {
   return useTaxMutation(async ({ formId, body }: { formId: number; body: IncomeItemIn }) => {
     const { data, error } = await apiClient.POST("/tax/forms/{form_id}/income-items", {
-      params: { path: { form_id: formId } },
+      params: { path: { form_id: formId }, query: owner(ownerId) },
       body,
     });
     throwIfError(error);
@@ -212,10 +220,10 @@ export function useCreateIncomeItem() {
   });
 }
 
-export function useUpdateIncomeItem() {
+export function useUpdateIncomeItem(ownerId?: OwnerId) {
   return useTaxMutation(async ({ id, patch }: { id: number; patch: IncomeItemPatch }) => {
     const { data, error } = await apiClient.PATCH("/tax/income-items/{item_id}", {
-      params: { path: { item_id: id } },
+      params: { path: { item_id: id }, query: owner(ownerId) },
       body: patch,
     });
     throwIfError(error);
@@ -223,19 +231,19 @@ export function useUpdateIncomeItem() {
   });
 }
 
-export function useDeleteIncomeItem() {
+export function useDeleteIncomeItem(ownerId?: OwnerId) {
   return useTaxMutation(async (id: number) => {
     const { error } = await apiClient.DELETE("/tax/income-items/{item_id}", {
-      params: { path: { item_id: id } },
+      params: { path: { item_id: id }, query: owner(ownerId) },
     });
     throwIfError(error);
   });
 }
 
-export function useCreateTaxItem() {
+export function useCreateTaxItem(ownerId?: OwnerId) {
   return useTaxMutation(async ({ formId, body }: { formId: number; body: TaxItemIn }) => {
     const { data, error } = await apiClient.POST("/tax/forms/{form_id}/tax-items", {
-      params: { path: { form_id: formId } },
+      params: { path: { form_id: formId }, query: owner(ownerId) },
       body,
     });
     throwIfError(error);
@@ -243,10 +251,10 @@ export function useCreateTaxItem() {
   });
 }
 
-export function useUpdateTaxItem() {
+export function useUpdateTaxItem(ownerId?: OwnerId) {
   return useTaxMutation(async ({ id, patch }: { id: number; patch: TaxItemPatch }) => {
     const { data, error } = await apiClient.PATCH("/tax/tax-items/{item_id}", {
-      params: { path: { item_id: id } },
+      params: { path: { item_id: id }, query: owner(ownerId) },
       body: patch,
     });
     throwIfError(error);
@@ -254,11 +262,23 @@ export function useUpdateTaxItem() {
   });
 }
 
-export function useDeleteTaxItem() {
+export function useDeleteTaxItem(ownerId?: OwnerId) {
   return useTaxMutation(async (id: number) => {
     const { error } = await apiClient.DELETE("/tax/tax-items/{item_id}", {
-      params: { path: { item_id: id } },
+      params: { path: { item_id: id }, query: owner(ownerId) },
     });
     throwIfError(error);
+  });
+}
+
+/** Move a document (with its forms and items) to another user. */
+export function useReassignTaxDocument(ownerId?: OwnerId) {
+  return useTaxMutation(async ({ documentId, userId }: { documentId: number; userId: number }) => {
+    const { data, error } = await apiClient.PATCH("/tax/documents/{document_id}", {
+      params: { path: { document_id: documentId }, query: owner(ownerId) },
+      body: { user_id: userId },
+    });
+    throwIfError(error);
+    return need(data);
   });
 }
