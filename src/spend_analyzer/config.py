@@ -156,6 +156,8 @@ class PrivacyConfig(BaseModel):
 
     store_pdf_copies: bool = True
     store_extract_cache: bool = False  # debugging only
+    #: Keep uploaded tax PDFs (they hold full SSNs). config.toml-only; not in the Settings API.
+    store_tax_pdf_copies: bool = False
     pii_terms: tuple[str, ...] = ()  # A11
 
 
@@ -166,6 +168,10 @@ class IngestConfig(BaseModel):
     #: "auto": propose the best-scoring built-in parser/layout spec. "llm": propose the LLM
     #: statement parser for every new upload (only when an LLM is configured).
     default_extractor: Literal["auto", "llm"] = "auto"
+    #: Opt-in: send the redacted pages of a tax file that the built-in parsers could not read to
+    #: the configured LLM (only effective while the LLM is enabled and configured). Off by default:
+    #: tax forms never leave the machine unless this is switched on.
+    tax_llm_fallback: bool = False
     date_format_hints: tuple[str, ...] = ("%m/%d/%Y", "%m/%d", "%d %b %Y", "%Y-%m-%d")
     default_currency: str = "USD"
 
@@ -185,6 +191,19 @@ class Settings(BaseModel):
     privacy: PrivacyConfig = PrivacyConfig()
     ingest: IngestConfig = IngestConfig()
     server: ServerConfig = ServerConfig()
+
+
+def without_stale_tax_consent(settings: Settings) -> Settings:
+    """`settings` with the tax LLM opt-in cleared when the LLM is disabled.
+
+    The consent was given for an LLM the user was using; switching the LLM off must not leave a
+    flag behind that silently resumes sending tax pages when it is switched on again.
+    """
+    if settings.llm.enabled or not settings.ingest.tax_llm_fallback:
+        return settings
+    return settings.model_copy(
+        update={"ingest": settings.ingest.model_copy(update={"tax_llm_fallback": False})}
+    )
 
 
 def load_settings(path: Path | None = None) -> Settings:

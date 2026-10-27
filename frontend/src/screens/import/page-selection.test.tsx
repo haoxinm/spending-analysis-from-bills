@@ -119,7 +119,7 @@ async function renderAndUpload(fetchMock: typeof fetch) {
       </MemoryRouter>
     </QueryClientProvider>,
   );
-  await waitFor(() => expect(screen.getByText("Alex (default)")).toBeInTheDocument());
+  await waitFor(() => expect(screen.getByTestId("import-target")).toBeInTheDocument());
   const pdf = new File(["%PDF-1.4"], "chase.pdf", { type: "application/pdf" });
   await userEvent.upload(screen.getByLabelText("Choose statement PDFs"), pdf);
   await waitFor(() => expect(screen.getByText("Ready to import")).toBeInTheDocument());
@@ -209,7 +209,12 @@ describe("page selection", () => {
     await userEvent.click(screen.getByLabelText("Page 2"));
     expect(await screen.findByText(/sent to api\.example\.com/)).toBeInTheDocument();
 
-    await userEvent.click(screen.getByRole("button", { name: "Preview what will be sent" }));
+    // Collapsed by default: nothing is fetched until the user asks.
+    const toggle = screen.getByRole("button", { name: "Show what would be sent" });
+    expect(toggle).toHaveAttribute("aria-expanded", "false");
+    expect(previewUrls).toHaveLength(0);
+    expect(screen.queryByTestId("llm-request")).not.toBeInTheDocument();
+    await userEvent.click(toggle);
     const blocks = await screen.findAllByTestId("llm-request");
     expect(blocks.map((b) => b.textContent)).toEqual(["REDACTED TEXT ONE", "REDACTED TEXT TWO"]);
     expect(screen.getByText(/1234 characters total/)).toBeInTheDocument();

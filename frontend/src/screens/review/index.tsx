@@ -7,6 +7,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { EmptyState, ErrorState, LoadingState } from "@/components/primitives/states";
 import { CategoryBadge } from "@/components/primitives/category-badge";
 import { Money } from "@/components/primitives/money";
+import { usePaneShortcutsEnabled, useSelectedUser } from "@/hooks/use-selected-user";
 
 import { buildCategoryChoices } from "./components/category-choices";
 import { CategoryPicker } from "./components/category-picker";
@@ -37,7 +38,10 @@ import type { Transaction } from "./types";
  * `Subcategory.id` (see `use-pending-subcategories.ts`).
  */
 export default function ReviewScreen() {
-  const queue = useReviewQueue();
+  const sel = useSelectedUser();
+  // In compare mode only the active pane handles the document-level shortcuts.
+  const shortcutsEnabled = usePaneShortcutsEnabled();
+  const queue = useReviewQueue(sel.userIds, !sel.isLoading);
   const taxonomy = useTaxonomy();
   const pendingSubcategories = usePendingSubcategories();
 
@@ -45,6 +49,7 @@ export default function ReviewScreen() {
   const choices = React.useMemo(() => buildCategoryChoices(categories), [categories]);
 
   React.useEffect(() => {
+    if (!shortcutsEnabled) return;
     function isTypingTarget(target: EventTarget | null): boolean {
       if (!(target instanceof HTMLElement)) return false;
       return target.tagName === "INPUT" || target.tagName === "TEXTAREA" || target.isContentEditable;
@@ -92,20 +97,24 @@ export default function ReviewScreen() {
 
     document.addEventListener("keydown", onKeyDown);
     return () => document.removeEventListener("keydown", onKeyDown);
-  }, [queue, choices]);
+  }, [queue, choices, shortcutsEnabled]);
 
   return (
     <div className="flex flex-col gap-6">
-      <header className="flex items-center justify-between">
+      <header className="flex flex-wrap items-center justify-between gap-3">
         <div>
           <h1 className="text-xl font-semibold tracking-tight">Review</h1>
           <p className="text-sm text-muted-foreground">
-            {queue.status === "ready" ? `${queue.queue.length} need review` : "Loading…"}
+            {queue.status === "ready"
+              ? `${queue.queue.length} need review${sel.users.length > 1 && sel.selectedUser ? ` (${sel.selectedUser.name})` : ""}`
+              : "Loading…"}
           </p>
         </div>
-        <Button type="button" variant="outline" size="sm" disabled={!queue.canUndo || queue.isMutating} onClick={() => void queue.undo()}>
-          Undo (u)
-        </Button>
+        <div className="flex flex-wrap items-center gap-3">
+          <Button type="button" variant="outline" size="sm" disabled={!queue.canUndo || queue.isMutating} onClick={() => void queue.undo()}>
+            Undo (u)
+          </Button>
+        </div>
       </header>
 
       <section aria-label="Transaction queue">
@@ -138,6 +147,7 @@ export default function ReviewScreen() {
 
       <section aria-label="Pending stores" className="flex flex-col gap-3">
         <h2 className="text-sm font-semibold tracking-tight text-foreground">Pending stores</h2>
+        <p className="text-xs text-muted-foreground">Categories are shared by everyone, so this list is not filtered by user.</p>
         <PendingStores {...pendingSubcategories} />
       </section>
     </div>

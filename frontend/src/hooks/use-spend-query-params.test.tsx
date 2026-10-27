@@ -1,6 +1,6 @@
 import { act, renderHook } from "@testing-library/react";
 import * as React from "react";
-import { MemoryRouter } from "react-router-dom";
+import { MemoryRouter, useSearchParams } from "react-router-dom";
 import { describe, expect, it } from "vitest";
 
 import { useSpendQueryParams } from "./use-spend-query-params";
@@ -60,5 +60,30 @@ describe("useSpendQueryParams", () => {
     });
 
     expect(result.current[0].netRefunds).toBe(false);
+  });
+
+  it("keeps foreign params such as ?user= when other fields change", () => {
+    function foreignWrapper({ children }: { children: React.ReactNode }) {
+      return (
+        <MemoryRouter
+          initialEntries={["/?user=2&date_from=2025-01-01"]}
+          future={{ v7_startTransition: true, v7_relativeSplatPath: true }}
+        >
+          {children}
+        </MemoryRouter>
+      );
+    }
+    const { result } = renderHook(
+      () => ({ q: useSpendQueryParams(), sp: useSearchParams() }),
+      { wrapper: foreignWrapper },
+    );
+
+    act(() => {
+      result.current.q[1]({ granularity: "year" });
+    });
+
+    expect(result.current.sp[0].get("user")).toBe("2");
+    expect(result.current.sp[0].get("granularity")).toBe("year");
+    expect(result.current.sp[0].get("date_from")).toBe("2025-01-01");
   });
 });

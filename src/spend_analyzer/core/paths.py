@@ -82,6 +82,12 @@ def statements_dir() -> Path:
     return get_home() / "statements"
 
 
+def tax_staging_dir() -> Path:
+    """Short-lived, never-backed-up copies of tax PDFs re-selected by the user (not created by
+    `ensure_home`; see `ingest/tax/staging.py`)."""
+    return get_home() / "tax_staging"
+
+
 def extract_cache_dir() -> Path:
     return get_home() / "extract_cache"
 

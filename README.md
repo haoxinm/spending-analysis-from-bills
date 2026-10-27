@@ -54,6 +54,22 @@ This is the reason to run this instead of a hosted budgeting app, so it comes fi
 - **One HTTP client, two callers.** Only `llm/client.py` imports an HTTP client, and only the two
   seams above may import it — checked by `tests/test_architecture_guards.py` on every change.
   Statement ingestion (`ingest/`) can never make a network call.
+- **Tax forms stay local unless you opt in.** W-2, 1099 and 1040 PDFs are read by deterministic
+  local parsers, and the tax code imports neither an LLM nor an HTTP client
+  (`tests/test_architecture_guards.py`). The only exception is a separate, off-by-default switch,
+  `[ingest] tax_llm_fallback = true` (Settings -> LLM, or `llm set --tax-llm-fallback`), which
+  works only while an LLM is configured. With it on, just the pages the parsers could not read are
+  sent, redacted: SSNs, EINs and account numbers are masked to their last 4 digits, recipient /
+  employee name and address rows are removed (best effort), and your personal-info entries from
+  **Settings -> Privacy** (the same list and matching rules used for statements) are removed.
+  Values read that way are tagged and marked "review", and `tax import --no-llm` turns it off for
+  a run. Only the **last four digits** of a payer or account identifier are stored; full SSNs, ITINs
+  and EINs are never written to the database, the logs or the extract cache, and your own and your
+  spouse's numbers are never read. The PDF is deleted after import unless you set
+  `[privacy] store_tax_pdf_copies = true`. See [docs/TAX.md](docs/TAX.md).
+- **Account balances stay local.** The balances you enter for net worth (checking, savings,
+  investment, credit card) live only in your local database. They are never exported, never part
+  of any LLM payload, and the net-worth code imports neither an LLM nor an HTTP client.
 - **Secrets** (an LLM API key) live only in your OS credential store (macOS Keychain, Windows
   Credential Manager, Linux Secret Service), keyed per host — never in the database, the config
   file, or a log line. On a headless machine you can supply it as `SPEND_ANALYZER_LLM_API_KEY`.
@@ -172,6 +188,20 @@ build is missing or stale).
 - **Serves a local web UI and a CLI** for reviewing transactions, correcting categories, mapping an
   unrecognized layout by hand, and charting spending by category over time — plus a `report`
   command for the same numbers in a terminal.
+- **Analyzes income and taxes from your tax forms.** Import W-2, 1099-INT/DIV/B/NEC/MISC,
+  consolidated 1099 and Form 1040 PDFs (`spend-analyzer tax import`, or the **Income & Tax** screen)
+  to see income by category and payer, withholding, refund or amount owed, effective and all-in tax
+  rates, and a year-over-year comparison. W-2 and 1099 forms are the source of income, the 1040 the
+  source of tax owed, so nothing is double counted; the ordinary-versus-preferential split of
+  federal tax is a labelled estimate. See [docs/TAX.md](docs/TAX.md).
+- **Tracks net worth.** On the Dashboard, enter monthly balances for checking, savings, investment
+  and credit-card accounts (several accounts per category). Net worth is assets minus credit-card
+  balances, shown with a breakdown table, a pie of where your assets are held, and trend lines per
+  category and per account. A month with no entry carries the account's last balance forward.
+- **Gives each person their own view.** The Dashboard, Review and Transactions screens have user
+  chips ("All users" plus one per user, a dropdown beyond six users). Your choice is kept in the
+  `?user=` URL parameter, so a view can be bookmarked, and remembered in your browser between
+  screens.
 - **Deduplicates on import.** Re-importing the same PDF is a no-op; importing an overlapping
   statement period never creates duplicate rows.
 
@@ -198,6 +228,24 @@ tried automatically on the account's next statement. Alternatively, choose the *
 that statement (see [Using an LLM](#using-an-llm-local-or-remote)). See [docs/LAYOUTS.md](docs/LAYOUTS.md) for
 the full per-layout specification and how to write one by hand.
 
+## Supported tax forms
+
+Tax forms are a separate import path (`spend-analyzer tax import`) with their own parsers. Native
+digital, software-generated PDFs only, USD only.
+
+| Form | Role | What is read |
+|---|---|---|
+| **W-2** | source | Wages (box 1); federal, Social Security, Medicare, state and local tax withheld; several employers or copies in one file |
+| **1099-INT** | source | Interest (boxes 1, 3), tax-exempt interest as a memo item, federal and state withholding |
+| **1099-DIV** | source | Ordinary dividends, qualified dividends (memo), capital-gain distributions, exempt-interest dividends (memo), withholding |
+| **1099-B** | source | Net short-term and long-term gain or loss, and withholding (proceeds and cost basis are not stored) |
+| **1099-NEC / 1099-MISC** | source | Nonemployee compensation; rents, royalties and other income; withholding |
+| **Consolidated 1099** | source | A broker's composite statement: its 1099-INT, -DIV, -B and -MISC sections, per account |
+| **Form 1040** (2022-2025) | return | Income lines, Schedules D, 1, 2 and C, total tax, payments, refund or amount owed, and an estimated ordinary/preferential tax split |
+
+Not supported: 1040-SR, 1040-NR and 1040-X, state returns, scans and photos. The exact boxes and
+how they map to categories are in [docs/TAX.md](docs/TAX.md).
+
 ## CLI reference
 
 ```
@@ -212,6 +260,7 @@ spend-analyzer doctor               diagnose the local install: Python, data dir
 spend-analyzer eval                 run the classifier evaluation harness against a labelled CSV
 spend-analyzer users                manage local users (list / add / set-default)
 spend-analyzer issuers              manage issuers (list / add), so later imports auto-confirm
+spend-analyzer tax                  income & tax analysis from tax forms (import / list / report / delete)
 ```
 
 Run `spend-analyzer --help` or `spend-analyzer <command> --help` for full options; see
@@ -222,10 +271,11 @@ Run `spend-analyzer --help` or `spend-analyzer <command> --help` for full option
 - [docs/INSTALL.md](docs/INSTALL.md) — installing (Windows/macOS/Linux), upgrading, uninstalling, troubleshooting
 - [docs/CLI.md](docs/CLI.md) — full CLI command reference
 - [docs/LAYOUTS.md](docs/LAYOUTS.md) — the four built-in layout specifications and how to add one
+- [docs/TAX.md](docs/TAX.md) — income and tax analysis: supported forms, boxes, rates, the estimate and its limits
 - [docs/SECURITY_REVIEW.md](docs/SECURITY_REVIEW.md) — the security checklist, re-verified against
   the shipped code
 - [SECURITY.md](SECURITY.md) — threat model and vulnerability reporting
-- [CONTRIBUTING.md](CONTRIBUTING.md) — development setup, checks, and how to add a parser
+- [CONTRIBUTING.md](CONTRIBUTING.md) — development setup, checks, and how to add a statement or tax-form parser
 
 ## License
 

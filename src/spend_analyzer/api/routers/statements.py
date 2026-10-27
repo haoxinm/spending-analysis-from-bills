@@ -10,8 +10,6 @@ imports `ingest.pipeline` directly (see that module's docstring).
 
 from __future__ import annotations
 
-import re
-import tempfile
 from pathlib import Path
 
 from fastapi import APIRouter, Form, HTTPException, Response, UploadFile
@@ -21,46 +19,18 @@ from spend_analyzer.api import schemas
 from spend_analyzer.api.deps import JobRunnerDep, SessionDep, SessionFactoryDep, SettingsDep
 from spend_analyzer.api.services import crud, gateway, statement_preview
 from spend_analyzer.api.services.job_tasks import enqueue_import_then_classify
+from spend_analyzer.api.services.uploads import (
+    read_pdf_upload,
+    sanitize_original_name,
+    save_upload,
+)
 from spend_analyzer.core.errors import SpendAnalyzerError
-from spend_analyzer.core.paths import statements_dir
 from spend_analyzer.db.models import Statement
-from spend_analyzer.ingest.extract import extract, sha256_file
+from spend_analyzer.ingest.extract import extract
 from spend_analyzer.ingest.pages import load_pages, parse_page_spec
 from spend_analyzer.jobs.runner import JobProgress
 
 router = APIRouter(tags=["statements"])
-
-#: A12: hard cap on an uploaded statement's size.
-_MAX_UPLOAD_BYTES = 25 * 1024 * 1024
-_PDF_MAGIC = b"%PDF-"
-_UNSAFE_NAME_CHARS = re.compile(r"[^A-Za-z0-9._ -]")
-
-
-def _sanitize_original_name(name: str) -> str:
-    """Strip path components and anything but a conservative character set (A12: no path
-    traversal, and never trust a client-supplied filename for display without cleaning it)."""
-    base = Path(name).name or "statement.pdf"
-    return _UNSAFE_NAME_CHARS.sub("_", base)[:255]
-
-
-def _save_upload(file_bytes: bytes) -> Path:
-    """Write `file_bytes` to `<statements_dir>/<sha256>.pdf` (A12) and return the path. Byte-
-    identical re-uploads simply overwrite the same path (I9's no-op is enforced downstream, by
-    `propose_import` matching on `file_sha256`, not by skipping the write here)."""
-    tmp_dir = statements_dir()
-    tmp_dir.mkdir(parents=True, exist_ok=True)
-    with tempfile.NamedTemporaryFile(dir=tmp_dir, delete=False, suffix=".pdf") as tmp:
-        tmp.write(file_bytes)
-        tmp_path = Path(tmp.name)
-    digest = sha256_file(tmp_path)
-    final_path = tmp_dir / f"{digest}.pdf"
-    if final_path.exists():
-        # Byte-identical copy already stored (the name is the content hash). Don't replace it:
-        # on Windows that fails while another request has the stored PDF open.
-        tmp_path.unlink(missing_ok=True)
-    else:
-        tmp_path.replace(final_path)
-    return final_path
 
 
 def _statement_response(session: Session, statement: Statement) -> schemas.Statement:
@@ -93,26 +63,9 @@ async def upload_statement(
 ) -> schemas.StatementUploadResponse:
     """Multipart upload. `user_id` (D4: chosen in the Import screen, sticky) is a form field
     alongside `file`."""
-    if file.content_type not in (None, "application/pdf", "application/octet-stream"):
-        raise HTTPException(status_code=400, detail="only application/pdf uploads are accepted")
-
-    chunks: list[bytes] = []
-    total = 0
-    while True:
-        chunk = await file.read(1024 * 1024)
-        if not chunk:
-            break
-        total += len(chunk)
-        if total > _MAX_UPLOAD_BYTES:
-            raise HTTPException(status_code=400, detail="file exceeds the 25 MB upload limit")
-        chunks.append(chunk)
-    data = b"".join(chunks)
-
-    if not data.startswith(_PDF_MAGIC):
-        raise HTTPException(status_code=400, detail="not a PDF file")
-
-    original_name = _sanitize_original_name(file.filename or "statement.pdf")
-    pdf_path = _save_upload(data)
+    data = await read_pdf_upload(file)
+    original_name = sanitize_original_name(file.filename or "statement.pdf")
+    pdf_path = save_upload(data)
 
     proposal = gateway.propose_import(
         session, pdf_path, user_id=user_id, original_name=original_name
@@ -270,7 +223,7 @@ def llm_preview(
     selection: list[int] | None
     if pages:
         try:
-            selection = parse_page_spec(pages)
+            selection = parse_page_spec(pages, statement.page_count)
         except ValueError as exc:
             raise HTTPException(status_code=422, detail=str(exc)) from None
     else:

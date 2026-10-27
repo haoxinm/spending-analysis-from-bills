@@ -68,3 +68,11 @@ def test_dump_load_roundtrip() -> None:
     assert load_pages(None) is None
     assert load_pages("garbage") is None
     assert dump_pages(None) is None
+
+
+def test_parse_page_spec_bounds_ranges_before_expanding() -> None:
+    assert parse_page_spec("1-3", max_page=3) == [1, 2, 3]
+    with pytest.raises(ValueError, match="out of range"):
+        parse_page_spec("1-999999999999", max_page=5)
+    with pytest.raises(ValueError, match="out of range"):
+        parse_page_spec("1-999999999999")  # the global ceiling applies without a page count

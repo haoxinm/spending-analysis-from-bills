@@ -1,29 +1,13 @@
 import { afterEach, describe, expect, it } from "vitest";
 
 import {
-  getStickyUserId,
   isSkipConfirmForIssuer,
   setSkipConfirmForIssuer,
-  setStickyUserId,
 } from "./storage";
 
 describe("import screen storage", () => {
   afterEach(() => {
     window.localStorage.clear();
-  });
-
-  it("has no sticky user by default", () => {
-    expect(getStickyUserId()).toBeNull();
-  });
-
-  it("round-trips the sticky user id", () => {
-    setStickyUserId(42);
-    expect(getStickyUserId()).toBe(42);
-  });
-
-  it("ignores a corrupt sticky-user value", () => {
-    window.localStorage.setItem("spend-analyzer:import:sticky-user-id", "not-a-number");
-    expect(getStickyUserId()).toBeNull();
   });
 
   it("has no issuer skipping the confirmation step by default", () => {

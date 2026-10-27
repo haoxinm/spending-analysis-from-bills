@@ -1,6 +1,7 @@
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { fireEvent, render, screen, waitFor } from "@testing-library/react";
-import { afterEach, describe, expect, it, vi } from "vitest";
+import { MemoryRouter } from "react-router-dom";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import { createApiFetchMock, makeCategory, makeTransaction } from "./test-support";
 import type { Category, Transaction } from "./types";
@@ -10,20 +11,32 @@ import type { Category, Transaction } from "./types";
  * whatever `fetch` is global at import time, so the screen itself is imported fresh, after the
  * fetch stub is in place.
  */
-async function renderScreen(state: { transactions: Transaction[]; categories: Category[] }) {
+async function renderScreen(
+  state: {
+    transactions: Transaction[];
+    categories: Category[];
+    users?: Array<{ id: number; name: string; is_default: boolean }>;
+  },
+  initialEntry = "/review",
+) {
   vi.resetModules();
   const fetchMock = vi.fn(createApiFetchMock(state));
   vi.stubGlobal("fetch", fetchMock);
 
   const { default: ReviewScreen } = await import("./index");
   const { ToastContextProvider } = await import("@/components/ui/toast-provider");
+  const { WithUserSwitcher } = await import("@/test/with-user-switcher");
   const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false } } });
 
   render(
     <QueryClientProvider client={queryClient}>
-      <ToastContextProvider>
-        <ReviewScreen />
-      </ToastContextProvider>
+      <MemoryRouter initialEntries={[initialEntry]} future={{ v7_startTransition: true, v7_relativeSplatPath: true }}>
+        <ToastContextProvider>
+          <WithUserSwitcher>
+            <ReviewScreen />
+          </WithUserSwitcher>
+        </ToastContextProvider>
+      </MemoryRouter>
     </QueryClientProvider>,
   );
 
@@ -54,6 +67,10 @@ function lastPatchBody(fetchMock: ReturnType<typeof vi.fn>): Promise<Record<stri
 }
 
 describe("ReviewScreen", () => {
+  beforeEach(() => {
+    window.localStorage.clear();
+  });
+
   afterEach(() => {
     vi.unstubAllGlobals();
     vi.restoreAllMocks();
@@ -160,5 +177,47 @@ describe("ReviewScreen", () => {
 
     expect(screen.getByText("Coffee Shop")).toBeInTheDocument(); // did not move
     document.body.removeChild(input);
+  });
+
+  it("scopes the queue to the user in ?user= and labels the subtitle", async () => {
+    const { fetchMock } = await renderScreen(
+      {
+        transactions: [makeTransaction({ id: 1, description_clean: "Coffee Shop" })],
+        categories: CATEGORIES,
+        users: [
+          { id: 1, name: "Alex", is_default: true },
+          { id: 2, name: "Sam", is_default: false },
+        ],
+      },
+      "/review?user=2",
+    );
+
+    await waitFor(() => expect(screen.getByText("1 need review (Sam)")).toBeInTheDocument());
+    const txnCalls = fetchMock.mock.calls
+      .map((c) => new URL((c[0] as Request).url))
+      .filter((u) => u.pathname === "/api/transactions");
+    expect(txnCalls.length).toBeGreaterThan(0);
+    expect(txnCalls.every((u) => u.searchParams.getAll("user_ids").join() === "2")).toBe(true);
+  });
+
+  it("reloads the queue when another user chip is chosen", async () => {
+    const { fetchMock } = await renderScreen({
+      transactions: [makeTransaction({ id: 1, description_clean: "Coffee Shop" })],
+      categories: CATEGORIES,
+      users: [
+        { id: 1, name: "Alex", is_default: true },
+        { id: 2, name: "Sam", is_default: false },
+      ],
+    });
+    await waitFor(() => expect(screen.getByText("1 need review")).toBeInTheDocument());
+
+    fireEvent.click(screen.getByRole("radio", { name: "Sam" }));
+
+    await waitFor(() => expect(screen.getByText("1 need review (Sam)")).toBeInTheDocument());
+    const last = [...fetchMock.mock.calls]
+      .map((c) => new URL((c[0] as Request).url))
+      .reverse()
+      .find((u) => u.pathname === "/api/transactions");
+    expect(last?.searchParams.getAll("user_ids")).toEqual(["2"]);
   });
 });

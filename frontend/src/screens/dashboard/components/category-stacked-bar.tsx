@@ -12,7 +12,7 @@ import {
 
 import { EmptyState } from "@/components/primitives/states";
 
-import { colorForKey } from "../chart-colors";
+import { colorMapForKeys } from "../chart-colors";
 import { distinctCategories, pivotByCategory, type AnalyticsRow } from "../logic";
 
 export interface CategoryStackedBarProps {
@@ -43,6 +43,7 @@ function currencyFormatter(currency: string) {
 export function CategoryStackedBar({ rows, currency }: CategoryStackedBarProps) {
   const points = React.useMemo(() => pivotByCategory(rows), [rows]);
   const categories = React.useMemo(() => distinctCategories(points), [points]);
+  const colors = React.useMemo(() => colorMapForKeys(categories), [categories]);
   const format = React.useMemo(() => currencyFormatter(currency), [currency]);
 
   if (points.length === 0) {
@@ -73,7 +74,7 @@ export function CategoryStackedBar({ rows, currency }: CategoryStackedBarProps) 
               key={category}
               dataKey={category}
               stackId="spend"
-              fill={colorForKey(category)}
+              fill={colors.get(category)}
               isAnimationActive={false}
             />
           ))}

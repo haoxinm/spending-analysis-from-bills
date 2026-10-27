@@ -1,0 +1,38 @@
+{
+  "expected_warnings": [],
+  "forms": [
+    {
+      "account_last4": "6789",
+      "agi_minor": null,
+      "filing_status": null,
+      "form_type": "1099-b",
+      "income": [
+        {
+          "amount_minor": 60000,
+          "box": "ST",
+          "category": "short_term_capital_gain",
+          "is_memo": false,
+          "label": "Net short-term gain or loss",
+          "source_form": "1099-B"
+        },
+        {
+          "amount_minor": 370000,
+          "box": "LT",
+          "category": "long_term_capital_gain",
+          "is_memo": false,
+          "label": "Net long-term gain or loss",
+          "source_form": "1099-B"
+        }
+      ],
+      "is_corrected": false,
+      "payer_name": "Copperfield Securities",
+      "payer_tin_last4": "0004",
+      "tax_year": 2024,
+      "taxable_income_minor": null,
+      "taxes": [],
+      "warnings": []
+    }
+  ],
+  "tax_year": 2024,
+  "warnings": []
+}

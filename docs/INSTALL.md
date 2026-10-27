@@ -136,6 +136,26 @@ needed; see [Using an LLM](../README.md#using-an-llm-local-or-remote). The full 
 [README's privacy model](../README.md#privacy-model) and the code-verified checklist in
 [docs/SECURITY_REVIEW.md](SECURITY_REVIEW.md).
 
+### Privacy settings
+
+The `[privacy]` table in `config.toml` controls what is kept on disk:
+
+```toml
+[privacy]
+store_pdf_copies = true          # keep a copy of each imported statement PDF (default true)
+store_extract_cache = false      # debugging only: cache extracted page text (default false)
+store_tax_pdf_copies = false     # keep tax-form PDFs after `tax import` (default false)
+pii_terms = []                   # names, numbers and addresses to remove before any LLM call
+```
+
+`store_tax_pdf_copies` is off by default because a W-2, 1099 or 1040 PDF contains full Social
+Security and employer identification numbers. With it off, the PDF is deleted once its figures are
+imported and only the parsed amounts (plus the last four digits of payer and account identifiers)
+remain in the database. Turn it on only if you want the original file kept in the data directory's
+`statements/` folder; `spend-analyzer tax delete` removes a kept copy. Tax-form text is never
+written to the extract cache, whatever `store_extract_cache` says. The key is edited in the file
+only, not on the Settings screen. See [TAX.md](TAX.md).
+
 ## Upgrading
 
 ```console

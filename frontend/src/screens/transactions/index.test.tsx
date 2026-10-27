@@ -49,6 +49,11 @@ const TRANSACTIONS = [
   },
 ];
 
+const USERS = [
+  { id: 1, name: "Alex", is_default: true },
+  { id: 2, name: "Sam", is_default: false },
+];
+
 function jsonResponse(body: unknown) {
   return new Response(JSON.stringify(body), {
     status: 200,
@@ -70,6 +75,7 @@ type FetchMock = ReturnType<typeof vi.fn<(request: Request) => Response | Promis
 describe("TransactionsScreen", () => {
   beforeEach(() => {
     vi.resetModules();
+    window.localStorage.clear();
   });
 
   afterEach(() => {
@@ -83,23 +89,32 @@ describe("TransactionsScreen", () => {
   // (provider included, so the `ToastContext` object `useToast` reads is the same instance the
   // dynamically-imported screen was built against) gives each test a fresh, correctly-bound
   // module graph.
-  async function mountWithFetch(fetchImpl: (request: Request) => Promise<Response> | Response) {
-    const fetchMock: FetchMock = vi.fn(fetchImpl);
+  async function mountWithFetch(
+    fetchImpl: (request: Request) => Promise<Response> | Response,
+    initialEntry = "/transactions",
+  ) {
+    const fetchMock: FetchMock = vi.fn((request) => {
+      if (request.url.includes("/api/users")) return jsonResponse(USERS);
+      return fetchImpl(request);
+    });
     vi.stubGlobal("fetch", fetchMock);
-    const [{ default: TransactionsScreen }, { ToastContextProvider }, { Toaster }] = await Promise.all([
+    const [{ default: TransactionsScreen }, { ToastContextProvider }, { Toaster }, { WithUserSwitcher }] = await Promise.all([
       import("./index"),
       import("@/components/ui/toast-provider"),
       import("@/components/ui/toaster"),
+      import("@/test/with-user-switcher"),
     ]);
     const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false } } });
     render(
       <QueryClientProvider client={queryClient}>
         <MemoryRouter
-          initialEntries={["/transactions"]}
+          initialEntries={[initialEntry]}
           future={{ v7_startTransition: true, v7_relativeSplatPath: true }}
         >
           <ToastContextProvider>
-            <TransactionsScreen />
+            <WithUserSwitcher>
+              <TransactionsScreen />
+            </WithUserSwitcher>
             <Toaster />
           </ToastContextProvider>
         </MemoryRouter>
@@ -192,5 +207,35 @@ describe("TransactionsScreen", () => {
     expect(bulkCalls).toHaveLength(1);
     const body = (await bulkCalls[0]!.clone().json()) as Record<string, unknown>;
     expect(body).toMatchObject({ transaction_ids: [1], category_key: "groceries" });
+  });
+
+  it("scopes the grid to the user chosen in the switcher", async () => {
+    const user = userEvent.setup();
+    const fetchMock = await mountWithFetch((request) => {
+      if (request.url.includes("/api/taxonomy")) return jsonResponse(CATEGORIES);
+      if (request.url.includes("/api/transactions")) return jsonResponse({ items: TRANSACTIONS, total: 2 });
+      throw new Error(`unexpected fetch: ${request.method} ${request.url}`);
+    });
+    expect(await screen.findByText("Corner Store")).toBeInTheDocument();
+    expect(callsTo(fetchMock, "GET", "/api/transactions").every((r) => !r.url.includes("user_ids"))).toBe(true);
+
+    await user.click(screen.getByRole("radio", { name: "Sam" }));
+
+    await waitFor(() => {
+      const calls = callsTo(fetchMock, "GET", "/api/transactions");
+      expect(new URL(calls.at(-1)!.url).searchParams.getAll("user_ids")).toEqual(["2"]);
+    });
+  });
+
+  it("honours ?user= from the URL on first load", async () => {
+    const fetchMock = await mountWithFetch((request) => {
+      if (request.url.includes("/api/taxonomy")) return jsonResponse(CATEGORIES);
+      if (request.url.includes("/api/transactions")) return jsonResponse({ items: TRANSACTIONS, total: 2 });
+      throw new Error(`unexpected fetch: ${request.method} ${request.url}`);
+    }, "/transactions?user=1");
+    expect(await screen.findByText("Corner Store")).toBeInTheDocument();
+    const calls = callsTo(fetchMock, "GET", "/api/transactions");
+    expect(calls.every((r) => new URL(r.url).searchParams.getAll("user_ids").join() === "1")).toBe(true);
+    expect(screen.getByRole("radio", { name: "Alex" })).toHaveAttribute("aria-checked", "true");
   });
 });

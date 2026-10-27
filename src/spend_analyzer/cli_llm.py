@@ -18,6 +18,7 @@ from spend_analyzer.config import (
     load_settings,
     save_settings,
     set_api_key,
+    without_stale_tax_consent,
 )
 from spend_analyzer.core.paths import config_path
 from spend_analyzer.llm.diagnostics import check_connection
@@ -73,6 +74,11 @@ def _describe(settings: Settings) -> None:
             f"WARNING: merchant descriptions — and, for statements you parse with the LLM, "
             f"page text — will be sent to {_host(cfg.base_url)}."
         )
+        if settings.ingest.tax_llm_fallback:
+            typer.echo(
+                "WARNING: tax_llm_fallback is on: pages of tax forms the built-in parsers cannot "
+                f"read are sent, redacted, to {_host(cfg.base_url)}."
+            )
 
 
 def _parse_optional(value: str, kind: type[int] | type[float], flag: str) -> Any:
@@ -96,6 +102,7 @@ def show() -> None:
     typer.echo(f"resolved_url: {cfg.resolved_url if cfg.base_url else ''}")
     typer.echo(f"api key on file: {'yes' if _has_key(cfg) else 'no'}")
     typer.echo(f"[ingest] default_extractor: {settings.ingest.default_extractor}")
+    typer.echo(f"[ingest] tax_llm_fallback: {json.dumps(settings.ingest.tax_llm_fallback)}")
 
 
 @llm_app.command("set")
@@ -141,6 +148,13 @@ def set_cmd(
     enable: Annotated[bool | None, typer.Option("--enable/--disable")] = None,
     default_extractor: Annotated[
         str | None, typer.Option("--default-extractor", help="auto | llm")
+    ] = None,
+    tax_llm_fallback: Annotated[
+        bool | None,
+        typer.Option(
+            "--tax-llm-fallback/--no-tax-llm-fallback",
+            help="Send redacted pages of tax forms the built-in parsers cannot read to the LLM.",
+        ),
     ] = None,
 ) -> None:
     """Change LLM settings. Only the options you pass are changed."""
@@ -205,12 +219,16 @@ def set_cmd(
         if default_extractor not in ("auto", "llm"):
             raise _fail("--default-extractor must be 'auto' or 'llm'")
         new_ingest = settings.ingest.model_copy(update={"default_extractor": default_extractor})
+    if tax_llm_fallback is not None:
+        new_ingest = new_ingest.model_copy(update={"tax_llm_fallback": tax_llm_fallback})
 
     try:
         new_llm = LLMConfig.model_validate({**settings.llm.model_dump(), **updates})
     except ValueError as exc:
         raise _fail(f"invalid settings: {exc}") from None
     new_settings = settings.model_copy(update={"llm": new_llm, "ingest": new_ingest})
+    if enable is False:
+        new_settings = without_stale_tax_consent(new_settings)
     save_settings(new_settings)
     typer.echo(f"saved to {config_path()}")
     _describe(new_settings)
@@ -221,6 +239,8 @@ def _set_enabled(value: bool) -> None:
     new_settings = settings.model_copy(
         update={"llm": settings.llm.model_copy(update={"enabled": value})}
     )
+    if not value:
+        new_settings = without_stale_tax_consent(new_settings)
     save_settings(new_settings)
     typer.echo(f"LLM {'enabled' if value else 'disabled'}.")
     _describe(new_settings)

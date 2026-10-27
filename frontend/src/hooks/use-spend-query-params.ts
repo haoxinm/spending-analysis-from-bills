@@ -109,9 +109,19 @@ export function useSpendQueryParams(): [
 
   const setParams = React.useCallback(
     (next: Partial<SpendQueryParams>) => {
-      setSearchParams(serialize({ ...params, ...next }), { replace: true });
+      // Start from the current URL and replace only the keys this hook owns, so foreign params
+      // (e.g. the per-user view's `?user=`) survive every filter change.
+      setSearchParams(
+        (prev) => {
+          const merged = new URLSearchParams(prev);
+          for (const urlKey of Object.values(KEY_MAP)) merged.delete(urlKey);
+          for (const [k, v] of serialize({ ...parse(prev), ...next })) merged.append(k, v);
+          return merged;
+        },
+        { replace: true },
+      );
     },
-    [params, setSearchParams],
+    [setSearchParams],
   );
 
   return [params, setParams];

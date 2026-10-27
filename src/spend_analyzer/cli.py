@@ -8,10 +8,11 @@ category totals as a terminal table or `--csv`, built on `analytics/query.py`.
 from __future__ import annotations
 
 import csv
+import json
 import os
 import sys
 import webbrowser
-from collections.abc import Iterator
+from collections.abc import Iterator, Sequence
 from contextlib import contextmanager
 from datetime import date
 from pathlib import Path
@@ -21,12 +22,14 @@ from sqlalchemy import Engine, select
 from sqlalchemy.orm import Session, sessionmaker
 
 from spend_analyzer.analytics.query import SpendQuery, run_query
+from spend_analyzer.analytics.tax_query import TaxYearSummary
 from spend_analyzer.api.services import crud, gateway
 from spend_analyzer.config import load_settings
 from spend_analyzer.core.errors import SpendAnalyzerError
 from spend_analyzer.core.logging import configure_logging, get_logger
 from spend_analyzer.core.paths import ensure_home
 from spend_analyzer.core.shellquote import join_command
+from spend_analyzer.core.tax_types import TaxFallbackExtractor
 from spend_analyzer.core.webui import web_ui_warning
 from spend_analyzer.db.migrate import upgrade_head
 from spend_analyzer.db.models import Transaction
@@ -46,6 +49,9 @@ app.add_typer(issuers_app, name="issuers")
 from spend_analyzer.cli_llm import llm_app  # noqa: E402
 
 app.add_typer(llm_app, name="llm")
+
+tax_app = typer.Typer(help="Import and report W-2 / 1099 / 1040 tax forms (income & tax analysis).")
+app.add_typer(tax_app, name="tax")
 
 _NOT_YET_IMPLEMENTED = "not yet implemented in this build"
 
@@ -188,6 +194,28 @@ def serve_cmd(
         uvicorn.run(app_instance, host="127.0.0.1", port=port, log_level="warning")
 
 
+def _echo_tax_form_hint(pdf_path: Path, raw_path: str) -> None:
+    """If `pdf_path` looks like a tax form (W-2 / 1099 / 1040), print a pointer to `tax import`.
+
+    Best effort and read-only: scores the PDF with the tax-form classifier (no extract cache is
+    written, nothing is stored) and prints nothing when the file can't be read or isn't a tax
+    form. No pipeline change; a statement import is never altered by this."""
+    from spend_analyzer.ingest.extract import extract
+    from spend_analyzer.ingest.tax.registry import classify_form
+
+    try:
+        classification = classify_form(extract(pdf_path, write_cache=False))
+    except SpendAnalyzerError:
+        return
+    if classification.parser_id is None:
+        return
+    kind = classification.form_type or "tax form"
+    typer.echo(
+        f"{raw_path}: this looks like a tax form ({kind}); "
+        f"use `spend-analyzer tax import {raw_path}` instead"
+    )
+
+
 @app.command(name="import")
 def import_cmd(
     paths: list[str] = typer.Argument(  # noqa: B008 - typer's documented pattern
@@ -251,6 +279,8 @@ def import_cmd(
 
             if proposal.status != "awaiting_extractor":
                 typer.echo(f"{raw_path}: statement #{proposal.statement_id} -> {proposal.status}")
+                if proposal.status == "unsupported_layout":
+                    _echo_tax_form_hint(pdf_path, raw_path)
                 if proposal.status == "error":
                     any_error = True
                 continue
@@ -273,6 +303,8 @@ def import_cmd(
             )
 
             if not should_confirm:
+                if not proposal.confident:
+                    _echo_tax_form_hint(pdf_path, raw_path)
                 confirm_args = [
                     "spend-analyzer",
                     "import",
@@ -747,3 +779,272 @@ def main() -> None:  # pragma: no cover - thin wrapper around Typer's own entry 
 if __name__ == "__main__":  # pragma: no cover
     main()
     sys.exit(0)
+
+
+# --- tax: income & tax analysis from tax forms ---------------------------------------------------
+
+_TAX_MIN_YEAR = 1990
+_TAX_MAX_YEAR = 2100
+
+
+def _check_tax_year(value: int | None, option: str) -> int | None:
+    if value is not None and not (_TAX_MIN_YEAR <= value <= _TAX_MAX_YEAR):
+        raise typer.BadParameter(
+            f"must be between {_TAX_MIN_YEAR} and {_TAX_MAX_YEAR}", param_hint=option
+        )
+    return value
+
+
+def _tax_fallback(session: Session, user_id: int) -> TaxFallbackExtractor | None:
+    """The opt-in LLM fallback (None unless an LLM is configured and `tax_llm_fallback` is on)."""
+    from spend_analyzer.api.services.tax_llm import build_tax_fallback
+
+    return build_tax_fallback(session, user_id)
+
+
+@tax_app.command(name="import")
+def tax_import_cmd(
+    paths: list[str] = typer.Argument(  # noqa: B008 - typer's documented pattern
+        ..., help="Tax form PDF paths (W-2, 1099-*, 1040); globs are expanded by the shell."
+    ),
+    user_id: int | None = typer.Option(
+        None, "--user-id", help="The user these forms belong to (defaults to the default user)."
+    ),
+    tax_year: int | None = typer.Option(
+        None, "--tax-year", help="Tax year to use when the form does not print one."
+    ),
+    no_llm: bool = typer.Option(
+        False,
+        "--no-llm",
+        help="Never use the LLM fallback for this run, even if it is switched on in the settings.",
+    ),
+) -> None:
+    """Import one or more tax-form PDFs in a single step. Parsing is local: nothing leaves this
+    machine unless you opted in to the LLM fallback (`llm set --tax-llm-fallback`), which sends
+    only redacted pages the built-in parsers could not read. Re-importing an identical file is a
+    no-op."""
+    _check_tax_year(tax_year, "--tax-year")
+    with _open_engine() as engine, _open_session(engine) as session:
+        resolved_user_id = _require_user_id(session, user_id)
+        fallback = None if no_llm else _tax_fallback(session, resolved_user_id)
+        any_error = False
+        for raw_path in paths:
+            pdf_path = Path(raw_path)
+            if not pdf_path.is_file():
+                typer.echo(f"{raw_path}: no such file", err=True)
+                any_error = True
+                continue
+            if pdf_path.read_bytes()[: len(_PDF_MAGIC)] != _PDF_MAGIC:
+                typer.echo(f"{raw_path}: not a PDF file", err=True)
+                any_error = True
+                continue
+            try:
+                result = gateway.import_tax_document(
+                    session,
+                    pdf_path,
+                    user_id=resolved_user_id,
+                    original_name=pdf_path.name,
+                    tax_year=tax_year,
+                    fallback=fallback,
+                )
+            except SpendAnalyzerError as exc:
+                typer.echo(f"{raw_path}: {exc}", err=True)
+                any_error = True
+                continue
+
+            prefix = f"{raw_path}: tax document #{result.document_id} -> {result.status}"
+            if result.status == "parsed":
+                forms = ", ".join(result.form_types)
+                year = result.tax_year if result.tax_year is not None else "?"
+                line = (
+                    f"{prefix} ({year}: {forms}) {result.income_item_count} income / "
+                    f"{result.tax_item_count} tax item(s)"
+                )
+                if result.skipped_duplicate_forms:
+                    line += f", skipped {result.skipped_duplicate_forms} duplicate form(s)"
+                if result.llm_used:
+                    line += " [LLM fallback used: review the marked values]"
+                typer.echo(line)
+            elif result.status == "duplicate":
+                typer.echo(prefix)
+            else:
+                typer.echo(f"{prefix}: {result.error or 'could not read this document'}", err=True)
+                any_error = True
+            for warning in result.warnings:
+                typer.echo(f"  warning: {warning}")
+
+    if any_error:
+        raise typer.Exit(code=1)
+
+
+@tax_app.command(name="list")
+def tax_list_cmd(
+    user_id: int | None = typer.Option(
+        None, "--user-id", help="Only this user's documents (defaults to the default user)."
+    ),
+    all_users: bool = typer.Option(
+        False, "--all-users", help="List every user's documents, ignoring --user-id."
+    ),
+    year: int | None = typer.Option(None, "--year", help="Only this tax year."),
+) -> None:
+    """List imported tax documents."""
+    from spend_analyzer.analytics import tax_query
+
+    _check_tax_year(year, "--year")
+    with _open_engine() as engine, _open_session(engine) as session:
+        resolved_user_id = _resolve_user_filter(session, user_id, all_users=all_users)
+        docs = tax_query.list_tax_documents(
+            session,
+            user_ids=[resolved_user_id] if resolved_user_id is not None else None,
+            tax_year=year,
+        )
+        table_rows = [
+            [
+                str(d.id),
+                str(d.tax_year) if d.tax_year is not None else "-",
+                ", ".join(f.form_type for f in d.forms) or "-",
+                d.status,
+                str(len(json.loads(d.warnings)) if d.warnings else 0),
+            ]
+            for d in docs
+        ]
+    if not table_rows:
+        typer.echo("No tax documents.")
+        return
+    headers = ["id", "year", "forms", "status", "warnings"]
+    widths = [max(len(h), *(len(r[i]) for r in table_rows)) for i, h in enumerate(headers)]
+    typer.echo("  ".join(h.ljust(widths[i]) for i, h in enumerate(headers)))
+    typer.echo("  ".join("-" * w for w in widths))
+    for table_row in table_rows:
+        typer.echo("  ".join(cell.ljust(widths[i]) for i, cell in enumerate(table_row)))
+
+
+@tax_app.command(name="report")
+def tax_report_cmd(
+    year: int | None = typer.Option(None, "--year", help="Only this tax year (default: all)."),
+    user_id: int | None = typer.Option(
+        None, "--user-id", help="Only this user's forms (defaults to the default user)."
+    ),
+    all_users: bool = typer.Option(
+        False, "--all-users", help="Report on every user's forms combined, ignoring --user-id."
+    ),
+    csv_output: bool = typer.Option(False, "--csv", help="Print as CSV instead of text."),
+) -> None:
+    """Income, withholding and tax per tax year (aggregate figures only)."""
+    from spend_analyzer.analytics import tax_query
+
+    _check_tax_year(year, "--year")
+    with _open_engine() as engine, _open_session(engine) as session:
+        resolved_user_id = _resolve_user_filter(session, user_id, all_users=all_users)
+        summaries = tax_query.run_tax_summary(
+            session,
+            tax_query.TaxQuery(
+                user_ids=[resolved_user_id] if resolved_user_id is not None else None,
+                tax_years=[year] if year is not None else None,
+            ),
+        )
+    if not summaries:
+        typer.echo("No tax data matches this report.")
+        return
+    if csv_output:
+        _print_tax_csv(summaries)
+    else:
+        _print_tax_text(summaries)
+
+
+def _tax_sections(s: TaxYearSummary) -> list[tuple[str, list[tuple[str, str, int]]]]:
+    """(section, [(category, label, amount_minor)]) in display order for one year summary."""
+    from spend_analyzer.core.tax_types import (
+        INCOME_CATEGORY_LABELS,
+        MEMO_INCOME_CATEGORIES,
+        TAX_CATEGORY_LABELS,
+    )
+
+    income: list[tuple[str, str, int]] = [
+        (cat, INCOME_CATEGORY_LABELS[cat], amount)
+        for cat, amount in s.income_by_category.items()
+        if cat not in MEMO_INCOME_CATEGORIES
+    ]
+    income.append(("total_income", "Total income", s.total_income_minor))
+    memo_labels = {
+        "qualified_dividends": INCOME_CATEGORY_LABELS["qualified_dividends"],
+        "tax_exempt": "Tax-exempt interest (memo)",
+    }
+    memo = [(k, memo_labels.get(k, k), v) for k, v in s.memo_by_category.items()]
+    result: list[tuple[str, str, int]] = []
+    if s.payments_minor is not None:
+        result.append(("total_payments", TAX_CATEGORY_LABELS["total_payments"], s.payments_minor))
+    if s.refund_minor is not None:
+        result.append(("refund", TAX_CATEGORY_LABELS["refund"], s.refund_minor))
+    if s.amount_owed_minor is not None:
+        result.append(("amount_owed", TAX_CATEGORY_LABELS["amount_owed"], s.amount_owed_minor))
+    return [
+        ("income", income),
+        ("memo", memo),
+        ("withheld", [(c, TAX_CATEGORY_LABELS[c], a) for c, a in s.withheld.items()]),
+        ("fica", [(c, TAX_CATEGORY_LABELS[c], a) for c, a in s.fica.items()]),
+        ("liability", [(c, TAX_CATEGORY_LABELS[c], a) for c, a in s.liability.items()]),
+        ("result", result),
+    ]
+
+
+def _print_tax_csv(summaries: Sequence[TaxYearSummary]) -> None:
+    writer = csv.writer(sys.stdout)
+    writer.writerow(["tax_year", "section", "category", "amount_minor"])
+    for s in summaries:
+        for section, rows in _tax_sections(s):
+            for category, _label, amount in rows:
+                writer.writerow([s.tax_year, section, category, amount])
+
+
+def _pct(rate: float | None) -> str:
+    return "n/a" if rate is None else f"{rate * 100:.2f}%"
+
+
+_TAX_SECTION_TITLES = {
+    "income": "Income",
+    "memo": "Memo (not in total income)",
+    "withheld": "Withheld",
+    "fica": "FICA",
+    "liability": "Tax liability (from return)",
+    "result": "Payments and result",
+}
+
+
+def _print_tax_text(summaries: Sequence[TaxYearSummary]) -> None:
+    for s in summaries:
+        basis = s.income_basis.replace("_", " ")
+        typer.echo(
+            f"Tax year {s.tax_year}  (income basis: {basis}; {s.document_count} document(s), "
+            f"{s.form_count} form(s))"
+        )
+        for section, rows in _tax_sections(s):
+            if not rows:
+                continue
+            typer.echo(f"  {_TAX_SECTION_TITLES[section]}")
+            width = max(len(label) for _c, label, _a in rows)
+            for _category, label, amount in rows:
+                typer.echo(f"    {label.ljust(width)}  {_format_minor(amount):>14}")
+        if s.refund_or_owed_derived:
+            typer.echo("    (refund / owed derived from total payments minus total tax)")
+        typer.echo("  Rates")
+        typer.echo(f"    Federal effective rate  {_pct(s.federal_effective_rate):>8}")
+        typer.echo(f"    All-in rate             {_pct(s.all_in_rate):>8}")
+        typer.echo(f"    Federal withholding     {_pct(s.withholding_rate):>8}")
+        for warning in s.warnings:
+            typer.echo(f"  warning: {warning}")
+        typer.echo("")
+
+
+@tax_app.command(name="delete")
+def tax_delete_cmd(
+    document_id: int = typer.Argument(..., help="Tax document id (see `tax list`)."),
+) -> None:
+    """Delete an imported tax document and everything parsed from it."""
+    from spend_analyzer.ingest.tax.pipeline import delete_tax_document
+
+    with _open_engine() as engine, _open_session(engine) as session:
+        if not delete_tax_document(session, document_id):
+            typer.echo(f"no tax document with id {document_id}", err=True)
+            raise typer.Exit(code=1)
+    typer.echo(f"Deleted tax document #{document_id}.")

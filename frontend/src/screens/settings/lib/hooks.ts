@@ -45,6 +45,8 @@ export function useUpdateSettings() {
     },
     onSuccess: (data) => {
       queryClient.setQueryData(["settings"], data);
+      // LLM and privacy settings change exactly what a preview would show.
+      void queryClient.invalidateQueries({ queryKey: ["llm-preview"] });
     },
   });
 }
@@ -111,7 +113,11 @@ export function useUpdateUser() {
       throwIfError(error);
       return data;
     },
-    onSuccess: () => void queryClient.invalidateQueries({ queryKey: ["users"] }),
+    onSuccess: () => {
+      void queryClient.invalidateQueries({ queryKey: ["users"] });
+      // A user's personal-info aliases are redacted in previews.
+      void queryClient.invalidateQueries({ queryKey: ["llm-preview"] });
+    },
   });
 }
 

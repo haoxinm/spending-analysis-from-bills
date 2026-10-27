@@ -1,10 +1,13 @@
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { render, screen, waitFor, within } from "@testing-library/react";
+import userEvent from "@testing-library/user-event";
 import * as React from "react";
 import { MemoryRouter } from "react-router-dom";
-import { afterEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import { apiClient } from "@/api/client";
+import { ToastContextProvider } from "@/components/ui/toast-provider";
+import { WithUserSwitcher } from "@/test/with-user-switcher";
 
 import DashboardScreen from "./index";
 
@@ -24,6 +27,10 @@ vi.mock("@/api/client", async () => {
   return { ...actual, apiClient: { GET: vi.fn() } };
 });
 
+beforeEach(() => {
+  window.localStorage.clear();
+});
+
 function wrapper({ children }: { children: React.ReactNode }) {
   const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false } } });
   return (
@@ -32,17 +39,36 @@ function wrapper({ children }: { children: React.ReactNode }) {
         initialEntries={["/"]}
         future={{ v7_startTransition: true, v7_relativeSplatPath: true }}
       >
-        {children}
+        <ToastContextProvider>
+          <WithUserSwitcher>{children}</WithUserSwitcher>
+        </ToastContextProvider>
       </MemoryRouter>
     </QueryClientProvider>
   );
 }
 
-type Route = "/users" | "/accounts" | "/analytics/summary" | "/analytics/timeseries" | "/analytics/top-merchants";
+type Route =
+  | "/users"
+  | "/accounts"
+  | "/analytics/summary"
+  | "/analytics/timeseries"
+  | "/analytics/top-merchants"
+  | "/net-worth/summary"
+  | "/net-worth/entries";
+
+const EMPTY_NET_WORTH = {
+  currency: "USD",
+  user_id: null,
+  periods: [],
+  series: [],
+  account_series: [],
+  snapshot: null,
+};
 
 function mockGet(responses: Partial<Record<Route, unknown>>) {
   (apiClient.GET as ReturnType<typeof vi.fn>).mockImplementation((path: string) => {
-    const data = responses[path as Route] ?? [];
+    const fallback = path === "/net-worth/summary" ? EMPTY_NET_WORTH : [];
+    const data = responses[path as Route] ?? fallback;
     return Promise.resolve({ data, error: undefined });
   });
 }
@@ -119,6 +145,39 @@ describe("DashboardScreen", () => {
     await waitFor(() => expect(screen.getByTestId("user-comparison")).toBeInTheDocument());
   });
 
+  it("user chips filter every analytics query and hide the by-user comparison", async () => {
+    mockGet({
+      "/users": [
+        { id: 1, name: "Alex", is_default: true },
+        { id: 2, name: "Sam", is_default: false },
+      ],
+      "/accounts": [],
+      "/analytics/summary": [
+        { period: "2025-01", user: 1, currency: "USD", total_minor: 1000, txn_count: 1, avg_minor: 1000 },
+      ],
+      "/analytics/timeseries": [
+        { period: "2025-01", currency: "USD", total_minor: 1000, txn_count: 1, avg_minor: 1000 },
+      ],
+      "/analytics/top-merchants": [],
+    });
+
+    render(<DashboardScreen />, { wrapper });
+    await waitFor(() => expect(screen.getByTestId("user-comparison")).toBeInTheDocument());
+    expect(screen.getByRole("radio", { name: "All users" })).toHaveAttribute("aria-checked", "true");
+
+    await userEvent.click(screen.getByRole("radio", { name: "Sam" }));
+
+    await waitFor(() => {
+      const calls = (apiClient.GET as ReturnType<typeof vi.fn>).mock.calls.filter(
+        ([path]) => path === "/analytics/timeseries",
+      );
+      const last = calls.at(-1)![1] as { params: { query: { user_ids?: number[] } } };
+      expect(last.params.query.user_ids).toEqual([2]);
+    });
+    expect(screen.getByRole("radio", { name: "Sam" })).toHaveAttribute("aria-checked", "true");
+    expect(screen.queryByTestId("user-comparison")).not.toBeInTheDocument();
+  });
+
   it("banners other currencies present outside the current filter (D5)", async () => {
     mockGet({
       "/users": [{ id: 1, name: "Alex", is_default: true }],
@@ -136,5 +195,34 @@ describe("DashboardScreen", () => {
     const banner = await screen.findByTestId("currency-banner");
     expect(within(banner).getByText("EUR")).toBeInTheDocument();
     expect(within(banner).getByText(/Not included/)).toBeInTheDocument();
+  });
+
+  it("renders the net-worth section even with no spending data, and follows the user chip", async () => {
+    mockGet({
+      "/users": [
+        { id: 1, name: "Alex", is_default: true },
+        { id: 2, name: "Sam", is_default: false },
+      ],
+      "/accounts": [],
+      "/analytics/summary": [],
+      "/analytics/timeseries": [],
+      "/analytics/top-merchants": [],
+    });
+
+    render(<DashboardScreen />, { wrapper });
+
+    expect(await screen.findByText("No data yet")).toBeInTheDocument();
+    expect(await screen.findByTestId("net-worth-section")).toBeInTheDocument();
+    expect(await screen.findByText("No balances yet")).toBeInTheDocument();
+
+    await userEvent.click(screen.getByRole("radio", { name: "Sam" }));
+
+    await waitFor(() => {
+      const calls = (apiClient.GET as ReturnType<typeof vi.fn>).mock.calls.filter(
+        ([path]) => path === "/net-worth/summary",
+      );
+      const last = calls.at(-1)![1] as { params: { query: { user_id?: number } } };
+      expect(last.params.query.user_id).toBe(2);
+    });
   });
 });

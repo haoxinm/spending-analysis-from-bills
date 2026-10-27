@@ -37,6 +37,13 @@ Given that, the threats this project actually defends against are:
    or `config.toml`, and by a defensive log filter that
    redacts anything key-shaped even if it reached a log call by some other path.
 
+5. **Tax identifiers and balances leaking.** Tax-form PDFs contain full SSNs and EINs, and net
+   worth uses account balances. Tax forms are parsed by local deterministic code only (no LLM
+   extractor, and the tax and net-worth code can import no LLM or HTTP client), only the last four
+   digits of a payer or account identifier are ever stored, no full identifier reaches the
+   database, logs or extract cache, and the uploaded PDF is deleted unless
+   `[privacy] store_tax_pdf_copies` is turned on; balances are never exported or sent anywhere.
+
 **Out of scope / accepted risk for v1** (see the design record's non-goals): database encryption
 at rest (the project relies on OS-level disk encryption, e.g. FileVault, BitLocker, or LUKS); multi-user
 authentication (there is none — this is a single-user local tool); protecting against an attacker

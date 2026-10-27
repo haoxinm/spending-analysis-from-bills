@@ -72,7 +72,7 @@ export function PrivacySection({ settings, onSave, saving }: PrivacySectionProps
             Add your name, family members&apos; names, phone numbers, address and account or SSN-like
             numbers. Names match ignoring case, spacing and &quot;Last, First&quot; order. Phone and account
             numbers match in any format, e.g. (312) 555-0100 = 312.555.0100 = 3125550100. Every match is
-            removed from statement text and descriptions before anything is classified or sent to an LLM.
+            removed from statement text, descriptions and (when the tax LLM fallback is on) tax-form text before anything is classified or sent to an LLM.
           </p>
           <div className="flex flex-wrap gap-2">
             {draft.pii_terms.map((term) => (

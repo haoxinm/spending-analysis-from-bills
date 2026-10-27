@@ -18,10 +18,11 @@ vi.mock("recharts", () => ({
       {children}
     </div>
   ),
-  Bar: (props: { dataKey: string; isAnimationActive?: boolean }) => (
+  Bar: (props: { dataKey: string; fill?: string; isAnimationActive?: boolean }) => (
     <div
       data-testid="mock-bar"
       data-key={props.dataKey}
+      data-fill={props.fill}
       data-animation-active={String(props.isAnimationActive)}
     />
   ),
@@ -60,6 +61,16 @@ describe("CategoryStackedBar", () => {
     for (const bar of screen.getAllByTestId("mock-bar")) {
       expect(bar).toHaveAttribute("data-animation-active", "false");
     }
+  });
+
+  it("fills each stacked series with a distinct colour", () => {
+    const rows: AnalyticsRow[] = ["cash", "others", "dining", "rent", "travel"].map((category) => ({
+      period: "2026-01", category, currency: "USD", total_minor: 1000, txn_count: 1, avg_minor: 1000,
+    }));
+    render(<CategoryStackedBar rows={rows} currency="USD" />);
+    const fills = screen.getAllByTestId("mock-bar").map((b) => b.getAttribute("data-fill"));
+    expect(fills).toHaveLength(5);
+    expect(new Set(fills).size).toBe(5);
   });
 
   it("shows an empty state with no rows", () => {

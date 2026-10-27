@@ -28,7 +28,7 @@ const baseSettings: Settings = {
     has_key: false,
   },
   privacy: { store_pdf_copies: true, store_extract_cache: false, pii_terms: ["Alex"] },
-  ingest: { always_confirm_extractor: false, default_extractor: "auto" as const, date_format_hints: [], default_currency: "USD" },
+  ingest: { always_confirm_extractor: false, default_extractor: "auto" as const, tax_llm_fallback: false, date_format_hints: [], default_currency: "USD" },
   server: { port: 8756 },
 };
 
@@ -38,6 +38,11 @@ describe("PrivacySection", () => {
     expect(screen.getByRole("checkbox", { name: /keep a copy/i })).toBeChecked();
     expect(screen.getByRole("checkbox", { name: /cache extracted page text/i })).not.toBeChecked();
     expect(screen.getByText("Alex")).toBeInTheDocument();
+  });
+
+  it("says personal-info entries also apply to tax-form text", () => {
+    render(<PrivacySection settings={baseSettings} onSave={vi.fn()} saving={false} />);
+    expect(screen.getByText(/tax-form text/i)).toBeInTheDocument();
   });
 
   it("disables Save until something changes", async () => {

@@ -32,9 +32,13 @@ function SettingsScreen() {
 
   const settings = settingsQuery.data;
 
-  const saveLlm = (llm: LlmSettings, defaultExtractor: Settings["ingest"]["default_extractor"]) => {
+  const saveLlm = (
+    llm: LlmSettings,
+    defaultExtractor: Settings["ingest"]["default_extractor"],
+    taxLlmFallback: boolean,
+  ) => {
     updateSettings.mutate(
-      { ...settings, llm, ingest: { ...settings.ingest, default_extractor: defaultExtractor } },
+      { ...settings, llm, ingest: { ...settings.ingest, default_extractor: defaultExtractor, tax_llm_fallback: taxLlmFallback } },
       {
         onSuccess: () => toast({ title: "LLM settings saved" }),
         onError: (err) => toast({ title: "Could not save settings", description: String(err), variant: "destructive" }),

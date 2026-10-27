@@ -11,6 +11,7 @@ tables and add that constraint in a second step.
 from __future__ import annotations
 
 from datetime import UTC, datetime
+from typing import get_args
 
 from sqlalchemy import (
     Boolean,
@@ -25,6 +26,14 @@ from sqlalchemy import (
     text,
 )
 from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column, relationship
+
+from spend_analyzer.core.net_worth import BALANCE_CATEGORIES
+from spend_analyzer.core.tax_types import (
+    SIGNED_INCOME_CATEGORIES,
+    FormType,
+    IncomeCategory,
+    TaxCategory,
+)
 
 
 def utcnow_iso() -> str:
@@ -340,3 +349,197 @@ class Job(Base):
     llm_run_group_id: Mapped[str | None] = mapped_column(String, nullable=True)
     created_at: Mapped[str] = mapped_column(Text, nullable=False, default=utcnow_iso)
     updated_at: Mapped[str] = mapped_column(Text, nullable=False, default=utcnow_iso)
+
+
+# --- Income and tax analysis (tax forms). Amount/sign rules: `core/tax_types.py` (D6). ---
+
+
+def _sql_in(values: tuple[str, ...]) -> str:
+    return ", ".join(f"'{v}'" for v in values)
+
+
+_FORM_TYPES: tuple[str, ...] = get_args(FormType)
+_INCOME_CATEGORIES: tuple[str, ...] = get_args(IncomeCategory)
+_TAX_CATEGORIES: tuple[str, ...] = get_args(TaxCategory)
+_SIGNED_INCOME: tuple[str, ...] = tuple(sorted(SIGNED_INCOME_CATEGORIES))
+
+
+class TaxDocument(Base):
+    """One uploaded tax file. `original_name` is LOCAL ONLY; `error_detail` is generic text,
+    never document content."""
+
+    __tablename__ = "tax_documents"
+    __table_args__ = (
+        # Dedupe is per user: the same PDF may be imported for two users (e.g. a joint W-2 copy).
+        UniqueConstraint("user_id", "file_sha256"),
+        Index("ix_taxdoc_user_year", "user_id", "tax_year"),
+        CheckConstraint("status IN ('parsed','error','unsupported')", name="ck_taxdoc_status"),
+    )
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    user_id: Mapped[int] = mapped_column(Integer, ForeignKey("users.id"), nullable=False)
+    file_sha256: Mapped[str] = mapped_column(String, nullable=False)
+    original_name: Mapped[str] = mapped_column(String, nullable=False)
+    stored_path: Mapped[str | None] = mapped_column(String, nullable=True)
+    page_count: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    tax_year: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    status: Mapped[str] = mapped_column(String, nullable=False)  # parsed | error | unsupported
+    parser_id: Mapped[str | None] = mapped_column(String, nullable=True)
+    parser_version: Mapped[str | None] = mapped_column(String, nullable=True)
+    detect_score: Mapped[float | None] = mapped_column(Float, nullable=True)
+    warnings: Mapped[str | None] = mapped_column(Text, nullable=True)  # JSON list[str]
+    error_detail: Mapped[str | None] = mapped_column(Text, nullable=True)
+    ingested_at: Mapped[str] = mapped_column(Text, nullable=False, default=utcnow_iso)
+
+    forms: Mapped[list[TaxForm]] = relationship(
+        "TaxForm",
+        back_populates="document",
+        cascade="all, delete-orphan",
+        passive_deletes=True,
+    )
+
+
+class TaxForm(Base):
+    """One form instance inside a tax document. `payer_name` and `account_last4` are LOCAL ONLY."""
+
+    __tablename__ = "tax_forms"
+    __table_args__ = (
+        UniqueConstraint("user_id", "tax_year", "fingerprint"),
+        Index("ix_taxform_user_year", "user_id", "tax_year"),
+        Index("ix_taxform_document", "document_id"),
+        CheckConstraint("role IN ('source','return')", name="ck_taxform_role"),
+        CheckConstraint(f"form_type IN ({_sql_in(_FORM_TYPES)})", name="ck_taxform_type"),
+        CheckConstraint(
+            "payer_tin_last4 IS NULL OR length(payer_tin_last4) = 4", name="ck_taxform_tin_last4"
+        ),
+    )
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    document_id: Mapped[int] = mapped_column(
+        Integer, ForeignKey("tax_documents.id", ondelete="CASCADE"), nullable=False
+    )
+    user_id: Mapped[int] = mapped_column(Integer, ForeignKey("users.id"), nullable=False)
+    tax_year: Mapped[int] = mapped_column(Integer, nullable=False)
+    form_type: Mapped[str] = mapped_column(String, nullable=False)
+    role: Mapped[str] = mapped_column(String, nullable=False)  # source | return
+    payer_name: Mapped[str | None] = mapped_column(String, nullable=True)
+    payer_tin_last4: Mapped[str | None] = mapped_column(String, nullable=True)
+    account_last4: Mapped[str | None] = mapped_column(String, nullable=True)
+    is_corrected: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
+    filing_status: Mapped[str | None] = mapped_column(String, nullable=True)
+    agi_minor: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    taxable_income_minor: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    fingerprint: Mapped[str] = mapped_column(String, nullable=False)
+    #: How the figures got here: parser | llm | manual (validated in `ingest/tax/edit.py`, no DB
+    #: CHECK: see migration 0006).
+    extraction_method: Mapped[str] = mapped_column(
+        String, nullable=False, default="parser", server_default=text("'parser'")
+    )
+    is_user_edited: Mapped[bool] = mapped_column(
+        Boolean, nullable=False, default=False, server_default=text("0")
+    )
+    created_at: Mapped[str] = mapped_column(Text, nullable=False, default=utcnow_iso)
+
+    document: Mapped[TaxDocument] = relationship("TaxDocument", back_populates="forms")
+    income_items: Mapped[list[IncomeItem]] = relationship(
+        "IncomeItem", cascade="all, delete-orphan", passive_deletes=True
+    )
+    tax_items: Mapped[list[TaxItem]] = relationship(
+        "TaxItem", cascade="all, delete-orphan", passive_deletes=True
+    )
+
+
+class IncomeItem(Base):
+    """One income line. `user_id`/`tax_year` are denormalized for the analytics index."""
+
+    __tablename__ = "income_items"
+    __table_args__ = (
+        Index("ix_income_form", "form_id"),
+        Index("ix_income_user_year_cat", "user_id", "tax_year", "category"),
+        CheckConstraint(f"category IN ({_sql_in(_INCOME_CATEGORIES)})", name="ck_income_category"),
+        CheckConstraint(
+            f"amount_minor >= 0 OR category IN ({_sql_in(_SIGNED_INCOME)})", name="ck_income_sign"
+        ),
+    )
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    form_id: Mapped[int] = mapped_column(
+        Integer, ForeignKey("tax_forms.id", ondelete="CASCADE"), nullable=False
+    )
+    user_id: Mapped[int] = mapped_column(Integer, ForeignKey("users.id"), nullable=False)
+    tax_year: Mapped[int] = mapped_column(Integer, nullable=False)
+    category: Mapped[str] = mapped_column(String, nullable=False)
+    amount_minor: Mapped[int] = mapped_column(Integer, nullable=False)
+    currency: Mapped[str] = mapped_column(String, nullable=False, default="USD")
+    source_form: Mapped[str] = mapped_column(String, nullable=False)
+    box: Mapped[str | None] = mapped_column(String, nullable=True)
+    label: Mapped[str | None] = mapped_column(String, nullable=True)
+    is_memo: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
+    origin: Mapped[str] = mapped_column(
+        String, nullable=False, default="parser", server_default=text("'parser'")
+    )  # parser | llm | manual
+
+
+class TaxItem(Base):
+    """One tax line (withheld, owed, paid). `amount_minor` is a non-negative magnitude."""
+
+    __tablename__ = "tax_items"
+    __table_args__ = (
+        Index("ix_taxitem_form", "form_id"),
+        Index("ix_taxitem_user_year_cat", "user_id", "tax_year", "category"),
+        CheckConstraint(f"category IN ({_sql_in(_TAX_CATEGORIES)})", name="ck_taxitem_category"),
+        CheckConstraint("amount_minor >= 0", name="ck_taxitem_sign"),
+    )
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    form_id: Mapped[int] = mapped_column(
+        Integer, ForeignKey("tax_forms.id", ondelete="CASCADE"), nullable=False
+    )
+    user_id: Mapped[int] = mapped_column(Integer, ForeignKey("users.id"), nullable=False)
+    tax_year: Mapped[int] = mapped_column(Integer, nullable=False)
+    category: Mapped[str] = mapped_column(String, nullable=False)
+    amount_minor: Mapped[int] = mapped_column(Integer, nullable=False)
+    currency: Mapped[str] = mapped_column(String, nullable=False, default="USD")
+    source_form: Mapped[str] = mapped_column(String, nullable=False)
+    box: Mapped[str | None] = mapped_column(String, nullable=True)
+    label: Mapped[str | None] = mapped_column(String, nullable=True)
+    jurisdiction: Mapped[str | None] = mapped_column(String, nullable=True)  # NULL = federal/FICA
+    is_estimate: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
+    origin: Mapped[str] = mapped_column(
+        String, nullable=False, default="parser", server_default=text("'parser'")
+    )  # parser | llm | manual
+
+
+class BalanceEntry(Base):
+    """One month-end balance for one account (net worth). LOCAL ONLY: never sent to an LLM and
+    never part of `/api/export`. `balance_minor` is a non-negative magnitude (credit card = amount
+    owed)."""
+
+    __tablename__ = "balance_entries"
+    __table_args__ = (
+        UniqueConstraint(
+            "user_id", "category", "account_name", "year", "month", name="uq_balance_entry_period"
+        ),
+        Index("ix_balance_user_period", "user_id", "year", "month"),
+        CheckConstraint(f"category IN ({_sql_in(BALANCE_CATEGORIES)})", name="ck_balance_category"),
+        CheckConstraint("month BETWEEN 1 AND 12", name="ck_balance_month"),
+        CheckConstraint("year BETWEEN 1900 AND 2200", name="ck_balance_year"),
+        CheckConstraint("balance_minor >= 0", name="ck_balance_nonneg"),
+        CheckConstraint("length(trim(account_name)) > 0", name="ck_balance_account_name"),
+    )
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    user_id: Mapped[int] = mapped_column(
+        Integer, ForeignKey("users.id", ondelete="CASCADE"), nullable=False
+    )
+    category: Mapped[str] = mapped_column(String, nullable=False)
+    account_name: Mapped[str] = mapped_column(String, nullable=False)
+    year: Mapped[int] = mapped_column(Integer, nullable=False)
+    month: Mapped[int] = mapped_column(Integer, nullable=False)
+    balance_minor: Mapped[int] = mapped_column(Integer, nullable=False)
+    currency: Mapped[str] = mapped_column(String, nullable=False, default="USD")
+    note: Mapped[str | None] = mapped_column(Text, nullable=True)
+    created_at: Mapped[str] = mapped_column(Text, nullable=False, default=utcnow_iso)
+    updated_at: Mapped[str] = mapped_column(
+        Text, nullable=False, default=utcnow_iso, onupdate=utcnow_iso
+    )

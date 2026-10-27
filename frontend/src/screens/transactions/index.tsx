@@ -4,6 +4,7 @@ import { usePatchTransaction, useTaxonomy } from "@/api/hooks";
 import { EmptyState, ErrorState, LoadingState } from "@/components/primitives/states";
 import { Button } from "@/components/ui/button";
 import { useToast } from "@/components/ui/use-toast";
+import { useSelectedUser } from "@/hooks/use-selected-user";
 import { useSpendQueryParams } from "@/hooks/use-spend-query-params";
 
 import { downloadTransactionsExport, useAllMatchingIds, useBulkUpdateTransactions, useTransactionsGrid } from "./api";
@@ -22,10 +23,17 @@ import type { Transaction } from "./types";
  * dependency — flagged in the P3-C report).
  */
 export default function TransactionsScreen() {
-  const [filters, setFilters] = useSpendQueryParams();
+  const [urlFilters, setFilters] = useSpendQueryParams();
+  const sel = useSelectedUser();
   const { toast } = useToast();
 
-  const grid = useTransactionsGrid(filters);
+  // The user switcher wins over a legacy `?user_ids=` param.
+  const filters = React.useMemo(
+    () => ({ ...urlFilters, userIds: sel.userIds ?? urlFilters.userIds }),
+    [urlFilters, sel.userIds],
+  );
+
+  const grid = useTransactionsGrid(filters, !sel.isLoading);
   const taxonomy = useTaxonomy();
   const categories = React.useMemo(() => taxonomy.data ?? [], [taxonomy.data]);
 
@@ -36,6 +44,11 @@ export default function TransactionsScreen() {
   const [selectedIds, setSelectedIds] = React.useState<Set<number>>(new Set());
   const [editing, setEditing] = React.useState<Transaction | null>(null);
   const [exporting, setExporting] = React.useState(false);
+
+  // A selection made under one user view must not carry into another.
+  React.useEffect(() => {
+    setSelectedIds(new Set());
+  }, [sel.selectedUserId]);
 
   const rows = React.useMemo(
     () => grid.data?.pages.flatMap((page) => page.items) ?? [],
@@ -132,14 +145,14 @@ export default function TransactionsScreen() {
 
   return (
     <div className="flex flex-col gap-4">
-      <div className="flex items-center justify-between">
+      <div className="flex flex-wrap items-center justify-between gap-3">
         <div>
           <h1 className="text-xl font-semibold tracking-tight">Transactions</h1>
           <p className="text-sm text-muted-foreground">
-            {grid.isLoading ? "Loading…" : `${total.toLocaleString()} transaction${total === 1 ? "" : "s"}`}
+            {grid.isLoading || sel.isLoading ? "Loading…" : `${total.toLocaleString()} transaction${total === 1 ? "" : "s"}`}
           </p>
         </div>
-        <div className="flex gap-2">
+        <div className="flex flex-wrap items-center gap-2">
           <Button type="button" variant="outline" size="sm" disabled={exporting} onClick={() => void handleExport("csv")}>
             Export CSV
           </Button>
@@ -163,7 +176,7 @@ export default function TransactionsScreen() {
         selectingAll={allMatchingIds.isPending}
       />
 
-      {grid.isLoading ? (
+      {grid.isLoading || sel.isLoading ? (
         <LoadingState rows={8} />
       ) : grid.isError ? (
         <ErrorState

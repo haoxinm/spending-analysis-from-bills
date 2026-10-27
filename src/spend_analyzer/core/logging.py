@@ -27,6 +27,10 @@ _REDACTED = "[REDACTED]"
 
 _LOGGER_NAME = "spend_analyzer"
 
+#: Third-party PDF libraries log extracted document text at DEBUG (pdfminer echoes text objects).
+#: Tax forms carry SSNs, so these are pinned to WARNING no matter how verbose our own logging is.
+_QUIET_THIRD_PARTY_LOGGERS = ("pdfminer", "pdfplumber")
+
 
 class _RedactSecretsFilter(logging.Filter):
     """Redacts any API-key-shaped substring from a log record's rendered message."""
@@ -49,7 +53,8 @@ def configure_logging(
     """Configure and return the ``spend_analyzer`` logger.
 
     Idempotent: calling this more than once replaces existing handlers rather than stacking
-    duplicates.
+    duplicates. Also pins the `pdfminer` and `pdfplumber` loggers to WARNING so document text
+    (e.g. a tax form's SSN) can never be logged, even at DEBUG.
 
     Args:
         home: the data directory (`SPEND_ANALYZER_HOME`); logs are written to ``home/logs/app.log``.
@@ -59,6 +64,9 @@ def configure_logging(
     Returns:
         The configured logger.
     """
+    for name in _QUIET_THIRD_PARTY_LOGGERS:
+        logging.getLogger(name).setLevel(logging.WARNING)
+
     logger = logging.getLogger(_LOGGER_NAME)
     logger.setLevel(logging.DEBUG)
     for handler in list(logger.handlers):

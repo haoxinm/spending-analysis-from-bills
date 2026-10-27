@@ -1,35 +1,14 @@
 /**
  * Per-viewer conveniences for the Import screen, all `localStorage`-backed and all optional:
- * losing them just means the user re-picks a user or sees one extra confirmation click. Never
- * used for anything the server needs to know (D4's sticky user default and A22's per-issuer
- * skip-confirmation live only here; the server-side "remembered spec" is `issuers.default_spec_id`,
+ * losing them just means one extra confirmation click. Never
+ * used for anything the server needs to know (A22's per-issuer skip-confirmation lives only here; the server-side "remembered spec" is `issuers.default_spec_id`,
  * §2f.3, set via `ExtractRequest.remember`).
  *
  * Every accessor is wrapped in try/catch (private browsing, blocked storage, SSR) per the
  * artifact/browser-storage rule this app follows generally: storage failures never break render.
  */
 
-const STICKY_USER_KEY = "spend-analyzer:import:sticky-user-id";
 const SKIP_CONFIRM_KEY = "spend-analyzer:import:skip-confirm-issuer-ids";
-
-export function getStickyUserId(): number | null {
-  try {
-    const raw = window.localStorage.getItem(STICKY_USER_KEY);
-    if (raw === null) return null;
-    const parsed = Number.parseInt(raw, 10);
-    return Number.isFinite(parsed) ? parsed : null;
-  } catch {
-    return null;
-  }
-}
-
-export function setStickyUserId(userId: number): void {
-  try {
-    window.localStorage.setItem(STICKY_USER_KEY, String(userId));
-  } catch {
-    // Ignore: this is a convenience, not a requirement.
-  }
-}
 
 function readSkipConfirmIds(): number[] {
   try {

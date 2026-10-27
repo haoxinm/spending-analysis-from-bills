@@ -1,0 +1,93 @@
+{
+  "expected_warnings": [],
+  "forms": [
+    {
+      "account_last4": null,
+      "agi_minor": 5830000,
+      "filing_status": "hoh",
+      "form_type": "1040",
+      "income": [
+        {
+          "amount_minor": 5800000,
+          "box": "line 1",
+          "category": "salary_wages",
+          "is_memo": false,
+          "label": "Wages, salaries, tips",
+          "source_form": "1040"
+        },
+        {
+          "amount_minor": 30000,
+          "box": "line 2b",
+          "category": "interest",
+          "is_memo": false,
+          "label": "Taxable interest",
+          "source_form": "1040"
+        }
+      ],
+      "is_corrected": false,
+      "payer_name": null,
+      "payer_tin_last4": null,
+      "tax_year": 2022,
+      "taxable_income_minor": 3890000,
+      "taxes": [
+        {
+          "amount_minor": 437800,
+          "box": "line 24",
+          "category": "total_federal_tax",
+          "is_estimate": false,
+          "jurisdiction": null,
+          "label": "Total tax",
+          "source_form": "1040"
+        },
+        {
+          "amount_minor": 196300,
+          "box": "line 25d",
+          "category": "federal_income_tax_withheld",
+          "is_estimate": false,
+          "jurisdiction": null,
+          "label": "Federal income tax withheld",
+          "source_form": "1040"
+        },
+        {
+          "amount_minor": 196300,
+          "box": "line 33",
+          "category": "total_payments",
+          "is_estimate": false,
+          "jurisdiction": null,
+          "label": "Total payments",
+          "source_form": "1040"
+        },
+        {
+          "amount_minor": 241500,
+          "box": "line 37",
+          "category": "amount_owed",
+          "is_estimate": false,
+          "jurisdiction": null,
+          "label": "Amount you owe",
+          "source_form": "1040"
+        },
+        {
+          "amount_minor": 437800,
+          "box": "line 16",
+          "category": "federal_tax_ordinary_est",
+          "is_estimate": true,
+          "jurisdiction": null,
+          "label": "Tax on ordinary income (estimate)",
+          "source_form": "1040"
+        },
+        {
+          "amount_minor": 0,
+          "box": "line 16",
+          "category": "federal_tax_preferential_est",
+          "is_estimate": true,
+          "jurisdiction": null,
+          "label": "Tax on qualified dividends and gains (estimate)",
+          "source_form": "1040"
+        }
+      ],
+      "warnings": []
+    }
+  ],
+  "tax_year": 2022,
+  "warnings": []
+}

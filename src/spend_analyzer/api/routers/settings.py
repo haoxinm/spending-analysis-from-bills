@@ -26,6 +26,7 @@ from spend_analyzer.config import (
     get_llm_api_key,
     save_settings,
     set_api_key,
+    without_stale_tax_consent,
 )
 from spend_analyzer.core.pii import compile_redactor
 from spend_analyzer.llm.diagnostics import check_connection
@@ -95,6 +96,7 @@ def _settings_schema(settings: Settings) -> schemas.Settings:
         ingest=schemas.IngestSettings(
             always_confirm_extractor=settings.ingest.always_confirm_extractor,
             default_extractor=settings.ingest.default_extractor,
+            tax_llm_fallback=settings.ingest.tax_llm_fallback,
             date_format_hints=list(settings.ingest.date_format_hints),
             default_currency=settings.ingest.default_currency,
         ),
@@ -108,22 +110,26 @@ def get_settings_route(settings: SettingsDep) -> schemas.Settings:
 
 
 @router.put("/settings", response_model=schemas.Settings)
-def put_settings(body: schemas.Settings) -> schemas.Settings:
+def put_settings(body: schemas.Settings, current: SettingsDep) -> schemas.Settings:
     new_settings = Settings(
         llm=_llm_config(body.llm),
         privacy=PrivacyConfig(
             store_pdf_copies=body.privacy.store_pdf_copies,
             store_extract_cache=body.privacy.store_extract_cache,
+            # config.toml-only: the Settings API must not reset it.
+            store_tax_pdf_copies=current.privacy.store_tax_pdf_copies,
             pii_terms=tuple(body.privacy.pii_terms),
         ),
         ingest=IngestConfig(
             always_confirm_extractor=body.ingest.always_confirm_extractor,
             default_extractor=body.ingest.default_extractor,
+            tax_llm_fallback=body.ingest.tax_llm_fallback,
             date_format_hints=tuple(body.ingest.date_format_hints),
             default_currency=body.ingest.default_currency,
         ),
         server=ServerConfig(port=body.server.port),
     )
+    new_settings = without_stale_tax_consent(new_settings)
     save_settings(new_settings)
     return _settings_schema(new_settings)
 

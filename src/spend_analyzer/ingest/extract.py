@@ -47,7 +47,7 @@ def sha256_file(path: Path) -> str:
     return hasher.hexdigest()
 
 
-def extract(path: Path) -> ExtractedDoc:
+def extract(path: Path, *, write_cache: bool = True) -> ExtractedDoc:
     """Extract ``path``'s text layer: per-page plain text and word bounding boxes.
 
     Opens the PDF exactly once with `pdfplumber` and reads every page's `extract_text()` and
@@ -66,6 +66,8 @@ def extract(path: Path) -> ExtractedDoc:
 
     Args:
         path: path to a local PDF file.
+        write_cache: when False, never write the debug cache even if `store_extract_cache` is
+            on. Tax-form imports pass False: the cache would hold full SSNs/EINs on disk.
 
     Returns:
         The extracted document.
@@ -94,7 +96,8 @@ def extract(path: Path) -> ExtractedDoc:
         pages=pages,
         has_text_layer=has_text_layer,
     )
-    _maybe_write_debug_cache(doc)
+    if write_cache:
+        _maybe_write_debug_cache(doc)
     return doc
 
 

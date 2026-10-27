@@ -768,6 +768,419 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/net-worth/entries": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** List Entries */
+        get: operations["list_entries_api_net_worth_entries_get"];
+        put?: never;
+        /** Upsert Entry */
+        post: operations["upsert_entry_api_net_worth_entries_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/net-worth/entries/{id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        /** Delete Entry */
+        delete: operations["delete_entry_api_net_worth_entries__id__delete"];
+        options?: never;
+        head?: never;
+        /** Patch Entry */
+        patch: operations["patch_entry_api_net_worth_entries__id__patch"];
+        trace?: never;
+    };
+    "/net-worth/summary": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Summary */
+        get: operations["summary_api_net_worth_summary_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/tax/documents": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** List Documents */
+        get: operations["list_documents_api_tax_documents_get"];
+        put?: never;
+        /**
+         * Upload Tax Document
+         * @description Multipart upload of one tax-form PDF; parsed synchronously. A non-tax or unreadable
+         *     PDF still returns 201 with `status` `unsupported` / `error` and a generic message.
+         */
+        post: operations["upload_tax_document_api_tax_documents_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/tax/documents/{document_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Get Document */
+        get: operations["get_document_api_tax_documents__document_id__get"];
+        put?: never;
+        post?: never;
+        /** Delete Document */
+        delete: operations["delete_document_api_tax_documents__document_id__delete"];
+        options?: never;
+        head?: never;
+        /**
+         * Reassign Document
+         * @description Move a document with all its forms and items to another user (`user_id` in the query is
+         *     the ownership check on the current owner; `user_id` in the body is the new owner).
+         */
+        patch: operations["reassign_document_api_tax_documents__document_id__patch"];
+        trace?: never;
+    };
+    "/tax/documents/{document_id}/source": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Provide Document Source
+         * @description Re-select the original PDF of a document whose copy is not kept. The file must be
+         *     byte-identical to the imported one (sha256); it is held in a private temporary location for
+         *     30 minutes (or until the LLM read, or the document, is gone) so the page tools work. Nothing
+         *     is kept otherwise.
+         */
+        post: operations["provide_document_source_api_tax_documents__document_id__source_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/tax/documents/{document_id}/pages": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List Document Pages
+         * @description Per-page facts for choosing pages to read with the LLM: size, whether the automatic
+         *     fallback would send it, and why a page can never be sent. Local-only; no network.
+         */
+        get: operations["list_document_pages_api_tax_documents__document_id__pages_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/tax/documents/{document_id}/pages/{page_number}/image": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Document Page Image
+         * @description PNG thumbnail of one page of the kept PDF (local-only; same as the statements one).
+         */
+        get: operations["document_page_image_api_tax_documents__document_id__pages__page_number__image_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/tax/documents/{document_id}/llm-preview": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Llm Preview
+         * @description Exactly the redacted text the LLM would receive for ``pages`` (default: the pages the
+         *     automatic fallback would send). No network call; works even when the automatic fallback is
+         *     off. Without a configured LLM, ``mode`` is ``none`` and nothing is listed.
+         */
+        get: operations["llm_preview_api_tax_documents__document_id__llm_preview_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/tax/documents/{document_id}/llm-fallback": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Read Pages With Llm
+         * @description Send exactly the chosen pages (redacted like the preview) to the configured LLM and merge
+         *     what it reads into this document. Explicit per-document consent: allowed whenever the LLM
+         *     is configured, whatever ``[ingest] tax_llm_fallback`` says. Form 1040 pages and pages without
+         *     text are never sent. New forms are tagged as read by the LLM (needs review).
+         */
+        post: operations["read_pages_with_llm_api_tax_documents__document_id__llm_fallback_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/tax/years": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** List Years */
+        get: operations["list_years_api_tax_years_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/tax/summary": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Tax Summary
+         * @description One summary per tax year (newest first); with `per_user`, one per (year, user).
+         */
+        get: operations["tax_summary_api_tax_summary_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/tax/income-by-payer": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Income By Payer
+         * @description Non-memo income on source forms (W-2 / 1099) per payer; newest year, largest first.
+         */
+        get: operations["income_by_payer_api_tax_income_by_payer_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/tax/documents/manual": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Create Manual Document
+         * @description A document with no file, to hold figures typed in by the user.
+         */
+        post: operations["create_manual_document_api_tax_documents_manual_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/tax/documents/{document_id}/forms": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Create Form
+         * @description Add a form (with optional items) to a document. A document that was `error` /
+         *     `unsupported` becomes `parsed`.
+         */
+        post: operations["create_form_api_tax_documents__document_id__forms_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/tax/forms/{form_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        /** Delete Form */
+        delete: operations["delete_form_api_tax_forms__form_id__delete"];
+        options?: never;
+        head?: never;
+        /** Patch Form */
+        patch: operations["patch_form_api_tax_forms__form_id__patch"];
+        trace?: never;
+    };
+    "/tax/forms/{form_id}/confirm": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Confirm Form
+         * @description Mark a reviewed form's AI-extracted items as confirmed (`origin` becomes `manual`).
+         */
+        post: operations["confirm_form_api_tax_forms__form_id__confirm_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/tax/forms/{form_id}/income-items": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Create Income Item */
+        post: operations["create_income_item_api_tax_forms__form_id__income_items_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/tax/income-items/{item_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        /** Delete Income Item */
+        delete: operations["delete_income_item_api_tax_income_items__item_id__delete"];
+        options?: never;
+        head?: never;
+        /** Patch Income Item */
+        patch: operations["patch_income_item_api_tax_income_items__item_id__patch"];
+        trace?: never;
+    };
+    "/tax/forms/{form_id}/tax-items": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Create Tax Item */
+        post: operations["create_tax_item_api_tax_forms__form_id__tax_items_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/tax/tax-items/{item_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        /** Delete Tax Item */
+        delete: operations["delete_tax_item_api_tax_tax_items__item_id__delete"];
+        options?: never;
+        head?: never;
+        /** Patch Tax Item */
+        patch: operations["patch_tax_item_api_tax_tax_items__item_id__patch"];
+        trace?: never;
+    };
 }
 export type webhooks = Record<string, never>;
 export interface components {
@@ -860,12 +1273,87 @@ export interface components {
              */
             base_url: string;
         };
+        /** BalanceEntry */
+        BalanceEntry: {
+            /** Id */
+            id: number;
+            /** User Id */
+            user_id: number;
+            /**
+             * Category
+             * @enum {string}
+             */
+            category: "checking" | "savings" | "investment" | "credit_card";
+            /** Account Name */
+            account_name: string;
+            /** Year */
+            year: number;
+            /** Month */
+            month: number;
+            /** Balance Minor */
+            balance_minor: number;
+            /** Currency */
+            currency: string;
+            /** Note */
+            note: string | null;
+            /** Created At */
+            created_at: string;
+            /** Updated At */
+            updated_at: string;
+        };
+        /** BalanceEntryPatch */
+        BalanceEntryPatch: {
+            /** Balance Minor */
+            balance_minor?: number | null;
+            /** Note */
+            note?: string | null;
+        };
+        /** BalanceEntryUpsert */
+        BalanceEntryUpsert: {
+            /** User Id */
+            user_id: number;
+            /**
+             * Category
+             * @enum {string}
+             */
+            category: "checking" | "savings" | "investment" | "credit_card";
+            /** Account Name */
+            account_name: string;
+            /** Year */
+            year: number;
+            /** Month */
+            month: number;
+            /** Balance Minor */
+            balance_minor: number;
+            /**
+             * Currency
+             * @default USD
+             * @constant
+             */
+            currency: "USD";
+            /** Note */
+            note?: string | null;
+        };
+        /** Body_provide_document_source_api_tax_documents__document_id__source_post */
+        Body_provide_document_source_api_tax_documents__document_id__source_post: {
+            /** File */
+            file: string;
+        };
         /** Body_upload_statement_api_statements_post */
         Body_upload_statement_api_statements_post: {
             /** File */
             file: string;
             /** User Id */
             user_id: number;
+        };
+        /** Body_upload_tax_document_api_tax_documents_post */
+        Body_upload_tax_document_api_tax_documents_post: {
+            /** File */
+            file: string;
+            /** User Id */
+            user_id: number;
+            /** Tax Year */
+            tax_year?: number | null;
         };
         /** BulkUpdateRequest */
         BulkUpdateRequest: {
@@ -956,6 +1444,76 @@ export interface components {
             /** Detail */
             detail?: components["schemas"]["ValidationError"][];
         };
+        /** IncomeCategoryAmount */
+        IncomeCategoryAmount: {
+            category: components["schemas"]["IncomeCategoryEnum"];
+            /** Label */
+            label: string;
+            /** Amount Minor */
+            amount_minor: number;
+            /** Is Memo */
+            is_memo: boolean;
+        };
+        /**
+         * IncomeCategoryEnum
+         * @description Mirror of `core.tax_types.IncomeCategory`.
+         * @enum {string}
+         */
+        IncomeCategoryEnum: "salary_wages" | "interest" | "ordinary_dividends" | "qualified_dividends" | "short_term_capital_gain" | "long_term_capital_gain" | "self_employment" | "other";
+        /** IncomeItemIn */
+        IncomeItemIn: {
+            category: components["schemas"]["IncomeCategoryEnum"];
+            /** Amount Minor */
+            amount_minor: number;
+            /** Box */
+            box?: string | null;
+            /** Label */
+            label?: string | null;
+            /**
+             * Is Memo
+             * @default false
+             */
+            is_memo: boolean;
+            /** Source Form */
+            source_form?: string | null;
+        };
+        /** IncomeItemOut */
+        IncomeItemOut: {
+            /** Id */
+            id: number;
+            category: components["schemas"]["IncomeCategoryEnum"];
+            /** Amount Minor */
+            amount_minor: number;
+            /** Currency */
+            currency: string;
+            /** Source Form */
+            source_form: string;
+            /** Box */
+            box: string | null;
+            /** Label */
+            label: string | null;
+            /** Is Memo */
+            is_memo: boolean;
+            /**
+             * Origin
+             * @enum {string}
+             */
+            origin: "parser" | "llm" | "manual";
+        };
+        /** IncomeItemPatch */
+        IncomeItemPatch: {
+            category?: components["schemas"]["IncomeCategoryEnum"] | null;
+            /** Amount Minor */
+            amount_minor?: number | null;
+            /** Box */
+            box?: string | null;
+            /** Label */
+            label?: string | null;
+            /** Is Memo */
+            is_memo?: boolean | null;
+            /** Source Form */
+            source_form?: string | null;
+        };
         /** IngestSettings */
         IngestSettings: {
             /** Always Confirm Extractor */
@@ -966,6 +1524,11 @@ export interface components {
              * @enum {string}
              */
             default_extractor: "auto" | "llm";
+            /**
+             * Tax Llm Fallback
+             * @default false
+             */
+            tax_llm_fallback: boolean;
             /** Date Format Hints */
             date_format_hints: string[];
             /** Default Currency */
@@ -1284,6 +1847,109 @@ export interface components {
             /** Into Id */
             into_id: number;
         };
+        /** NetWorthAccountBalance */
+        NetWorthAccountBalance: {
+            /** User Id */
+            user_id: number;
+            /**
+             * Category
+             * @enum {string}
+             */
+            category: "checking" | "savings" | "investment" | "credit_card";
+            /** Account Name */
+            account_name: string;
+            /** Balance Minor */
+            balance_minor: number;
+            /** Signed Minor */
+            signed_minor: number;
+            /** As Of */
+            as_of: string;
+            /** Carried */
+            carried: boolean;
+        };
+        /** NetWorthAccountPoint */
+        NetWorthAccountPoint: {
+            /** Period */
+            period: string;
+            /** Balance Minor */
+            balance_minor: number;
+            /** Carried */
+            carried: boolean;
+        };
+        /** NetWorthAccountSeries */
+        NetWorthAccountSeries: {
+            /** User Id */
+            user_id: number;
+            /**
+             * Category
+             * @enum {string}
+             */
+            category: "checking" | "savings" | "investment" | "credit_card";
+            /** Account Name */
+            account_name: string;
+            /** Points */
+            points: components["schemas"]["NetWorthAccountPoint"][];
+        };
+        /** NetWorthCategoryTotal */
+        NetWorthCategoryTotal: {
+            /**
+             * Category
+             * @enum {string}
+             */
+            category: "checking" | "savings" | "investment" | "credit_card";
+            /** Balance Minor */
+            balance_minor: number;
+            /** Signed Minor */
+            signed_minor: number;
+        };
+        /** NetWorthPoint */
+        NetWorthPoint: {
+            /** Period */
+            period: string;
+            /** By Category */
+            by_category: {
+                [key: string]: number;
+            };
+            /** Assets Minor */
+            assets_minor: number;
+            /** Liabilities Minor */
+            liabilities_minor: number;
+            /** Net Worth Minor */
+            net_worth_minor: number;
+        };
+        /** NetWorthSnapshot */
+        NetWorthSnapshot: {
+            /** Period */
+            period: string;
+            /** Assets Minor */
+            assets_minor: number;
+            /** Liabilities Minor */
+            liabilities_minor: number;
+            /** Net Worth Minor */
+            net_worth_minor: number;
+            /** Previous Period */
+            previous_period: string | null;
+            /** Change Minor */
+            change_minor: number | null;
+            /** Categories */
+            categories: components["schemas"]["NetWorthCategoryTotal"][];
+            /** Accounts */
+            accounts: components["schemas"]["NetWorthAccountBalance"][];
+        };
+        /** NetWorthSummary */
+        NetWorthSummary: {
+            /** Currency */
+            currency: string;
+            /** User Id */
+            user_id: number | null;
+            /** Periods */
+            periods: string[];
+            /** Series */
+            series: components["schemas"]["NetWorthPoint"][];
+            /** Account Series */
+            account_series: components["schemas"]["NetWorthAccountSeries"][];
+            snapshot: components["schemas"]["NetWorthSnapshot"] | null;
+        };
         /**
          * PiiTestRequest
          * @description `POST /api/settings/pii-test`: apply personal-info entries to a pasted sample. `terms`
@@ -1470,6 +2136,422 @@ export interface components {
             pending: boolean;
             /** Merged Into */
             merged_into?: string | null;
+        };
+        /** TaxCategoryAmount */
+        TaxCategoryAmount: {
+            category: components["schemas"]["TaxCategoryEnum"];
+            /** Label */
+            label: string;
+            /** Amount Minor */
+            amount_minor: number;
+        };
+        /**
+         * TaxCategoryEnum
+         * @description Mirror of `core.tax_types.TaxCategory`.
+         * @enum {string}
+         */
+        TaxCategoryEnum: "federal_income_tax_withheld" | "state_income_tax_withheld" | "local_income_tax_withheld" | "social_security_tax" | "medicare_tax" | "total_federal_tax" | "federal_tax_ordinary_est" | "federal_tax_preferential_est" | "net_investment_income_tax" | "additional_medicare_tax" | "self_employment_tax" | "state_income_tax_liability" | "estimated_tax_payments" | "total_payments" | "refund" | "amount_owed";
+        /** TaxDocument */
+        TaxDocument: {
+            /** Id */
+            id: number;
+            /** User Id */
+            user_id: number;
+            /** Original Name */
+            original_name: string;
+            /** Tax Year */
+            tax_year: number | null;
+            /**
+             * Status
+             * @enum {string}
+             */
+            status: "parsed" | "error" | "unsupported";
+            /** Form Types */
+            form_types: components["schemas"]["TaxFormType"][];
+            /** Page Count */
+            page_count: number | null;
+            /** Warnings */
+            warnings: string[];
+            /** Error Detail */
+            error_detail: string | null;
+            /** Created At */
+            created_at: string;
+            /** Has Pdf */
+            has_pdf: boolean;
+            /** Staged Until */
+            staged_until?: string | null;
+        };
+        /** TaxDocumentDetail */
+        TaxDocumentDetail: {
+            /** Id */
+            id: number;
+            /** User Id */
+            user_id: number;
+            /** Original Name */
+            original_name: string;
+            /** Tax Year */
+            tax_year: number | null;
+            /**
+             * Status
+             * @enum {string}
+             */
+            status: "parsed" | "error" | "unsupported";
+            /** Form Types */
+            form_types: components["schemas"]["TaxFormType"][];
+            /** Page Count */
+            page_count: number | null;
+            /** Warnings */
+            warnings: string[];
+            /** Error Detail */
+            error_detail: string | null;
+            /** Created At */
+            created_at: string;
+            /** Has Pdf */
+            has_pdf: boolean;
+            /** Staged Until */
+            staged_until?: string | null;
+            /** Forms */
+            forms: components["schemas"]["TaxFormDetail"][];
+        };
+        /**
+         * TaxDocumentPatch
+         * @description Reassign a document (with its forms and items) to another user.
+         */
+        TaxDocumentPatch: {
+            /** User Id */
+            user_id: number;
+        };
+        /** TaxFormCreate */
+        TaxFormCreate: {
+            form_type: components["schemas"]["TaxFormType"];
+            /** Tax Year */
+            tax_year?: number | null;
+            /** Payer Name */
+            payer_name?: string | null;
+            /** Payer Tin Last4 */
+            payer_tin_last4?: string | null;
+            /** Account Last4 */
+            account_last4?: string | null;
+            /**
+             * Is Corrected
+             * @default false
+             */
+            is_corrected: boolean;
+            /** Filing Status */
+            filing_status?: ("single" | "mfj" | "mfs" | "hoh" | "qss") | null;
+            /** Agi Minor */
+            agi_minor?: number | null;
+            /** Taxable Income Minor */
+            taxable_income_minor?: number | null;
+            /** Income Items */
+            income_items?: components["schemas"]["IncomeItemIn"][];
+            /** Tax Items */
+            tax_items?: components["schemas"]["TaxItemIn"][];
+        };
+        /** TaxFormDetail */
+        TaxFormDetail: {
+            /** Id */
+            id: number;
+            form_type: components["schemas"]["TaxFormType"];
+            /**
+             * Role
+             * @enum {string}
+             */
+            role: "source" | "return";
+            /** Tax Year */
+            tax_year: number;
+            /** Payer Name */
+            payer_name: string | null;
+            /** Payer Tin Last4 */
+            payer_tin_last4: string | null;
+            /** Account Last4 */
+            account_last4: string | null;
+            /** Filing Status */
+            filing_status: string | null;
+            /** Agi Minor */
+            agi_minor: number | null;
+            /** Taxable Income Minor */
+            taxable_income_minor: number | null;
+            /** Is Corrected */
+            is_corrected: boolean;
+            /**
+             * Extraction Method
+             * @enum {string}
+             */
+            extraction_method: "parser" | "llm" | "manual";
+            /** Is User Edited */
+            is_user_edited: boolean;
+            /** Needs Review */
+            needs_review: boolean;
+            /** Income Items */
+            income_items: components["schemas"]["IncomeItemOut"][];
+            /** Tax Items */
+            tax_items: components["schemas"]["TaxItemOut"][];
+        };
+        /** TaxFormPatch */
+        TaxFormPatch: {
+            form_type?: components["schemas"]["TaxFormType"] | null;
+            /** Tax Year */
+            tax_year?: number | null;
+            /** Payer Name */
+            payer_name?: string | null;
+            /** Payer Tin Last4 */
+            payer_tin_last4?: string | null;
+            /** Account Last4 */
+            account_last4?: string | null;
+            /** Is Corrected */
+            is_corrected?: boolean | null;
+            /** Filing Status */
+            filing_status?: ("single" | "mfj" | "mfs" | "hoh" | "qss") | null;
+            /** Agi Minor */
+            agi_minor?: number | null;
+            /** Taxable Income Minor */
+            taxable_income_minor?: number | null;
+        };
+        /**
+         * TaxFormType
+         * @description Mirror of `core.tax_types.FormType` (kept in sync by a test), as a named OpenAPI enum.
+         * @enum {string}
+         */
+        TaxFormType: "w2" | "1099-int" | "1099-div" | "1099-b" | "1099-nec" | "1099-misc" | "1099-consolidated" | "1040" | "state-return";
+        /** TaxImportResponse */
+        TaxImportResponse: {
+            document: components["schemas"]["TaxDocument"];
+            /**
+             * Status
+             * @enum {string}
+             */
+            status: "parsed" | "duplicate" | "error" | "unsupported";
+            /** Inserted Forms */
+            inserted_forms: number;
+            /** Skipped Duplicate Forms */
+            skipped_duplicate_forms: number;
+            /** Skipped From */
+            skipped_from: components["schemas"]["TaxSkippedFrom"][];
+            /** Income Item Count */
+            income_item_count: number;
+            /** Tax Item Count */
+            tax_item_count: number;
+            /** Warnings */
+            warnings: string[];
+            /** Error */
+            error: string | null;
+            /**
+             * Llm Used
+             * @default false
+             */
+            llm_used: boolean;
+            /**
+             * Llm Form Count
+             * @default 0
+             */
+            llm_form_count: number;
+        };
+        /** TaxIncomePayer */
+        TaxIncomePayer: {
+            /** Tax Year */
+            tax_year: number;
+            /** User Id */
+            user_id: number;
+            /** Payer Name */
+            payer_name: string | null;
+            form_type: components["schemas"]["TaxFormType"];
+            category: components["schemas"]["IncomeCategoryEnum"];
+            /** Label */
+            label: string;
+            /** Amount Minor */
+            amount_minor: number;
+        };
+        /** TaxItemIn */
+        TaxItemIn: {
+            category: components["schemas"]["TaxCategoryEnum"];
+            /** Amount Minor */
+            amount_minor: number;
+            /** Box */
+            box?: string | null;
+            /** Label */
+            label?: string | null;
+            /** Jurisdiction */
+            jurisdiction?: string | null;
+            /**
+             * Is Estimate
+             * @default false
+             */
+            is_estimate: boolean;
+            /** Source Form */
+            source_form?: string | null;
+        };
+        /** TaxItemOut */
+        TaxItemOut: {
+            /** Id */
+            id: number;
+            category: components["schemas"]["TaxCategoryEnum"];
+            /** Amount Minor */
+            amount_minor: number;
+            /** Currency */
+            currency: string;
+            /** Source Form */
+            source_form: string;
+            /** Box */
+            box: string | null;
+            /** Label */
+            label: string | null;
+            /** Jurisdiction */
+            jurisdiction: string | null;
+            /** Is Estimate */
+            is_estimate: boolean;
+            /**
+             * Origin
+             * @enum {string}
+             */
+            origin: "parser" | "llm" | "manual";
+        };
+        /** TaxItemPatch */
+        TaxItemPatch: {
+            category?: components["schemas"]["TaxCategoryEnum"] | null;
+            /** Amount Minor */
+            amount_minor?: number | null;
+            /** Box */
+            box?: string | null;
+            /** Label */
+            label?: string | null;
+            /** Jurisdiction */
+            jurisdiction?: string | null;
+            /** Is Estimate */
+            is_estimate?: boolean | null;
+            /** Source Form */
+            source_form?: string | null;
+        };
+        /**
+         * TaxLlmReadRequest
+         * @description `POST /api/tax/documents/{id}/llm-fallback`: the pages the user agreed to send.
+         */
+        TaxLlmReadRequest: {
+            /** Pages */
+            pages: number[];
+        };
+        /** TaxLlmReadResponse */
+        TaxLlmReadResponse: {
+            document: components["schemas"]["TaxDocumentDetail"];
+            /** Pages */
+            pages: number[];
+            /** Requests Sent */
+            requests_sent: number;
+            /** Inserted Forms */
+            inserted_forms: number;
+            /** Skipped Duplicate Forms */
+            skipped_duplicate_forms: number;
+            /** Merged Forms */
+            merged_forms: number;
+            /** Income Item Count */
+            income_item_count: number;
+            /** Tax Item Count */
+            tax_item_count: number;
+            /** Warnings */
+            warnings: string[];
+        };
+        /** TaxManualDocumentCreate */
+        TaxManualDocumentCreate: {
+            /** User Id */
+            user_id: number;
+            /** Tax Year */
+            tax_year: number;
+            /** Original Name */
+            original_name?: string | null;
+        };
+        /**
+         * TaxMemoAmount
+         * @description A memo line (not part of total income): `qualified_dividends` or `tax_exempt`.
+         */
+        TaxMemoAmount: {
+            /** Category */
+            category: string;
+            /** Label */
+            label: string;
+            /** Amount Minor */
+            amount_minor: number;
+        };
+        /**
+         * TaxPageInfo
+         * @description `GET /api/tax/documents/{id}/pages` row. A thumbnail is at
+         *     `GET /api/tax/documents/{id}/pages/{page_number}/image`.
+         */
+        TaxPageInfo: {
+            /** Page Number */
+            page_number: number;
+            /** Char Count */
+            char_count: number;
+            /** Suggested */
+            suggested: boolean;
+            /** Excluded Reason */
+            excluded_reason: string | null;
+        };
+        /**
+         * TaxSkippedFrom
+         * @description An earlier document whose form made this upload's form a skipped duplicate.
+         */
+        TaxSkippedFrom: {
+            /** Document Id */
+            document_id: number;
+            /** Original Name */
+            original_name: string;
+            /** Form Type */
+            form_type: string;
+        };
+        /**
+         * TaxSourceResponse
+         * @description `POST /api/tax/documents/{id}/source`: the re-selected file is the document's original;
+         *     it is held temporarily (never kept) so its pages can be shown and read.
+         */
+        TaxSourceResponse: {
+            /** Pages */
+            pages: components["schemas"]["TaxPageInfo"][];
+            /** Expires At */
+            expires_at: string;
+        };
+        /** TaxYearSummary */
+        TaxYearSummary: {
+            /** Tax Year */
+            tax_year: number;
+            /** User Id */
+            user_id: number | null;
+            /**
+             * Income Basis
+             * @enum {string}
+             */
+            income_basis: "source_documents" | "return" | "none" | "mixed";
+            /** Income By Category */
+            income_by_category: components["schemas"]["IncomeCategoryAmount"][];
+            /** Memo By Category */
+            memo_by_category: components["schemas"]["TaxMemoAmount"][];
+            /** Total Income Minor */
+            total_income_minor: number;
+            /** Withheld */
+            withheld: components["schemas"]["TaxCategoryAmount"][];
+            /** Fica */
+            fica: components["schemas"]["TaxCategoryAmount"][];
+            /** Liability */
+            liability: components["schemas"]["TaxCategoryAmount"][];
+            /** Payments Minor */
+            payments_minor: number | null;
+            /** Refund Minor */
+            refund_minor: number | null;
+            /** Amount Owed Minor */
+            amount_owed_minor: number | null;
+            /** Refund Or Owed Derived */
+            refund_or_owed_derived: boolean;
+            /** Federal Effective Rate */
+            federal_effective_rate: number | null;
+            /** All In Rate */
+            all_in_rate: number | null;
+            /** Withholding Rate */
+            withholding_rate: number | null;
+            /** Document Count */
+            document_count: number;
+            /** Form Count */
+            form_count: number;
+            /** Warnings */
+            warnings: string[];
         };
         /**
          * TestLlmRequest
@@ -3338,6 +4420,994 @@ export interface operations {
                 };
                 content: {
                     "application/json": unknown;
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    list_entries_api_net_worth_entries_get: {
+        parameters: {
+            query?: {
+                user_id?: number | null;
+                category?: ("checking" | "savings" | "investment" | "credit_card") | null;
+                year?: number | null;
+                account_name?: string | null;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["BalanceEntry"][];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    upsert_entry_api_net_worth_entries_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["BalanceEntryUpsert"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["BalanceEntry"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    delete_entry_api_net_worth_entries__id__delete: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: number;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    patch_entry_api_net_worth_entries__id__patch: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: number;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["BalanceEntryPatch"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["BalanceEntry"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    summary_api_net_worth_summary_get: {
+        parameters: {
+            query?: {
+                user_id?: number | null;
+                currency?: string;
+                period?: string | null;
+                period_from?: string | null;
+                period_to?: string | null;
+                carry_forward?: boolean;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["NetWorthSummary"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    list_documents_api_tax_documents_get: {
+        parameters: {
+            query?: {
+                user_id?: number | null;
+                tax_year?: number | null;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["TaxDocument"][];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    upload_tax_document_api_tax_documents_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "multipart/form-data": components["schemas"]["Body_upload_tax_document_api_tax_documents_post"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["TaxImportResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    get_document_api_tax_documents__document_id__get: {
+        parameters: {
+            query?: {
+                user_id?: number | null;
+            };
+            header?: never;
+            path: {
+                document_id: number;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["TaxDocumentDetail"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    delete_document_api_tax_documents__document_id__delete: {
+        parameters: {
+            query?: {
+                user_id?: number | null;
+            };
+            header?: never;
+            path: {
+                document_id: number;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    reassign_document_api_tax_documents__document_id__patch: {
+        parameters: {
+            query?: {
+                user_id?: number | null;
+            };
+            header?: never;
+            path: {
+                document_id: number;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["TaxDocumentPatch"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["TaxDocument"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    provide_document_source_api_tax_documents__document_id__source_post: {
+        parameters: {
+            query?: {
+                user_id?: number | null;
+            };
+            header?: never;
+            path: {
+                document_id: number;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "multipart/form-data": components["schemas"]["Body_provide_document_source_api_tax_documents__document_id__source_post"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["TaxSourceResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    list_document_pages_api_tax_documents__document_id__pages_get: {
+        parameters: {
+            query?: {
+                user_id?: number | null;
+            };
+            header?: never;
+            path: {
+                document_id: number;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["TaxPageInfo"][];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    document_page_image_api_tax_documents__document_id__pages__page_number__image_get: {
+        parameters: {
+            query?: {
+                width?: number;
+                user_id?: number | null;
+            };
+            header?: never;
+            path: {
+                document_id: number;
+                page_number: number;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": unknown;
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    llm_preview_api_tax_documents__document_id__llm_preview_get: {
+        parameters: {
+            query?: {
+                pages?: string | null;
+                user_id?: number | null;
+            };
+            header?: never;
+            path: {
+                document_id: number;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["LlmParsePreview"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    read_pages_with_llm_api_tax_documents__document_id__llm_fallback_post: {
+        parameters: {
+            query?: {
+                user_id?: number | null;
+            };
+            header?: never;
+            path: {
+                document_id: number;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["TaxLlmReadRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["TaxLlmReadResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    list_years_api_tax_years_get: {
+        parameters: {
+            query?: {
+                user_ids?: number[] | null;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": number[];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    tax_summary_api_tax_summary_get: {
+        parameters: {
+            query?: {
+                user_ids?: number[] | null;
+                tax_years?: number[] | null;
+                currency?: string;
+                per_user?: boolean;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["TaxYearSummary"][];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    income_by_payer_api_tax_income_by_payer_get: {
+        parameters: {
+            query?: {
+                user_ids?: number[] | null;
+                tax_years?: number[] | null;
+                currency?: string;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["TaxIncomePayer"][];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    create_manual_document_api_tax_documents_manual_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["TaxManualDocumentCreate"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["TaxDocument"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    create_form_api_tax_documents__document_id__forms_post: {
+        parameters: {
+            query?: {
+                user_id?: number | null;
+            };
+            header?: never;
+            path: {
+                document_id: number;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["TaxFormCreate"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["TaxFormDetail"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    delete_form_api_tax_forms__form_id__delete: {
+        parameters: {
+            query?: {
+                user_id?: number | null;
+            };
+            header?: never;
+            path: {
+                form_id: number;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    patch_form_api_tax_forms__form_id__patch: {
+        parameters: {
+            query?: {
+                user_id?: number | null;
+            };
+            header?: never;
+            path: {
+                form_id: number;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["TaxFormPatch"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["TaxFormDetail"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    confirm_form_api_tax_forms__form_id__confirm_post: {
+        parameters: {
+            query?: {
+                user_id?: number | null;
+            };
+            header?: never;
+            path: {
+                form_id: number;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["TaxFormDetail"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    create_income_item_api_tax_forms__form_id__income_items_post: {
+        parameters: {
+            query?: {
+                user_id?: number | null;
+            };
+            header?: never;
+            path: {
+                form_id: number;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["IncomeItemIn"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["IncomeItemOut"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    delete_income_item_api_tax_income_items__item_id__delete: {
+        parameters: {
+            query?: {
+                user_id?: number | null;
+            };
+            header?: never;
+            path: {
+                item_id: number;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    patch_income_item_api_tax_income_items__item_id__patch: {
+        parameters: {
+            query?: {
+                user_id?: number | null;
+            };
+            header?: never;
+            path: {
+                item_id: number;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["IncomeItemPatch"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["IncomeItemOut"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    create_tax_item_api_tax_forms__form_id__tax_items_post: {
+        parameters: {
+            query?: {
+                user_id?: number | null;
+            };
+            header?: never;
+            path: {
+                form_id: number;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["TaxItemIn"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["TaxItemOut"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    delete_tax_item_api_tax_tax_items__item_id__delete: {
+        parameters: {
+            query?: {
+                user_id?: number | null;
+            };
+            header?: never;
+            path: {
+                item_id: number;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    patch_tax_item_api_tax_tax_items__item_id__patch: {
+        parameters: {
+            query?: {
+                user_id?: number | null;
+            };
+            header?: never;
+            path: {
+                item_id: number;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["TaxItemPatch"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["TaxItemOut"];
                 };
             };
             /** @description Validation Error */

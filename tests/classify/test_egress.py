@@ -31,6 +31,17 @@ _LOCAL_ONLY_TERMS = (
     "transactions.issuer_category",
     "users.name",
     "pii_aliases",
+    "tax_documents",
+    "tax_forms.payer_name",
+    "payer_tin_last4",
+    "account_last4",
+    "income_items",
+    "tax_items",
+    "ParsedTaxForm",
+    "balance_entries",
+    "balance_minor",
+    "BalanceEntry",
+    "net_worth",
 )
 
 
